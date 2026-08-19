@@ -1,0 +1,275 @@
+﻿<header class="customer-header">
+
+    <!-- TOP BAR -->
+    <div class="top-bar">
+        <div class="container">
+            <div class="top-bar-content">
+
+                <div class="top-bar-left">
+                    <span>
+                        🚚 Miễn phí giao hàng cho đơn từ 500.000đ
+                    </span>
+                </div>
+
+                <div class="top-bar-right">
+                    <a href="#">
+                        📍 Hệ thống cửa hàng
+                    </a>
+
+                    <span class="top-divider">|</span>
+
+                    <a href="#">
+                        ☎ Hotline: 1900 XXXX
+                    </a>
+                </div>
+
+            </div>
+        </div>
+    </div>
+
+
+    <!-- MAIN HEADER -->
+    <div class="main-header">
+        <div class="container">
+
+            <div class="header-main-row">
+
+                <!-- LOGO -->
+                <div class="brand-wrapper">
+
+                    <a href="@Url.Action("Index", "Home")"
+                       class="brand-logo">
+
+                        <div class="brand-icon">
+                            🧸
+                        </div>
+
+                        <div class="brand-text">
+                            <span class="brand-name">
+                                TOYLAND
+                            </span>
+
+                            <span class="brand-slogan">
+                                Thế giới đồ chơi
+                            </span>
+                        </div>
+
+                    </a>
+
+                </div>
+
+
+                <!-- SEARCH -->
+                <div class="header-search-wrapper">
+
+                    <form action="@Url.Action("Index", "Product")"
+                          method="get"
+                          class="header-search">
+
+                        <input type="text"
+                               name="search"
+                               class="form-control"
+                               placeholder="Tìm kiếm sản phẩm, thương hiệu..."
+                               value="@Request.QueryString["search"]" />
+
+                        <button type="submit"
+                                class="search-button">
+
+                            🔍
+
+                        </button>
+
+                    </form>
+
+                </div>
+
+
+                <!-- ACTIONS -->
+                <div class="header-actions">
+
+                    <!-- ACCOUNT -->
+                    <div class="header-action">
+
+                        <a href="#"
+                           class="header-action-link">
+
+                            <span class="action-icon">
+                                👤
+                            </span>
+
+                            <span class="action-text">
+                                <small>Xin chào!</small>
+                                <strong>Tài khoản</strong>
+                            </span>
+
+                        </a>
+
+                    </div>
+
+
+                    <!-- CART -->
+                    <div class="header-action">
+
+                        <a href="#"
+                           class="header-action-link">
+
+                            <span class="action-icon cart-icon">
+                                🛒
+
+                                <span class="cart-badge">
+                                    0
+                                </span>
+                            </span>
+
+                            <span class="action-text">
+                                <small>Giỏ hàng</small>
+                                <strong>Của tôi</strong>
+                            </span>
+
+                        </a>
+
+                    </div>
+
+                </div>
+
+            </div>
+
+        </div>
+    </div>
+
+
+    <!-- NAVIGATION -->
+    <nav class="main-navigation">
+
+        <div class="container">
+
+            <div class="navigation-wrapper">
+
+                <a href="@Url.Action("Index", "Home")"
+                   class="nav-item-custom">
+
+                    Trang chủ
+
+                </a>
+
+
+                <a href="@Url.Action("Index", "Product")"
+                   class="nav-item-custom">
+
+                    Sản phẩm
+
+                </a>
+
+
+                <!-- CATEGORY DROPDOWN -->
+                <div class="nav-dropdown">
+
+                    <a href="@Url.Action("Index", "Product")"
+                       class="nav-item-custom dropdown-toggle-custom">
+
+                        Đồ chơi
+
+                        <span>⌄</span>
+
+                    </a>
+
+                    <div class="nav-dropdown-menu">
+
+                        <a href="#">
+                            LEGO
+                        </a>
+
+                        <a href="#">
+                            Gấu bông
+                        </a>
+
+                        <a href="#">
+                            Xe đồ chơi
+                        </a>
+
+                        <a href="#">
+                            Puzzle
+                        </a>
+
+                        <a href="#">
+                            Đồ chơi sáng tạo
+                        </a>
+
+                        <a href="#">
+                            Đồ chơi giáo dục
+                        </a>
+
+                    </div>
+
+                </div>
+
+
+                <!-- AGE -->
+                <div class="nav-dropdown">
+
+                    <a href="#"
+                       class="nav-item-custom dropdown-toggle-custom">
+
+                        Độ tuổi
+
+                        <span>⌄</span>
+
+                    </a>
+
+                    <div class="nav-dropdown-menu">
+
+                        <a href="#">
+                            0 - 2 tuổi
+                        </a>
+
+                        <a href="#">
+                            3 - 5 tuổi
+                        </a>
+
+                        <a href="#">
+                            6 - 8 tuổi
+                        </a>
+
+                        <a href="#">
+                            9 - 12 tuổi
+                        </a>
+
+                        <a href="#">
+                            Trên 12 tuổi
+                        </a>
+
+                    </div>
+
+                </div>
+
+
+                <a href="#"
+                   class="nav-item-custom">
+
+                    Thương hiệu
+
+                </a>
+
+
+                <a href="#"
+                   class="nav-item-custom nav-promotion">
+
+                    🔥 Khuyến mãi
+
+                </a>
+
+
+                <a href="#"
+                   class="nav-item-custom">
+
+                    🎁 Voucher
+
+                </a>
+
+            </div>
+
+        </div>
+
+    </nav>
+
+</header>

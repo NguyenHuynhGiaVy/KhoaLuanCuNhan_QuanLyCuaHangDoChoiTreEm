@@ -1,0 +1,751 @@
+﻿@model ToyStoreManagement.ViewModels.ProductDetailViewModel
+
+@{
+    ViewBag.Title = Model.Name;
+    Layout = "~/Views/Shared/_CustomerLayout.cshtml";
+}
+
+<div class="container pt-4">
+
+    <nav aria-label="breadcrumb">
+
+        <ol class="breadcrumb">
+
+            <li class="breadcrumb-item">
+                <a href="@Url.Action("Index", "Home")">
+                    Trang chủ
+                </a>
+            </li>
+
+            <li class="breadcrumb-item">
+                <a href="@Url.Action("Index", "Product")">
+                    Sản phẩm
+                </a>
+            </li>
+
+            <li class="breadcrumb-item active"
+                aria-current="page">
+
+                @Model.Name
+
+            </li>
+
+        </ol>
+
+    </nav>
+
+</div>
+
+<div class="container product-detail">
+
+    <div class="row g-5">
+
+        <!-- =========================
+             PRODUCT GALLERY
+             ========================= -->
+
+        <div class="col-lg-6">
+
+            <div class="product-gallery">
+
+                <!-- MAIN IMAGE -->
+
+                <div class="product-main-image">
+
+                    <img id="mainProductImage"
+                         src="@Model.MainImage"
+                         alt="@Model.Name"
+                         class="img-fluid" />
+
+                </div>
+
+
+                <!-- THUMBNAILS -->
+
+                <div class="product-thumbnails">
+
+                    @foreach (var image in Model.Images)
+                    {
+                        <button type="button"
+                                class="product-thumbnail">
+
+                            <img src="@image"
+                                 alt="@Model.Name" />
+
+                        </button>
+                    }
+
+                </div>
+
+            </div>
+
+        </div>
+
+
+        <!-- =========================
+             PRODUCT INFORMATION
+             ========================= -->
+
+        <div class="col-lg-6">
+
+            <div class="product-detail-info">
+
+                <!-- BRAND -->
+
+                <div class="product-brand">
+
+                    @Model.Brand
+
+                </div>
+
+
+                <!-- NAME -->
+
+                <h1 class="product-detail-title">
+
+                    @Model.Name
+
+                </h1>
+
+
+                <!-- RATING -->
+
+                <div class="product-rating">
+
+                    <span class="rating-stars">
+
+                        ⭐ @Model.Rating.ToString("0.0")
+
+                    </span>
+
+                    <span class="review-count">
+
+                        @Model.ReviewCount đánh giá
+
+                    </span>
+
+                    <span class="rating-divider">
+                        |
+                    </span>
+
+                    <span class="sold-count">
+
+                        Đã bán @Model.TotalSold
+
+                    </span>
+
+                </div>
+
+
+                <hr />
+
+
+                <!-- PRICE -->
+
+                <div class="product-detail-price">
+
+                    <span class="current-price"
+                          id="productPrice">
+
+                        @Model.Price.ToString("N0")đ
+
+                    </span>
+
+                    @if (Model.OldPrice.HasValue)
+                    {
+                        <span class="old-price">
+
+                            @Model.OldPrice.Value.ToString("N0")đ
+
+                        </span>
+
+                        <span class="discount-badge">
+
+                            -
+                            @Math.Round(
+                                (1 - (Model.Price / Model.OldPrice.Value)) * 100
+                            )%
+
+                        </span>
+                    }
+
+                </div>
+
+
+                <!-- AGE -->
+
+                <div class="product-info-row">
+
+                    <span class="info-label">
+                        Độ tuổi:
+                    </span>
+
+                    <span>
+                        @Model.AgeFrom - @Model.AgeTo tuổi
+                    </span>
+
+                </div>
+
+
+                <!-- =========================
+                     COLOR
+                     ========================= -->
+
+                <div class="variant-section">
+
+                    <label class="variant-label">
+
+                        Màu sắc:
+
+                    </label>
+
+                    <div class="variant-options">
+
+                        @foreach (var variant in Model.Variants
+                            .GroupBy(x => x.Color)
+                            .Select(x => x.First()))
+                        {
+                            <button type="button"
+                                    class="variant-option"
+                                    data-color="@variant.Color">
+
+                                @variant.Color
+
+                            </button>
+                        }
+
+                    </div>
+
+                </div>
+
+
+                <!-- =========================
+                     SIZE
+                     ========================= -->
+
+                <div class="variant-section">
+
+                    <label class="variant-label">
+
+                        Kích thước:
+
+                    </label>
+
+                    <div class="variant-options">
+
+                        @foreach (var variant in Model.Variants
+                            .GroupBy(x => x.Size)
+                            .Select(x => x.First()))
+                        {
+                            <button type="button"
+                                    class="variant-option"
+                                    data-size="@variant.Size">
+
+                                @variant.Size
+
+                            </button>
+                        }
+
+                    </div>
+
+                </div>
+
+
+                <!-- =========================
+                     STOCK
+                     ========================= -->
+
+                <div class="product-stock">
+
+                    <span class="stock-icon">
+                        ✓
+                    </span>
+
+                    <span>
+                        Còn hàng
+                    </span>
+
+                </div>
+
+
+                <!-- =========================
+                     QUANTITY
+                     ========================= -->
+
+                <div class="quantity-section">
+
+                    <label class="variant-label">
+
+                        Số lượng:
+
+                    </label>
+
+                    <div class="quantity-control">
+
+                        <button type="button"
+                                class="quantity-btn"
+                                id="btnDecrease">
+
+                            −
+
+                        </button>
+
+                        <input type="number"
+                               id="quantity"
+                               value="1"
+                               min="1"
+                               max="99" />
+
+                        <button type="button"
+                                class="quantity-btn"
+                                id="btnIncrease">
+
+                            +
+
+                        </button>
+
+                    </div>
+
+                </div>
+
+
+                <!-- =========================
+                     ACTIONS
+                     ========================= -->
+
+                <div class="product-actions">
+
+                    <button type="button"
+                            class="btn-add-cart">
+
+                        🛒 Thêm vào giỏ
+
+                    </button>
+
+                    <button type="button"
+                            class="btn-buy-now">
+
+                        Mua ngay
+
+                    </button>
+
+                </div>
+
+
+                <!-- =========================
+                     BENEFITS
+                     ========================= -->
+
+                <div class="product-benefits">
+
+                    <div class="benefit-item">
+
+                        <span>
+                            🚚
+                        </span>
+
+                        <div>
+
+                            <strong>
+                                Giao hàng toàn quốc
+                            </strong>
+
+                            <small>
+                                Kiểm tra hàng trước khi nhận
+                            </small>
+
+                        </div>
+
+                    </div>
+
+
+                    <div class="benefit-item">
+
+                        <span>
+                            🔄
+                        </span>
+
+                        <div>
+
+                            <strong>
+                                Đổi trả dễ dàng
+                            </strong>
+
+                            <small>
+                                Hỗ trợ đổi trả theo chính sách
+                            </small>
+
+                        </div>
+
+                    </div>
+
+
+                    <div class="benefit-item">
+
+                        <span>
+                            🛡️
+                        </span>
+
+                        <div>
+
+                            <strong>
+                                Sản phẩm chính hãng
+                            </strong>
+
+                            <small>
+                                Cam kết chất lượng sản phẩm
+                            </small>
+
+                        </div>
+
+                    </div>
+
+                </div>
+
+            </div>
+
+        </div>
+
+    </div>
+
+</div>
+
+<div class="container mt-5">
+
+    <div class="product-information">
+
+        <!-- TABS -->
+
+        <ul class="nav nav-tabs"
+            id="productTab"
+            role="tablist">
+
+            <li class="nav-item"
+                role="presentation">
+
+                <button class="nav-link active"
+                        id="description-tab"
+                        data-bs-toggle="tab"
+                        data-bs-target="#description"
+                        type="button">
+
+                    Mô tả sản phẩm
+
+                </button>
+
+            </li>
+
+
+            <li class="nav-item"
+                role="presentation">
+
+                <button class="nav-link"
+                        id="specification-tab"
+                        data-bs-toggle="tab"
+                        data-bs-target="#specification"
+                        type="button">
+
+                    Thông tin sản phẩm
+
+                </button>
+
+            </li>
+
+
+            <li class="nav-item"
+                role="presentation">
+
+                <button class="nav-link"
+                        id="reviews-tab"
+                        data-bs-toggle="tab"
+                        data-bs-target="#reviews"
+                        type="button">
+
+                    Đánh giá (@Model.ReviewCount)
+
+                </button>
+
+            </li>
+
+        </ul>
+
+
+        <!-- TAB CONTENT -->
+
+        <div class="tab-content">
+
+            <!-- DESCRIPTION -->
+
+            <div class="tab-pane fade show active"
+                 id="description"
+                 role="tabpanel">
+
+                <h4>
+                    Mô tả sản phẩm
+                </h4>
+
+                <p>
+                    @Model.Description
+                </p>
+
+            </div>
+
+
+            <!-- SPECIFICATION -->
+
+            <div class="tab-pane fade"
+                 id="specification"
+                 role="tabpanel">
+
+                <h4>
+                    Thông tin sản phẩm
+                </h4>
+
+                <div class="specification-table">
+
+                    <div class="spec-row">
+
+                        <span>
+                            Thương hiệu
+                        </span>
+
+                        <strong>
+                            @Model.Brand
+                        </strong>
+
+                    </div>
+
+
+                    <div class="spec-row">
+
+                        <span>
+                            Danh mục
+                        </span>
+
+                        <strong>
+                            @Model.Category
+                        </strong>
+
+                    </div>
+
+
+                    <div class="spec-row">
+
+                        <span>
+                            Độ tuổi
+                        </span>
+
+                        <strong>
+                            @Model.AgeFrom - @Model.AgeTo tuổi
+                        </strong>
+
+                    </div>
+
+
+                    <div class="spec-row">
+
+                        <span>
+                            Chất liệu
+                        </span>
+
+                        <strong>
+                            @Model.Material
+                        </strong>
+
+                    </div>
+
+
+                    <div class="spec-row">
+
+                        <span>
+                            Xuất xứ
+                        </span>
+
+                        <strong>
+                            @Model.Origin
+                        </strong>
+
+                    </div>
+
+                </div>
+
+            </div>
+
+
+            <!-- REVIEWS -->
+
+            <div class="tab-pane fade"
+                 id="reviews"
+                 role="tabpanel">
+
+                <h4>
+                    Đánh giá sản phẩm
+                </h4>
+
+                @foreach (var review in Model.Reviews)
+                {
+                    <div class="review-item">
+
+                        <div class="review-header">
+
+                            <strong>
+                                @review.CustomerName
+                            </strong>
+
+                            @if (review.IsVerifiedPurchase)
+                            {
+                                <span class="verified-purchase">
+                                    ✓ Đã mua hàng
+                                </span>
+                            }
+
+                        </div>
+
+
+                        <div class="review-rating">
+                            <span class="text-warning">
+                                @(new string('★', review.Rating))
+                            </span>
+                        </div>
+
+
+                        <p>
+                            @review.Comment
+                        </p>
+
+
+                        <small class="text-muted">
+
+                            @review.CreatedDate
+
+                        </small>
+
+                    </div>
+                }
+
+            </div>
+
+        </div>
+
+    </div>
+
+</div>
+
+@section Scripts {
+
+    <script>
+
+        $(document).ready(function () {
+
+            // ==========================================
+            // 1. CHANGE PRODUCT IMAGE
+            // ==========================================
+
+            $('.product-thumbnail').on('click', function () {
+
+                var imageUrl = $(this)
+                    .find('img')
+                    .attr('src');
+
+                $('#mainProductImage')
+                    .attr('src', imageUrl);
+
+                $('.product-thumbnail')
+                    .removeClass('active');
+
+                $(this)
+                    .addClass('active');
+            });
+
+
+            // ==========================================
+            // 2. SELECT VARIANT
+            // ==========================================
+
+            $('.variant-option').on('click', function () {
+
+                var $this = $(this);
+
+                var parent = $this
+                    .closest('.variant-options');
+
+                parent
+                    .find('.variant-option')
+                    .removeClass('active');
+
+                $this.addClass('active');
+            });
+
+
+            // ==========================================
+            // 3. DECREASE QUANTITY
+            // ==========================================
+
+            $('#btnDecrease').on('click', function () {
+
+                var quantity = parseInt(
+                    $('#quantity').val()
+                );
+
+                if (quantity > 1) {
+
+                    quantity--;
+
+                    $('#quantity')
+                        .val(quantity);
+                }
+
+            });
+
+
+            // ==========================================
+            // 4. INCREASE QUANTITY
+            // ==========================================
+
+            $('#btnIncrease').on('click', function () {
+
+                var quantity = parseInt(
+                    $('#quantity').val()
+                );
+
+                if (quantity < 99) {
+
+                    quantity++;
+
+                    $('#quantity')
+                        .val(quantity);
+                }
+
+            });
+
+
+            // ==========================================
+            // 5. VALIDATE QUANTITY INPUT
+            // ==========================================
+
+            $('#quantity').on('change', function () {
+
+                var quantity = parseInt(
+                    $(this).val()
+                );
+
+                if (isNaN(quantity) || quantity < 1) {
+
+                    quantity = 1;
+
+                }
+
+                if (quantity > 99) {
+
+                    quantity = 99;
+
+                }
+
+                $(this).val(quantity);
+
+            });
+
+        });
+
+    </script>
+}

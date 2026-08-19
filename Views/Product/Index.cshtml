@@ -1,0 +1,198 @@
+﻿@model ToyStoreManagement.ViewModels.ProductListViewModel
+
+@{
+    ViewBag.Title = "Sản phẩm";
+    Layout = "~/Views/Shared/_CustomerLayout.cshtml";
+}
+
+<div class="container pt-4">
+
+    <nav aria-label="breadcrumb">
+
+        <ol class="breadcrumb">
+
+            <li class="breadcrumb-item">
+                <a href="@Url.Action("Index", "Home")">
+                    Trang chủ
+                </a>
+            </li>
+
+            <li class="breadcrumb-item active">
+                Sản phẩm
+            </li>
+
+        </ol>
+
+    </nav>
+
+</div>
+
+<div class="container">
+
+    <div class="catalog-heading mb-4">
+
+        <h1>Đồ chơi</h1>
+
+        <p class="text-muted">
+            Khám phá @Model.TotalProducts sản phẩm
+        </p>
+
+    </div>
+
+</div>
+
+<div class="catalog-filter">
+
+    <h5>Danh mục</h5>
+
+    @foreach (var category in Model.Categories)
+    {
+        <div class="form-check mb-2">
+
+            <input class="form-check-input"
+                   type="checkbox"
+                   value="@category.Id"
+                   id="category-@category.Id" />
+
+            <label class="form-check-label"
+                   for="category-@category.Id">
+
+                @category.Name
+
+            </label>
+
+        </div>
+    }
+
+    <hr />
+
+    <h5>Khoảng giá</h5>
+
+    <div class="form-check mb-2">
+        <input class="form-check-input"
+               type="radio"
+               name="price"
+               id="price1">
+
+        <label class="form-check-label"
+               for="price1">
+            Dưới 200.000đ
+        </label>
+    </div>
+
+    <div class="form-check mb-2">
+        <input class="form-check-input"
+               type="radio"
+               name="price"
+               id="price2">
+
+        <label class="form-check-label"
+               for="price2">
+            200.000đ - 500.000đ
+        </label>
+    </div>
+
+    <div class="form-check mb-2">
+        <input class="form-check-input"
+               type="radio"
+               name="price"
+               id="price3">
+
+        <label class="form-check-label"
+               for="price3">
+            500.000đ - 1.000.000đ
+        </label>
+    </div>
+
+    <div class="form-check mb-2">
+        <input class="form-check-input"
+               type="radio"
+               name="price"
+               id="price4">
+
+        <label class="form-check-label"
+               for="price4">
+            Trên 1.000.000đ
+        </label>
+    </div>
+
+</div>
+
+<div class="d-flex justify-content-between align-items-center mb-4">
+
+    <span class="text-muted">
+        Hiển thị @Model.Products.Count sản phẩm
+    </span>
+
+    <select class="form-select catalog-sort"
+            style="max-width: 220px;">
+
+        <option value="">
+            Phổ biến
+        </option>
+
+        <option value="newest">
+            Mới nhất
+        </option>
+
+        <option value="price-asc">
+            Giá thấp → cao
+        </option>
+
+        <option value="price-desc">
+            Giá cao → thấp
+        </option>
+
+    </select>
+
+</div>
+
+<div class="row g-4">
+
+    @foreach (var product in Model.Products)
+    {
+        <div class="col-6 col-md-4 col-lg-3">
+
+            @Html.Partial(
+                "_ProductCard",
+                product
+            )
+
+        </div>
+    }
+
+</div>
+
+@if (Model.TotalPages > 1)
+{
+    <nav class="mt-5">
+
+        <ul class="pagination justify-content-center">
+
+            @for (int i = 1; i <= Model.TotalPages; i++)
+            {
+                <li class="page-item
+                    @(i == Model.CurrentPage ? "active" : "")">
+
+                    <a class="page-link"
+                       href="@Url.Action("Index", new
+                       {
+                           page = i,
+                           search = Model.SearchKeyword,
+                           categoryId = Model.CategoryId,
+                           minPrice = Model.MinPrice,
+                           maxPrice = Model.MaxPrice,
+                           sortBy = Model.SortBy
+                       })">
+
+                        @i
+
+                    </a>
+
+                </li>
+            }
+
+        </ul>
+
+    </nav>
+}

@@ -1,0 +1,58 @@
+﻿@model ToyStoreManagement.ViewModels.ProductViewModel
+
+<div class="product-card">
+
+    <div class="product-image">
+
+        @if (Model.IsNew)
+        {
+            <span class="badge bg-success product-badge">
+                Mới
+            </span>
+        }
+
+        <button class="product-wishlist">
+            ♡
+        </button>
+
+        <img src="@Model.ImageUrl"
+             class="img-fluid"
+             alt="@Model.Name" />
+
+    </div>
+
+    <div class="product-info">
+
+        <h5 class="product-name">
+            @Model.Name
+        </h5>
+
+        <div class="product-rating">
+            ⭐ @Model.Rating
+            <span>
+                (@Model.ReviewCount)
+            </span>
+        </div>
+
+        <div class="product-price">
+
+            <strong>
+                @Model.Price.ToString("N0")đ
+            </strong>
+
+            @if (Model.OldPrice.HasValue)
+            {
+                <del>
+                    @Model.OldPrice.Value.ToString("N0")đ
+                </del>
+            }
+
+        </div>
+
+        <button class="btn btn-primary w-100">
+            Thêm vào giỏ
+        </button>
+
+    </div>
+
+</div>

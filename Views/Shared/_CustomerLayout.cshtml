@@ -1,0 +1,49 @@
+﻿<!DOCTYPE html>
+<html lang="vi">
+<head>
+    <meta charset="utf-8" />
+
+    <meta name="viewport"
+          content="width=device-width, initial-scale=1.0" />
+
+    <title>@ViewBag.Title - Toy Store</title>
+
+    <link rel="stylesheet"
+          href="~/Content/bootstrap.min.css" />
+
+    <link rel="stylesheet"
+          href="~/Content/site.css" />
+
+    <link rel="stylesheet"
+          href="~/Content/customer.css" />
+
+    @RenderSection("Styles", required: false)
+</head>
+
+<body>
+
+    <!-- Header -->
+    @Html.Partial("_CustomerHeader")
+
+    <!-- Nội dung từng trang -->
+    <main>
+        @RenderBody()
+    </main>
+
+    <!-- Footer -->
+    @Html.Partial("_CustomerFooter")
+
+
+    <!-- JavaScript -->
+    <script src="~/Scripts/jquery-3.x.x.min.js"></script>
+
+    <script src="~/Scripts/bootstrap.bundle.min.js"></script>
+
+    <script src="~/Scripts/site.js"></script>
+
+    <script src="~/Scripts/customer.js"></script>
+
+    @RenderSection("Scripts", required: false)
+
+</body>
+</html>
