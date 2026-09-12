@@ -1,21 +1,23 @@
 ﻿using System;
 using System.Collections.Generic;
+using System.Linq;
+using System.Text;
+using System.Threading.Tasks;
+using ToyStoreManagement.Application.DTOs.Product;
 
-namespace ToyStoreManagement.Domain.Entities
+namespace ToyStoreManagement.Application.DTOs.Product
 {
-    public class Product
+    public class ProductDto
     {
-        public Product()
-        {
-            ProductVariants = new HashSet<ProductVariant>();
-            ProductReviews = new HashSet<ProductReview>();
-        }
-
         public int ProductId { get; set; }
 
         public int CategoryId { get; set; }
 
+        public string? CategoryName { get; set; }
+
         public int BrandId { get; set; }
+
+        public string? BrandName { get; set; }
 
         public string Name { get; set; }
 
@@ -29,23 +31,17 @@ namespace ToyStoreManagement.Domain.Entities
 
         public bool IsFeatured { get; set; }
 
-        public decimal ? BasePrice { get; set; }
+        public decimal? BasePrice { get; set; }
 
         public bool IsNew { get; set; }
+
         public string? ImageUrl { get; set; }
+
         public DateTime CreatedAt { get; set; }
 
         public DateTime? UpdatedAt { get; set; }
 
-        // Navigation
-        public virtual Category Category { get; set; }
-
-        public virtual Brand Brand { get; set; }
-
-        public virtual ICollection<ProductVariant> ProductVariants { get; set; }
-
-        public virtual ICollection<ProductReview> ProductReviews { get; set; }
-        
-
+        public List<ProductVariantDto> ProductVariants { get; set; }
+            = new List<ProductVariantDto>();
     }
 }

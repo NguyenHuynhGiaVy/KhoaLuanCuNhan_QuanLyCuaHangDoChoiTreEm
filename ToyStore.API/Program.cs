@@ -14,6 +14,10 @@ using ToyStore.Application.Services;
 using ToyStore.Infrastructure.Services;
 using ToyStore.Domain.Identity;
 using Microsoft.OpenApi.Models;
+using ToyStoreManagement.Application.Interfaces.Repositories;
+using ToyStoreManagement.Application.Interfaces.Services;
+using ToyStoreManagement.Infrastructure.Repositories;
+using ToyStoreManagement.Infrastructure.Services;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -30,6 +34,56 @@ builder.Services.AddScoped<IBrandRepository, BrandRepository>();
 builder.Services.AddScoped<IBrandService, BrandService>();
 
 builder.Services.AddScoped<IAuthService, AuthService>();
+
+builder.Services.AddScoped<IProductRepository, ProductRepository>();
+
+builder.Services.AddScoped<IProductService, ProductService>();
+
+builder.Services.AddScoped<ISupplierRepository, SupplierRepository>();
+builder.Services.AddScoped<IImportReceiptRepository, ImportReceiptRepository>();
+
+builder.Services.AddScoped<ISupplierService, SupplierService>();
+builder.Services.AddScoped<IImportReceiptService, ImportReceiptService>();
+
+builder.Services.AddScoped<IInventoryRepository, InventoryRepository>();
+builder.Services.AddScoped<IInventoryTransactionRepository, InventoryTransactionRepository>();
+
+builder.Services.AddScoped<IInventoryService, InventoryService>();
+builder.Services.AddScoped<IInventoryTransactionService, InventoryTransactionService>();
+
+builder.Services.AddScoped<ICustomerRepository, CustomerRepository>();
+builder.Services.AddScoped<ILoyaltyTransactionRepository, LoyaltyTransactionRepository>();
+
+builder.Services.AddScoped<ICustomerService, CustomerService>();
+builder.Services.AddScoped<ILoyaltyTransactionService, LoyaltyTransactionService>();
+
+builder.Services.AddScoped<IOrderRepository, OrderRepository>();
+builder.Services.AddScoped<IPaymentRepository, PaymentRepository>();
+
+builder.Services.AddScoped<IOrderService, OrderService>();
+builder.Services.AddScoped<IPaymentService, PaymentService>();
+
+builder.Services.AddScoped<IPromotionRepository, PromotionRepository>();
+builder.Services.AddScoped<IPromotionConditionRepository, PromotionConditionRepository>();
+builder.Services.AddScoped<IPromotionProductRepository, PromotionProductRepository>();
+
+builder.Services.AddScoped<IVoucherRepository, VoucherRepository>();
+builder.Services.AddScoped<IVoucherUsageRepository, VoucherUsageRepository>();
+
+builder.Services.AddScoped<IPromotionService, PromotionService>();
+builder.Services.AddScoped<IVoucherService, VoucherService>();
+
+builder.Services.AddScoped<IProductReviewRepository, ProductReviewRepository>();
+builder.Services.AddScoped<ICustomerFeedbackRepository, CustomerFeedbackRepository>();
+builder.Services.AddScoped<IReturnRequestRepository, ReturnRequestRepository>();
+builder.Services.AddScoped<IReturnRequestDetailRepository, ReturnRequestDetailRepository>();
+
+builder.Services.AddScoped<IProductReviewService, ProductReviewService>();
+builder.Services.AddScoped<ICustomerFeedbackService, CustomerFeedbackService>();
+builder.Services.AddScoped<IReturnRequestService, ReturnRequestService>();
+
+builder.Services.AddScoped<IDashboardRepository, DashboardRepository>();
+builder.Services.AddScoped<IDashboardService, DashboardService>();
 
 builder.Services.Configure<AppSettings>(
     builder.Configuration.GetSection("AppSettings"));
