@@ -77,6 +77,8 @@ namespace ToyStoreManagement.Infrastructure.Services
 
                 BrandId = dto.BrandId,
 
+                SupplierId = dto.SupplierId,
+
                 Name = dto.Name,
 
                 Description = dto.Description,
@@ -84,6 +86,8 @@ namespace ToyStoreManagement.Infrastructure.Services
                 AgeFrom = dto.AgeFrom,
 
                 AgeTo = dto.AgeTo,
+
+                Gender = dto.Gender,
 
                 Status = dto.Status,
 
@@ -128,6 +132,8 @@ namespace ToyStoreManagement.Infrastructure.Services
 
             product.BrandId = dto.BrandId;
 
+            product.SupplierId = dto.SupplierId;
+
             product.Name = dto.Name;
 
             product.Description = dto.Description;
@@ -135,6 +141,8 @@ namespace ToyStoreManagement.Infrastructure.Services
             product.AgeFrom = dto.AgeFrom;
 
             product.AgeTo = dto.AgeTo;
+
+            product.Gender = dto.Gender;
 
             product.Status = dto.Status;
 
@@ -336,8 +344,13 @@ namespace ToyStoreManagement.Infrastructure.Services
 
                 BrandId = product.BrandId,
 
+                SupplierId = product.SupplierId,
+
                 BrandName =
                     product.Brand?.Name,
+
+                SupplierName =
+                    product.Supplier?.Name,
 
                 Name = product.Name,
 
@@ -346,6 +359,8 @@ namespace ToyStoreManagement.Infrastructure.Services
                 AgeFrom = product.AgeFrom,
 
                 AgeTo = product.AgeTo,
+
+                Gender = product.Gender,
 
                 Status = product.Status,
 

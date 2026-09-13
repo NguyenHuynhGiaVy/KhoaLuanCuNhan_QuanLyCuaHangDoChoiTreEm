@@ -26,9 +26,7 @@ namespace ToyStore.Application.Services
 
         public async Task<IEnumerable<BrandDto>> GetAllAsync()
         {
-            var brands =
-                await _brandRepository.GetAllAsync();
-
+            var brands = await _brandRepository.GetAllAsync();
             return brands.Select(x => new BrandDto
             {
                 Id = x.BrandId,
@@ -40,13 +38,8 @@ namespace ToyStore.Application.Services
 
         public async Task<BrandDto?> GetByIdAsync(int id)
         {
-            var brand =
-                await _brandRepository.GetByIdAsync(id);
-
-            if (brand == null)
-            {
-                return null;
-            }
+            var brand = await _brandRepository.GetByIdAsync(id);
+            if (brand == null) return null;
 
             return new BrandDto
             {
@@ -57,18 +50,17 @@ namespace ToyStore.Application.Services
             };
         }
 
-        public async Task<BrandDto> CreateAsync(
-            CreateBrandDto request)
+        public async Task<BrandDto> CreateAsync(CreateBrandDto request)
         {
             var brand = new Brand
             {
                 Name = request.Name.Trim(),
                 Description = request.Description?.Trim(),
-                IsActive = true
+                IsActive = true,
+                CreatedAt = DateTime.UtcNow
             };
 
             await _brandRepository.AddAsync(brand);
-
             await _unitOfWork.SaveChangesAsync();
 
             return new BrandDto
@@ -80,43 +72,28 @@ namespace ToyStore.Application.Services
             };
         }
 
-        public async Task<bool> UpdateAsync(
-            int id,
-            UpdateBrandDto request)
+        public async Task<bool> UpdateAsync(int id, UpdateBrandDto request)
         {
-            var brand =
-                await _brandRepository.GetByIdAsync(id);
-
-            if (brand == null)
-            {
-                return false;
-            }
+            var brand = await _brandRepository.GetByIdAsync(id);
+            if (brand == null) return false;
 
             brand.Name = request.Name.Trim();
             brand.Description = request.Description?.Trim();
             brand.IsActive = request.IsActive;
+            brand.UpdatedAt = DateTime.UtcNow;
 
             _brandRepository.Update(brand);
-
             await _unitOfWork.SaveChangesAsync();
-
             return true;
         }
 
         public async Task<bool> DeleteAsync(int id)
         {
-            var brand =
-                await _brandRepository.GetByIdAsync(id);
-
-            if (brand == null)
-            {
-                return false;
-            }
+            var brand = await _brandRepository.GetByIdAsync(id);
+            if (brand == null) return false;
 
             _brandRepository.Delete(brand);
-
             await _unitOfWork.SaveChangesAsync();
-
             return true;
         }
     }

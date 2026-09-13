@@ -24,7 +24,7 @@ namespace ToyStoreManagement.API.Controllers
         // ==========================================
 
         [HttpGet]
-        [Authorize]
+        [AllowAnonymous]
         public async Task<IActionResult> GetAll()
         {
             var products =
@@ -38,7 +38,7 @@ namespace ToyStoreManagement.API.Controllers
         // ==========================================
 
         [HttpGet("{id:int}")]
-        [Authorize]
+        [AllowAnonymous]
         public async Task<IActionResult> GetById(
             int id)
         {

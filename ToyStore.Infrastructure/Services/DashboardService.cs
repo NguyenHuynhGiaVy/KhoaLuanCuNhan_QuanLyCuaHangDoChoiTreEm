@@ -28,6 +28,11 @@ namespace ToyStoreManagement.Infrastructure.Services
             return await _dashboardRepository.GetRevenueStatisticsAsync();
         }
 
+        public async Task<RevenueChartDto> GetRevenueChartAsync(string period)
+        {
+            return await _dashboardRepository.GetRevenueChartAsync(period);
+        }
+
         public async Task<OrderStatisticsDto> GetOrderStatisticsAsync()
         {
             return await _dashboardRepository.GetOrderStatisticsAsync();

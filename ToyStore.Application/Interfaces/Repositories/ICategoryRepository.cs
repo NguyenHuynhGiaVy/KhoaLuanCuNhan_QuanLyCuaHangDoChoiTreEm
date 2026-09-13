@@ -9,5 +9,6 @@ namespace ToyStore.Application.Interfaces.Repositories
 {
     public interface ICategoryRepository : IGenericRepository<Category>
     {
+        Task<IEnumerable<Category>> GetAllWithProductsAsync();
     }
 }

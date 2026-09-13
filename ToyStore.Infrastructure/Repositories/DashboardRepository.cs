@@ -84,6 +84,56 @@ namespace ToyStoreManagement.Infrastructure.Repositories
             };
         }
 
+        public async Task<RevenueChartDto> GetRevenueChartAsync(string period)
+        {
+            var now = DateTime.UtcNow;
+            var result = new RevenueChartDto();
+
+            if (period == "day")
+            {
+                // Last 7 days
+                for (int i = 6; i >= 0; i--)
+                {
+                    var date = now.Date.AddDays(-i);
+                    var revenue = await _context.Orders
+                        .Where(x => x.Status == 4 && x.OrderDate.Date == date)
+                        .SumAsync(x => (decimal?)x.TotalAmount) ?? 0;
+
+                    result.Labels.Add(date.ToString("dd/MM"));
+                    result.Data.Add(revenue);
+                }
+            }
+            else if (period == "month")
+            {
+                // 12 months of current year
+                for (int i = 1; i <= 12; i++)
+                {
+                    var revenue = await _context.Orders
+                        .Where(x => x.Status == 4 && x.OrderDate.Year == now.Year && x.OrderDate.Month == i)
+                        .SumAsync(x => (decimal?)x.TotalAmount) ?? 0;
+
+                    result.Labels.Add($"Tháng {i}");
+                    result.Data.Add(revenue);
+                }
+            }
+            else if (period == "year")
+            {
+                // Last 5 years
+                for (int i = 4; i >= 0; i--)
+                {
+                    var year = now.Year - i;
+                    var revenue = await _context.Orders
+                        .Where(x => x.Status == 4 && x.OrderDate.Year == year)
+                        .SumAsync(x => (decimal?)x.TotalAmount) ?? 0;
+
+                    result.Labels.Add(year.ToString());
+                    result.Data.Add(revenue);
+                }
+            }
+
+            return result;
+        }
+
         public async Task<OrderStatisticsDto> GetOrderStatisticsAsync()
         {
             return new OrderStatisticsDto

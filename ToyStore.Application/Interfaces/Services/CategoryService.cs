@@ -25,15 +25,15 @@ namespace ToyStore.Application.Services
 
         public async Task<IEnumerable<CategoryDto>> GetAllAsync()
         {
-            var categories =
-                await _categoryRepository.GetAllAsync();
+            var categories = await _categoryRepository.GetAllWithProductsAsync();
 
             return categories.Select(x => new CategoryDto
             {
                 Id = x.CategoryId,
                 Name = x.Name,
                 Description = x.Description,
-                IsActive = x.IsActive
+                IsActive = x.IsActive,
+                ProductCount = x.Products?.Count ?? 0
             });
         }
 
@@ -63,11 +63,11 @@ namespace ToyStore.Application.Services
             {
                 Name = request.Name.Trim(),
                 Description = request.Description?.Trim(),
-                IsActive = true
+                IsActive = true,
+                CreatedAt = DateTime.UtcNow
             };
 
             await _categoryRepository.AddAsync(category);
-
             await _unitOfWork.SaveChangesAsync();
 
             return new CategoryDto
@@ -75,7 +75,8 @@ namespace ToyStore.Application.Services
                 Id = category.CategoryId,
                 Name = category.Name,
                 Description = category.Description,
-                IsActive = category.IsActive
+                IsActive = category.IsActive,
+                ProductCount = 0
             };
         }
 
@@ -94,9 +95,9 @@ namespace ToyStore.Application.Services
             category.Name = request.Name.Trim();
             category.Description = request.Description?.Trim();
             category.IsActive = request.IsActive;
+            category.UpdatedAt = DateTime.UtcNow;
 
             _categoryRepository.Update(category);
-
             await _unitOfWork.SaveChangesAsync();
 
             return true;
@@ -113,7 +114,6 @@ namespace ToyStore.Application.Services
             }
 
             _categoryRepository.Delete(category);
-
             await _unitOfWork.SaveChangesAsync();
 
             return true;

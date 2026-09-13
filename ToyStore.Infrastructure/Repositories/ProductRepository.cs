@@ -31,6 +31,7 @@ namespace ToyStoreManagement.Infrastructure.Repositories
             return await _dbSet
                 .Include(p => p.Category)
                 .Include(p => p.Brand)
+                .Include(p => p.Supplier)
                 .Include(p => p.ProductVariants)
                 .ToListAsync();
         }
@@ -41,6 +42,7 @@ namespace ToyStoreManagement.Infrastructure.Repositories
             return await _dbSet
                 .Include(p => p.Category)
                 .Include(p => p.Brand)
+                .Include(p => p.Supplier)
                 .Include(p => p.ProductVariants)
                 .FirstOrDefaultAsync(
                     p => p.ProductId == productId);

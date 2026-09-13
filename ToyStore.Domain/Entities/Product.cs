@@ -17,6 +17,8 @@ namespace ToyStoreManagement.Domain.Entities
 
         public int BrandId { get; set; }
 
+        public int? SupplierId { get; set; }
+
         public string Name { get; set; }
 
         public string Description { get; set; }
@@ -24,6 +26,8 @@ namespace ToyStoreManagement.Domain.Entities
         public int? AgeFrom { get; set; }
 
         public int? AgeTo { get; set; }
+
+        public int? Gender { get; set; }
 
         public int Status { get; set; }
 
@@ -41,6 +45,8 @@ namespace ToyStoreManagement.Domain.Entities
         public virtual Category Category { get; set; }
 
         public virtual Brand Brand { get; set; }
+
+        public virtual Supplier? Supplier { get; set; }
 
         public virtual ICollection<ProductVariant> ProductVariants { get; set; }
 

@@ -13,6 +13,8 @@ namespace ToyStoreManagement.Application.Interfaces.Services
 
         Task<RevenueStatisticsDto> GetRevenueStatisticsAsync();
 
+        Task<RevenueChartDto> GetRevenueChartAsync(string period);
+
         Task<OrderStatisticsDto> GetOrderStatisticsAsync();
 
         Task<IEnumerable<BestSellingProductDto>> GetBestSellingProductsAsync(int top = 10);

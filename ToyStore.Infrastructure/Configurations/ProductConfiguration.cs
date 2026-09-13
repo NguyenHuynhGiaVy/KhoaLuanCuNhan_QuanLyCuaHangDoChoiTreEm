@@ -20,6 +20,9 @@ namespace ToyStoreManagement.Infrastructure.Configurations
             builder.Property(x => x.BasePrice)
                 .HasColumnType("decimal(18,2)");
 
+            builder.Property(x => x.Gender)
+                .IsRequired(false);
+
             builder.Property(x => x.Status)
                 .IsRequired();
 
@@ -34,6 +37,11 @@ namespace ToyStoreManagement.Infrastructure.Configurations
                 .WithMany(x => x.Products)
                 .HasForeignKey(x => x.BrandId)
                 .OnDelete(DeleteBehavior.Restrict);
+
+            builder.HasOne(x => x.Supplier)
+                .WithMany()
+                .HasForeignKey(x => x.SupplierId)
+                .OnDelete(DeleteBehavior.SetNull);
         }
     }
 }

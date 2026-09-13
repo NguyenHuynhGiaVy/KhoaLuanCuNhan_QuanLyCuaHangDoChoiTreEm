@@ -153,7 +153,15 @@ builder.Services
 var jwtKey = builder.Configuration["Jwt:Key"];
 
 builder.Services
-    .AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
+    .AddAuthentication(options =>
+    {
+        options.DefaultAuthenticateScheme =
+            JwtBearerDefaults.AuthenticationScheme;
+        options.DefaultChallengeScheme =
+            JwtBearerDefaults.AuthenticationScheme;
+        options.DefaultForbidScheme =
+            JwtBearerDefaults.AuthenticationScheme;
+    })
     .AddJwtBearer(options =>
     {
         var jwtSettings = builder.Configuration.GetSection("Jwt");
@@ -182,6 +190,21 @@ builder.Services
         };
     });
 
+builder.Services.ConfigureApplicationCookie(options =>
+{
+    options.Events.OnRedirectToLogin = context =>
+    {
+        context.Response.StatusCode = StatusCodes.Status401Unauthorized;
+        return Task.CompletedTask;
+    };
+
+    options.Events.OnRedirectToAccessDenied = context =>
+    {
+        context.Response.StatusCode = StatusCodes.Status403Forbidden;
+        return Task.CompletedTask;
+    };
+});
+
 builder.Services.AddAuthorization(options =>
 {
     options.AddPolicy("AdminOnly", policy =>
@@ -205,13 +228,26 @@ builder.Services.AddAuthorization(options =>
 
 var app = builder.Build();
 
+var defaultFiles = new DefaultFilesOptions();
+defaultFiles.DefaultFileNames.Clear();
+defaultFiles.DefaultFileNames.Add("customer.html");
+app.UseDefaultFiles(defaultFiles);
+app.UseStaticFiles();
+
+app.MapGet("/admin", () => Results.Redirect("/index.html"));
+
 using (var scope = app.Services.CreateScope())
 {
     var roleManager =
         scope.ServiceProvider
             .GetRequiredService<RoleManager<ApplicationRole>>();
 
+    var userManager =
+        scope.ServiceProvider
+            .GetRequiredService<UserManager<ApplicationUser>>();
+
     await IdentitySeeder.SeedRolesAsync(roleManager);
+    await IdentitySeeder.SeedAdminFromEnvironmentAsync(userManager);
 }
 
 // Configure the HTTP request pipeline.

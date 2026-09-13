@@ -1,18 +1,26 @@
-﻿using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
+﻿using System.ComponentModel.DataAnnotations;
 
 namespace ToyStoreManagement.Application.DTOs.Import
 {
     public class CreateSupplierDto
     {
-        public string Name { get; set; }
-        public string Phone { get; set; }
-        public string Email { get; set; }
-        public string Address { get; set; }
-        public string TaxCode { get; set; }
+        [Required(ErrorMessage = "Tên nhà cung cấp không được để trống")]
+        public string Name { get; set; } = string.Empty;
+
+        [Required(ErrorMessage = "Số điện thoại không được để trống")]
+        [Phone(ErrorMessage = "Số điện thoại không hợp lệ")]
+        public string Phone { get; set; } = string.Empty;
+
+        [Required(ErrorMessage = "Email không được để trống")]
+        [EmailAddress(ErrorMessage = "Email không hợp lệ")]
+        public string Email { get; set; } = string.Empty;
+
+        [Required(ErrorMessage = "Địa chỉ không được để trống")]
+        public string Address { get; set; } = string.Empty;
+
+        [Required(ErrorMessage = "Mã số thuế không được để trống")]
+        public string TaxCode { get; set; } = string.Empty;
+
         public bool IsActive { get; set; } = true;
     }
 }

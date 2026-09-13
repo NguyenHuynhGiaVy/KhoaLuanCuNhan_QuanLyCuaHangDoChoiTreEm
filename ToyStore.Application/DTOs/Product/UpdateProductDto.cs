@@ -12,6 +12,8 @@ namespace ToyStoreManagement.Application.DTOs.Product
 
         public int BrandId { get; set; }
 
+        public int? SupplierId { get; set; }
+
         public string Name { get; set; }
 
         public string Description { get; set; }
@@ -19,6 +21,8 @@ namespace ToyStoreManagement.Application.DTOs.Product
         public int? AgeFrom { get; set; }
 
         public int? AgeTo { get; set; }
+
+        public int? Gender { get; set; }
 
         public int Status { get; set; }
 

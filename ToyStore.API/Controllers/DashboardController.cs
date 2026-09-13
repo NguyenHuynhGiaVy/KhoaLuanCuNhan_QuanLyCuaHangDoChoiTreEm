@@ -1,5 +1,4 @@
 ﻿using Microsoft.AspNetCore.Mvc;
-
 using Microsoft.AspNetCore.Authorization;
 using ToyStoreManagement.Application.Interfaces.Services;
 
@@ -39,6 +38,21 @@ namespace ToyStoreManagement.API.Controllers
             try
             {
                 var result = await _dashboardService.GetRevenueStatisticsAsync();
+                return Ok(result);
+            }
+            catch (Exception ex)
+            {
+                return BadRequest(ex.Message);
+            }
+        }
+
+        // GET: api/Dashboard/revenue-chart
+        [HttpGet("revenue-chart")]
+        public async Task<IActionResult> GetRevenueChart([FromQuery] string period = "day")
+        {
+            try
+            {
+                var result = await _dashboardService.GetRevenueChartAsync(period);
                 return Ok(result);
             }
             catch (Exception ex)
