@@ -1,4 +1,4 @@
-oyStoreManagement
+ToyStoreManagement
 
 Hệ thống quản lý cửa hàng đồ chơi gồm Backend ASP.NET Core Web API,
 Frontend Website và cơ sở dữ liệu SQL Server.
