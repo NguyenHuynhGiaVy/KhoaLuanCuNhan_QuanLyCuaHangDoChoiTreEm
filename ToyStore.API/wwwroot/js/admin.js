@@ -40,13 +40,17 @@ const MODULES = {
     columns: ['Thương hiệu', 'Mô tả', 'Trạng thái'],
     canAdd: true, canEdit: true, canDelete: true
   },
-  inventory: {
-    title: 'Tồn kho', kicker: 'HÀNG HÓA',
-    desc: 'Theo dõi số lượng tồn, đã giữ chỗ và số lượng có thể bán.',
-    symbol: '▤', endpoint: 'Inventory',
-    columns: ['SKU', 'Sản phẩm', 'Tồn kho', 'Đã giữ', 'Có thể bán', 'Cập nhật'],
-    canAdd: true, canEdit: true, canDelete: false
-  },
+    inventory: {
+        title: 'Tồn kho',
+        kicker: 'HÀNG HÓA',
+        desc: 'Theo dõi số lượng tồn, đã giữ chỗ và số lượng có thể bán.',
+        symbol: '▤',
+        endpoint: 'Inventory',
+        columns: ['SKU', 'Sản phẩm', 'Tồn kho', 'Đã giữ', 'Có thể bán', 'Cập nhật'],
+        canAdd: true,
+        canEdit: true,
+        canDelete: true
+    },
   suppliers: {
     title: 'Nhà cung cấp', kicker: 'VẬN HÀNH',
     desc: 'Thông tin các đối tác cung ứng hàng hóa.',
@@ -686,8 +690,38 @@ function buildFormFields(entity, r) {
       return `
         <label>Tên sản phẩm *<input name="name" required placeholder="Ví dụ: Robot lắp ráp Technic" value="${esc(v.name||'')}"></label>
         <div class="form-grid">
-          <label>Danh mục *<select name="categoryId" required>${catOpts}</select></label>
-          <label>Thương hiệu *<select name="brandId" required>${brandOpts}</select></label>
+          <label>
+    Danh mục *
+    <div class="d-flex gap-2">
+        <select name="categoryId" required class="form-control">
+            ${catOpts}
+        </select>
+
+        <button
+            type="button"
+            class="icon-btn"
+            title="Thêm danh mục"
+            data-add-reference="category">
+            +
+        </button>
+    </div>
+</label>
+          <label>
+    Thương hiệu *
+    <div class="d-flex gap-2">
+        <select name="brandId" required class="form-control">
+            ${brandOpts}
+        </select>
+
+        <button
+            type="button"
+            class="icon-btn"
+            title="Thêm thương hiệu"
+            data-add-reference="brand">
+            +
+        </button>
+    </div>
+</label>
         </div>
         <div class="form-grid">
           <label>Nhà cung cấp<select name="supplierId">${supOpts}</select></label>
@@ -1194,3 +1228,81 @@ document.getElementById('loginForm').addEventListener('submit', async e => {
 
 if (token) { showAdmin(); navigate(); loadReferenceData(); } else { document.getElementById('loginScreen').classList.add('show'); }
 }
+
+document.addEventListener('click', async e => {
+    const btn = e.target.closest('[data-add-reference]');
+    if (!btn) return;
+
+    const type = btn.dataset.addReference;
+
+    const name = prompt(
+        type === 'category'
+            ? 'Nhập tên danh mục mới:'
+            : 'Nhập tên thương hiệu mới:'
+    );
+
+    if (!name || !name.trim()) {
+        return;
+    }
+
+    try {
+        let result;
+
+        if (type === 'category') {
+            result = await api('Category', {
+                method: 'POST',
+                body: JSON.stringify({
+                    name: name.trim(),
+                    description: ""
+                })
+            });
+        } else {
+            result = await api('Brand', {
+                method: 'POST',
+                body: JSON.stringify({
+                    name: name.trim(),
+                    description: ""
+                })
+            });
+        }
+
+        await loadRef();
+
+        const selectName =
+            type === 'category'
+                ? 'categoryId'
+                : 'brandId';
+
+        const select =
+            document.querySelector(
+                `#entityForm select[name="${selectName}"]`
+            );
+
+        if (select && result?.id) {
+            select.innerHTML =
+                type === 'category'
+                    ? ref.categories.map(c =>
+                        `<option value="${c.id}">
+                            ${esc(c.name)}
+                        </option>`
+                    ).join('')
+                    : ref.brands.map(b =>
+                        `<option value="${b.id}">
+                            ${esc(b.name)}
+                        </option>`
+                    ).join('');
+
+            select.value = result.id;
+        }
+
+        toast(
+            type === 'category'
+                ? 'Thêm danh mục thành công!'
+                : 'Thêm thương hiệu thành công!',
+            'success'
+        );
+    }
+    catch (err) {
+        toast(err.message, 'error');
+    }
+});

@@ -145,5 +145,20 @@ namespace ToyStoreManagement.Infrastructure.Services
                 UpdatedAt = inventory.UpdatedAt
             };
         }
+
+        public async Task<bool> DeleteAsync(int inventoryId)
+        {
+            var inventory =
+                await _inventoryRepository.GetByIdAsync(inventoryId);
+
+            if (inventory == null)
+                return false;
+
+            _inventoryRepository.Delete(inventory);
+
+            await _unitOfWork.SaveChangesAsync();
+
+            return true;
+        }
     }
 }

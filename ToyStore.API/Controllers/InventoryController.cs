@@ -109,5 +109,26 @@ namespace ToyStoreManagement.API.Controllers
                 });
             }
         }
+
+        // DELETE: api/Inventory/5
+        [HttpDelete("{id}")]
+        [Authorize(Policy = "AdminOrManager")]
+        public async Task<IActionResult> Delete(int id)
+        {
+            var result = await _inventoryService.DeleteAsync(id);
+
+            if (!result)
+            {
+                return NotFound(new
+                {
+                    message = "Không tìm thấy thông tin tồn kho."
+                });
+            }
+
+            return Ok(new
+            {
+                message = "Xóa tồn kho thành công."
+            });
+        }
     }
 }

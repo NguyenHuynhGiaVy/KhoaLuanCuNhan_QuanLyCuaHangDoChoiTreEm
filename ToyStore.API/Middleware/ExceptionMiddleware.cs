@@ -25,17 +25,25 @@ namespace ToyStore.API.Middleware
         }
 
         private static async Task HandleExceptionAsync(
-            HttpContext context,
-            Exception exception)
+    HttpContext context,
+    Exception exception)
         {
             context.Response.ContentType = "application/json";
+
+            var message = exception.Message;
+
+            if (exception.InnerException != null)
+            {
+                message += " | Inner: " + exception.InnerException.Message;
+            }
+
             context.Response.StatusCode =
                 (int)HttpStatusCode.InternalServerError;
 
             var response = new
             {
                 success = false,
-                message = "Đã xảy ra lỗi trong hệ thống.",
+                message = message,
                 data = (object)null
             };
 

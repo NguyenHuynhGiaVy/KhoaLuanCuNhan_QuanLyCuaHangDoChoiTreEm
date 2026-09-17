@@ -11,6 +11,8 @@ using ToyStoreManagement.Application.DTOs.Product;
 using ToyStoreManagement.Application.Interfaces;
 using ToyStoreManagement.Application.Interfaces.Repositories;
 using ToyStoreManagement.Application.Interfaces.Services;
+using Microsoft.EntityFrameworkCore;
+using ToyStoreManagement.Infrastructure.Data;
 
 
 namespace ToyStoreManagement.Infrastructure.Services
@@ -23,15 +25,18 @@ namespace ToyStoreManagement.Infrastructure.Services
             _variantRepository;
 
         private readonly IUnitOfWork _unitOfWork;
+        private readonly ApplicationDbContext _context;
 
         public ProductService(
-            IProductRepository productRepository,
-            IGenericRepository<ProductVariant> variantRepository,
-            IUnitOfWork unitOfWork)
+    IProductRepository productRepository,
+    IGenericRepository<ProductVariant> variantRepository,
+    IUnitOfWork unitOfWork,
+    ApplicationDbContext context)
         {
             _productRepository = productRepository;
             _variantRepository = variantRepository;
             _unitOfWork = unitOfWork;
+            _context = context;
         }
 
         // ==========================================
@@ -168,20 +173,85 @@ namespace ToyStoreManagement.Infrastructure.Services
         // DELETE PRODUCT
         // ==========================================
 
-        public async Task<bool> DeleteAsync(
-            int productId)
+        public async Task<bool> DeleteAsync(int productId)
         {
-            var product =
-                await _productRepository
-                    .GetProductWithDetailsAsync(productId);
+            var product = await _productRepository
+                .GetByIdAsync(productId);
 
             if (product == null)
                 return false;
 
-            _productRepository.Delete(product);
+            // Lấy toàn bộ Variant của sản phẩm
+            var variantIds = await _context.ProductVariants
+                .Where(x => x.ProductId == productId)
+                .Select(x => x.VariantId)
+                .ToListAsync();
 
-            await _unitOfWork
-                .SaveChangesAsync();
+            if (variantIds.Count > 0)
+            {
+                // Xóa đánh giá sản phẩm
+                var reviews = await _context.ProductReviews
+                    .Where(x =>
+                        x.ProductId == productId ||
+                        variantIds.Contains(x.VariantId))
+                    .ToListAsync();
+
+                _context.ProductReviews.RemoveRange(reviews);
+
+                // Xóa chi tiết yêu cầu trả hàng
+                var returnDetails = await _context.ReturnRequestDetails
+                    .Where(x => variantIds.Contains(x.VariantId))
+                    .ToListAsync();
+
+                _context.ReturnRequestDetails.RemoveRange(returnDetails);
+
+                // Xóa chi tiết phiếu nhập
+                var importDetails = await _context.ImportReceiptDetails
+                    .Where(x => variantIds.Contains(x.VariantId))
+                    .ToListAsync();
+
+                _context.ImportReceiptDetails.RemoveRange(importDetails);
+
+                // Xóa chi tiết đơn hàng
+                var orderDetails = await _context.OrderDetails
+                    .Where(x => variantIds.Contains(x.VariantId))
+                    .ToListAsync();
+
+                _context.OrderDetails.RemoveRange(orderDetails);
+
+                // Xóa sản phẩm khỏi chương trình khuyến mãi
+                var promotionProducts = await _context.PromotionProducts
+                    .Where(x => variantIds.Contains(x.VariantId))
+                    .ToListAsync();
+
+                _context.PromotionProducts.RemoveRange(promotionProducts);
+
+                // Xóa lịch sử biến động kho
+                var inventoryTransactions = await _context.InventoryTransactions
+                    .Where(x => variantIds.Contains(x.VariantId))
+                    .ToListAsync();
+
+                _context.InventoryTransactions.RemoveRange(inventoryTransactions);
+
+                // Xóa tồn kho
+                var inventories = await _context.Inventories
+                    .Where(x => variantIds.Contains(x.VariantId))
+                    .ToListAsync();
+
+                _context.Inventories.RemoveRange(inventories);
+
+                // Xóa toàn bộ Variant
+                var variants = await _context.ProductVariants
+                    .Where(x => variantIds.Contains(x.VariantId))
+                    .ToListAsync();
+
+                _context.ProductVariants.RemoveRange(variants);
+            }
+
+            // Cuối cùng xóa Product
+            _context.Products.Remove(product);
+
+            await _unitOfWork.SaveChangesAsync();
 
             return true;
         }
