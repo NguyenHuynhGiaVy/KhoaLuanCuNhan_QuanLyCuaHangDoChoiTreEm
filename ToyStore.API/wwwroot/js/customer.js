@@ -89,7 +89,7 @@ function renderHomeCategories() {
 }
 
 function productCard(p) {
-    return `<article class="product-card"><div class="product-img"><img src="${escapeHtml(p.imageUrl || 'https://placehold.co/400x400?text=ToyStore')}" alt="${escapeHtml(p.name)}" loading="lazy"></div><div class="product-detail"><small>${escapeHtml(p.categoryName || 'Đồ chơi')}</small><h3>${escapeHtml(p.name)}</h3><div class="product-price"><b>${money(p.basePrice)}</b></div><button class="add-cart" data-id="${p.productId}">Thêm vào giỏ</button></div></article>`;
+    return `<article class="product-card"><a class="product-link" href="/product-detail.html?id=${p.productId}" aria-label="Xem chi tiết ${escapeHtml(p.name)}"><div class="product-img"><img src="${escapeHtml(p.imageUrl || 'https://placehold.co/400x400?text=ToyStore')}" alt="${escapeHtml(p.name)}" loading="lazy"></div><div class="product-detail"><small>${escapeHtml(p.categoryName || 'Đồ chơi')}</small><h3>${escapeHtml(p.name)}</h3><div class="product-price"><b>${money(p.basePrice)}</b></div></div></a><button class="add-cart" data-id="${p.productId}">Thêm vào giỏ</button></article>`;
 }
 
 function renderHomeProducts() {

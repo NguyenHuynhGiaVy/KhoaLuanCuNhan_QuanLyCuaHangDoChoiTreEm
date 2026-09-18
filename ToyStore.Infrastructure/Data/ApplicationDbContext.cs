@@ -27,6 +27,8 @@ namespace ToyStoreManagement.Infrastructure.Data
 
         public DbSet<ProductVariant> ProductVariants { get; set; }
 
+        public DbSet<ProductVariantAttribute> ProductVariantAttributes { get; set; }
+
         public DbSet<Supplier> Suppliers { get; set; }
 
         public DbSet<ImportReceipt> ImportReceipts { get; set; }

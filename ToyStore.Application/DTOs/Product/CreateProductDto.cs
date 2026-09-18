@@ -1,4 +1,5 @@
-﻿using System.ComponentModel.DataAnnotations;
+﻿using System.Collections.Generic;
+using System.ComponentModel.DataAnnotations;
 
 namespace ToyStoreManagement.Application.DTOs.Product
 {
@@ -36,5 +37,9 @@ namespace ToyStoreManagement.Application.DTOs.Product
         public bool IsNew { get; set; } = true;
 
         public string? ImageUrl { get; set; }
+
+        // Danh sách biến thể
+        public List<CreateProductVariantDto> Variants { get; set; }
+            = new List<CreateProductVariantDto>();
     }
 }
