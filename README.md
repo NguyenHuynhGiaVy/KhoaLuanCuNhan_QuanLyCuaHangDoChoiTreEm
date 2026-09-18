@@ -45,3 +45,18 @@ Ví dụ:
 }
 
 ⚠️ Mỗi máy có thể có Server= khác nhau. Không copy nguyên Connection String của máy thành viên khác.
+
+Bước 3: Chạy Visual Studio
+Mở ToyStoreManagement.sln.
+Chọn ToyStoreManagement.API → Set as Startup Project.
+Nhấn F5 hoặc Ctrl + F5.
+Kiểm tra Swagger đã mở.
+Truy cập trang Web trên trình duyệt.
+❗ Nếu API không kết nối
+
+Kiểm tra lại:
+
+SQL Server đang chạy.
+Database ToyStoreManagement đã được tạo.
+Server= trong appsettings.json đúng với máy hiện tại.
+API đang chạy bằng ToyStoreManagement.API.
