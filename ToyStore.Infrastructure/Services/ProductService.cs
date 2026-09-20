@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Text;
@@ -119,6 +119,12 @@ namespace ToyStoreManagement.Infrastructure.Services
             {
                 foreach (var variantDto in dto.Variants)
                 {
+                    var existsSku = await _variantRepository.AnyAsync(v => v.SKU == variantDto.SKU);
+                    if (existsSku)
+                    {
+                        throw new InvalidOperationException($"Mã SKU '{variantDto.SKU}' đã tồn tại trong hệ thống. Vui lòng nhập mã SKU khác.");
+                    }
+
                     var variant = new ProductVariant
                     {
                         ProductId = product.ProductId,

@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Text;
@@ -89,6 +89,80 @@ namespace ToyStore.Infrastructure.Services
             }
 
             return await GenerateAuthResponseAsync(user);
+        }
+
+        public async Task<bool> ChangePasswordAsync(
+            string userId,
+            ChangePasswordRequestDto request)
+        {
+            var user = await _userManager.FindByIdAsync(userId);
+            if (user == null)
+            {
+                return false;
+            }
+
+            var result = await _userManager.ChangePasswordAsync(
+                user,
+                request.CurrentPassword,
+                request.NewPassword);
+
+            if (!result.Succeeded)
+            {
+                throw new Exception(
+                    string.Join("; ", result.Errors.Select(e => e.Description)));
+            }
+
+            return true;
+        }
+
+        public async Task<IEnumerable<UserDto>> GetUsersAsync()
+        {
+            var users = _userManager.Users.ToList();
+            var userDtos = new List<UserDto>();
+
+            foreach (var user in users)
+            {
+                var roles = await _userManager.GetRolesAsync(user);
+                userDtos.Add(new UserDto
+                {
+                    UserId = user.Id,
+                    Email = user.Email ?? string.Empty,
+                    FullName = user.FullName ?? string.Empty,
+                    PhoneNumber = user.PhoneNumber,
+                    IsActive = user.IsActive,
+                    Role = roles.FirstOrDefault() ?? "Customer"
+                });
+            }
+
+            return userDtos;
+        }
+
+        public async Task<bool> AssignRoleAsync(AssignRoleDto dto)
+        {
+            var user = await _userManager.FindByIdAsync(dto.UserId);
+            if (user == null)
+            {
+                return false;
+            }
+
+            var currentRoles = await _userManager.GetRolesAsync(user);
+            await _userManager.RemoveFromRolesAsync(user, currentRoles);
+            var result = await _userManager.AddToRoleAsync(user, dto.Role);
+
+            return result.Succeeded;
+        }
+
+        public async Task<bool> ToggleUserStatusAsync(string userId)
+        {
+            var user = await _userManager.FindByIdAsync(userId);
+            if (user == null)
+            {
+                return false;
+            }
+
+            user.IsActive = !user.IsActive;
+            var result = await _userManager.UpdateAsync(user);
+            return result.Succeeded;
         }
 
         private async Task<AuthResponseDto> GenerateAuthResponseAsync(

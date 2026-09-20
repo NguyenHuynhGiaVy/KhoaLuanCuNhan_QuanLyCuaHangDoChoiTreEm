@@ -1,8 +1,10 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
+
+using System.ComponentModel.DataAnnotations.Schema;
 
 namespace ToyStoreManagement.Domain.Entities
 {
@@ -19,6 +21,7 @@ namespace ToyStoreManagement.Domain.Entities
         public DateTime UpdatedAt { get; set; }
 
         // Navigation
+        [ForeignKey(nameof(VariantId))]
         public virtual ProductVariant ProductVariant { get; set; }
     }
 }

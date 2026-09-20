@@ -1,4 +1,4 @@
-﻿using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.Mvc;
 
 using Microsoft.AspNetCore.Authorization;
 
@@ -85,7 +85,7 @@ namespace ToyStoreManagement.API.Controllers
             {
                 return BadRequest(new
                 {
-                    message = ex.Message
+                    message = GetFriendlyErrorMessage(ex)
                 });
             }
         }
@@ -274,6 +274,16 @@ namespace ToyStoreManagement.API.Controllers
                 message =
                     "Xóa biến thể thành công."
             });
+        }
+
+        private static string GetFriendlyErrorMessage(Exception ex)
+        {
+            var msg = ex.InnerException != null ? ex.InnerException.Message : ex.Message;
+            if (msg.Contains("IX_ProductVariants_SKU") || msg.Contains("duplicate key"))
+            {
+                return "Mã SKU của biến thể sản phẩm đã tồn tại trong hệ thống. Vui lòng nhập mã SKU khác.";
+            }
+            return msg;
         }
     }
 }

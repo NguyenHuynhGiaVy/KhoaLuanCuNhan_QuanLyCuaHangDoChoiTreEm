@@ -114,11 +114,24 @@ document.addEventListener('click', event => {
     document.getElementById('detailQuantity').textContent = detailQuantity;
   }
   if (event.target.closest('#addDetailCart, #buyNow')) {
-    detailCartCount += detailQuantity;
-    updateCart();
-    toast(event.target.closest('#buyNow') ? 'Đã thêm sản phẩm, sẵn sàng thanh toán!' : 'Đã thêm vào giỏ hàng!');
+    if (detailProduct) {
+      const isBuyNow = !!event.target.closest('#buyNow');
+      if (typeof addToCart === 'function') {
+        addToCart({
+          productId: detailProduct.productId,
+          variantId: selectedVariant?.variantId || detailProduct.productId,
+          name: detailProduct.name,
+          price: selectedVariant?.price ?? detailProduct.basePrice,
+          imageUrl: selectedVariant?.imageUrl || imageOf(detailProduct),
+          quantity: detailQuantity,
+          sku: selectedVariant?.sku || ''
+        });
+        if (isBuyNow && typeof openCheckoutModal === 'function') {
+          openCheckoutModal();
+        }
+      }
+    }
   }
 });
 
-updateCart();
 loadDetail();

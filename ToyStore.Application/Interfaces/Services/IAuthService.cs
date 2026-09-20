@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Text;
@@ -14,5 +14,17 @@ namespace ToyStore.Application.Interfaces.Services
 
         Task<AuthResponseDto?> LoginAsync(
             LoginRequestDto request);
+
+        Task<bool> ChangePasswordAsync(
+            string userId,
+            ChangePasswordRequestDto request);
+
+        Task<IEnumerable<UserDto>> GetUsersAsync();
+
+        Task<bool> AssignRoleAsync(
+            AssignRoleDto dto);
+
+        Task<bool> ToggleUserStatusAsync(
+            string userId);
     }
 }

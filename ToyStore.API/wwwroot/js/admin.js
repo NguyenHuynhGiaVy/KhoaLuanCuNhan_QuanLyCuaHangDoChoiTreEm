@@ -92,6 +92,13 @@ const MODULES = {
     symbol: '◎', endpoint: 'Customer',
     columns: ['Khách hàng', 'Email', 'Số điện thoại', 'Hạng', 'Đơn hàng'],
     canAdd: false, canEdit: false, canDelete: false
+  },
+  users: {
+    title: 'Phân quyền người dùng', kicker: 'HỆ THỐNG',
+    desc: 'Quản lý tài khoản hệ thống, phân quyền vai trò (Admin, Manager, Staff, Customer) và trạng thái tài khoản.',
+    symbol: '👥', endpoint: 'Auth/users',
+    columns: ['Tên người dùng', 'Email', 'Số điện thoại', 'Vai trò (Role)', 'Trạng thái'],
+    canAdd: false, canEdit: false, canDelete: false
   }
 };
 
@@ -150,9 +157,13 @@ document.getElementById('confirmNo').addEventListener('click', () => {
 });
 
 // ── API FETCH ─────────────────────────────────────────────────
+const API_BASE = (window.location.protocol === 'file:' || (window.location.port && window.location.port !== '5225'))
+    ? 'http://localhost:5225'
+    : '';
+
 async function api(path, opt = {}) {
   if (!token) return null;
-  const res = await fetch(`/api/${path}`, {
+  const res = await fetch(`${API_BASE}/api/${path}`, {
     ...opt,
     headers: {
       'Content-Type': 'application/json',
@@ -180,7 +191,7 @@ async function checkApiStatus(manual = false) {
   btn.className = 'api-check-btn checking';
   lbl.textContent = 'Đang kiểm tra...';
   try {
-    const res = await fetch('/api/Health', { cache: 'no-store', signal: AbortSignal.timeout(5000) });
+    const res = await fetch(`${API_BASE}/api/Health`, { cache: 'no-store', signal: AbortSignal.timeout(5000) });
     if (res.ok) {
       btn.className = 'api-check-btn online';
       lbl.textContent = 'API Online';
@@ -227,7 +238,7 @@ document.getElementById('loginForm').addEventListener('submit', async e => {
   btn.textContent = 'Đang đăng nhập...';
   btn.disabled = true;
   try {
-    const res = await fetch('/api/Auth/login', {
+    const res = await fetch(`${API_BASE}/api/Auth/login`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ email: e.target.email.value, password: e.target.password.value })
@@ -514,11 +525,15 @@ function renderTable(key, data) {
   tbody.innerHTML = data.map((r, idx) => {
     const cells = getRowCells(key, r);
     const actions = [
+      key === 'users' ? `
+        <button class="primary-btn" style="padding:4px 9px;font-size:11px;" onclick="openRoleModal('${r.userId}', '${r.role}')">Đổi vai trò</button>
+        <button class="cancel-btn" style="padding:4px 9px;font-size:11px;color:${r.isActive ? '#b44235' : '#24724e'};border-color:${r.isActive ? '#f87171' : '#4ade80'};" onclick="toggleUserStatus('${r.userId}')">${r.isActive ? 'Khóa' : 'Kích hoạt'}</button>
+      ` : '',
       key === 'products' ? `<button class="icon-btn" title="Quản lý biến thể" data-action="variants" data-key="${key}" data-idx="${idx}">⌘</button>` : '',
       m.canEdit ? `<button class="icon-btn" title="${r.isMissing ? 'Thiết lập tồn kho' : 'Cập nhật tồn kho'}" data-action="edit" data-key="${key}" data-idx="${idx}">${r.isMissing ? '+' : '✎'}</button>` : '',
       m.canDelete ? `<button class="icon-btn del" title="Xóa" data-action="delete" data-key="${key}" data-idx="${idx}">🗑</button>` : ''
     ].join('');
-    return `<tr>${cells.map((c, ci) => `<td>${ci === cells.length - 1 ? pill(c) : esc(c)}</td>`).join('')}<td class="actions-cell">${actions}</td></tr>`;
+    return `<tr>${cells.map((c, ci) => `<td>${ci === cells.length - 1 ? (key === 'users' ? c : pill(c)) : (typeof c === 'string' && c.startsWith('<span') ? c : esc(c))}</td>`).join('')}<td class="actions-cell">${actions}</td></tr>`;
   }).join('');
 }
 
@@ -544,6 +559,10 @@ function getRowCells(key, r) {
       return [r.code, r.name || '—', DISCOUNT_TYPE[r.discountType] || '—', r.discountType === 0 ? `${r.discountValue}%` : money(r.discountValue), fmtDate(r.expiryDate), r.isActive ? 'Đang hoạt động' : 'Hết hạn'];
     case 'customers':
       return [r.fullName || r.name || '—', r.email || '—', r.phone || '—', r.loyaltyTier || r.tier || 'Thường', r.totalOrders ?? 0];
+    case 'users':
+      const rolePill = `<span class="pill ${r.role === 'Admin' ? 'danger' : r.role === 'Manager' ? 'warning' : r.role === 'Staff' ? 'info' : 'success'}">${r.role || 'Customer'}</span>`;
+      const statusPill = r.isActive ? 'Đang hoạt động' : 'Đã khóa';
+      return [r.fullName || '—', r.email || '—', r.phoneNumber || '—', rolePill, statusPill];
     default: return [JSON.stringify(r)];
   }
 }
@@ -615,7 +634,7 @@ function openModal(entity, record) {
 
   const form = document.getElementById('entityForm');
   form.dataset.entity = entity;
-  form.dataset.mode = isEdit && record?.inventoryId ? 'edit' : 'create';
+  form.dataset.mode = isEdit ? 'edit' : 'create';
   form.dataset.id = isEdit ? getRecordId(entity, record) : '';
 
   document.getElementById('modalFormFields').innerHTML = buildFormFields(entity, record);
@@ -1358,4 +1377,108 @@ document.addEventListener('click', async e => {
     catch (err) {
         toast(err.message, 'error');
     }
+});
+
+/* ============================================================
+   USER ROLE MANAGEMENT & ADMIN CHANGE PASSWORD
+   ============================================================ */
+
+window.openRoleModal = function(userId, currentRole) {
+  const roles = ['Admin', 'Manager', 'Staff', 'Customer'];
+  const roleLabels = { Admin: 'Admin (Quản trị hệ thống)', Manager: 'Manager (Quản lý cửa hàng)', Staff: 'Staff (Nhân viên cửa hàng)', Customer: 'Customer (Khách hàng)' };
+  
+  const optionsHtml = roles.map(r => `<option value="${r}" ${r === currentRole ? 'selected' : ''}>${roleLabels[r]}</option>`).join('');
+
+  document.getElementById('modalTitle').textContent = 'Đổi vai trò người dùng';
+  document.getElementById('modalKicker').textContent = 'PHÂN QUYỀN';
+  document.getElementById('modalSubtitle').textContent = 'Chọn vai trò mới cho tài khoản này.';
+  document.getElementById('modalFormFields').innerHTML = `
+    <div class="form-group full">
+      <label>Vai trò mới *</label>
+      <select class="input-control" id="newRoleSelect">${optionsHtml}</select>
+    </div>
+  `;
+
+  document.getElementById('modalBackdrop').classList.add('show');
+
+  const form = document.getElementById('entityForm');
+  const onSubmit = async (e) => {
+    e.preventDefault();
+    const newRole = document.getElementById('newRoleSelect').value;
+    try {
+      await api('Auth/assign-role', {
+        method: 'POST',
+        body: JSON.stringify({ userId: userId, role: newRole })
+      });
+      document.getElementById('modalBackdrop').classList.remove('show');
+      toast('Cập nhật vai trò người dùng thành công!', 'success');
+      renderModule('users');
+    } catch (err) {
+      toast(err.message, 'error');
+    } finally {
+      form.removeEventListener('submit', onSubmit);
+    }
+  };
+  form.addEventListener('submit', onSubmit, { once: true });
+};
+
+window.toggleUserStatus = function(userId) {
+  confirm('Xác nhận cập nhật', 'Bạn có chắc muốn thay đổi trạng thái kích hoạt của tài khoản này?', async () => {
+    try {
+      await api(`Auth/users/${userId}/toggle-status`, { method: 'POST' });
+      toast('Cập nhật trạng thái tài khoản thành công!', 'success');
+      renderModule('users');
+    } catch (err) {
+      toast(err.message, 'error');
+    }
+  });
+};
+
+document.getElementById('adminChangePassBtn')?.addEventListener('click', () => {
+  document.getElementById('modalTitle').textContent = 'Đổi mật khẩu tài khoản';
+  document.getElementById('modalKicker').textContent = 'TÀI KHOẢN';
+  document.getElementById('modalSubtitle').textContent = 'Nhập mật khẩu hiện tại và mật khẩu mới.';
+  document.getElementById('modalFormFields').innerHTML = `
+    <div class="form-group full">
+      <label>Mật khẩu hiện tại *</label>
+      <input class="input-control" type="password" id="adminCurPass" required>
+    </div>
+    <div class="form-group full">
+      <label>Mật khẩu mới *</label>
+      <input class="input-control" type="password" id="adminNewPass" required minlength="6">
+    </div>
+    <div class="form-group full">
+      <label>Xác nhận mật khẩu mới *</label>
+      <input class="input-control" type="password" id="adminConfPass" required>
+    </div>
+  `;
+
+  document.getElementById('modalBackdrop').classList.add('show');
+
+  const form = document.getElementById('entityForm');
+  const onSubmit = async (e) => {
+    e.preventDefault();
+    const currentPassword = document.getElementById('adminCurPass').value;
+    const newPassword = document.getElementById('adminNewPass').value;
+    const confirmPassword = document.getElementById('adminConfPass').value;
+
+    if (newPassword !== confirmPassword) {
+      toast('Mật khẩu xác nhận không khớp.', 'error');
+      return;
+    }
+
+    try {
+      await api('Auth/change-password', {
+        method: 'POST',
+        body: JSON.stringify({ currentPassword, newPassword, confirmPassword })
+      });
+      document.getElementById('modalBackdrop').classList.remove('show');
+      toast('🔒 Đổi mật khẩu thành công!', 'success');
+    } catch (err) {
+      toast(err.message, 'error');
+    } finally {
+      form.removeEventListener('submit', onSubmit);
+    }
+  };
+  form.addEventListener('submit', onSubmit, { once: true });
 });

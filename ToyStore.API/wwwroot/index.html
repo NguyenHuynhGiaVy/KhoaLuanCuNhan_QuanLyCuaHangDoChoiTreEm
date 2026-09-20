@@ -55,6 +55,8 @@
         <a class="nav-item" href="#vouchers" data-view="vouchers"><span>🎟</span>Voucher</a>
         <p class="nav-label">Khách hàng</p>
         <a class="nav-item" href="#customers" data-view="customers"><span>◎</span>Khách hàng</a>
+        <p class="nav-label">Hệ thống</p>
+        <a class="nav-item" href="#users" data-view="users"><span>👥</span>Phân quyền người dùng</a>
       </nav>
       <div class="sidebar-footer">
         <button class="help-box" id="logoutButton"><span>↪</span><b>Đăng xuất</b></button>
@@ -68,6 +70,9 @@
           <span>ToyStore</span><b>/</b><strong id="breadcrumbCurrent">Dashboard</strong>
         </div>
         <div class="top-actions">
+          <button class="api-check-btn" id="adminChangePassBtn" title="Đổi mật khẩu tài khoản" style="background:#f4f0e7;color:#173f35;border-color:#e0dad0;">
+            <span>🔒</span> Đổi mật khẩu
+          </button>
           <button class="api-check-btn" id="apiBadge" onclick="checkApiStatus(true)">
             <span class="api-dot" id="apiDot"></span>
             <span id="apiLabel">Kiểm tra API</span>

@@ -49,7 +49,7 @@
             <nav class="store-nav"><a href="/products.html">Sản phẩm</a><a href="/customer.html#categories">Danh mục</a><a href="/customer.html#about">Về ToyStore</a></nav>
             <div class="header-actions">
                 <span class="customer-api-status" id="customerApiStatus">Đang kết nối API</span>
-                <button class="header-icon">⌕</button><button class="cart-button"><span>♧</span><i id="cartCount">0</i></button>
+                <button class="header-icon">⌕</button><button class="header-icon" id="custAccountBtn" aria-label="Tài khoản">◎</button><button class="cart-button" id="custCartBtn" aria-label="Giỏ hàng"><span>♧</span><i id="cartCount">0</i></button>
             </div>
         </div>
     </header>
@@ -127,6 +127,156 @@
     <footer class="store-footer">
         <div class="footer-bottom"><span>© 2026 ToyStore Management</span></div>
     </footer>
+
+    <!-- CART DRAWER -->
+    <div class="cart-drawer-overlay" id="cartDrawerOverlay">
+        <div class="cart-drawer">
+            <div class="cart-drawer-header">
+                <h2>Giỏ hàng (<span id="cartDrawerCount">0</span>)</h2>
+                <button class="cart-drawer-close" id="cartDrawerClose">×</button>
+            </div>
+            <div class="cart-drawer-body" id="cartDrawerBody"></div>
+            <div class="cart-drawer-footer">
+                <div class="cart-summary-row">
+                    <span>Tạm tính:</span>
+                    <strong id="cartSubtotal">0đ</strong>
+                </div>
+                <div class="cart-summary-row">
+                    <span>Phí giao hàng:</span>
+                    <span id="cartShippingFee">Miễn phí</span>
+                </div>
+                <div class="cart-summary-row total">
+                    <span>Tổng tiền:</span>
+                    <strong id="cartTotal">0đ</strong>
+                </div>
+                <button class="cart-checkout-btn" id="openCheckoutBtn">Tiến hành thanh toán <span>→</span></button>
+            </div>
+        </div>
+    </div>
+
+    <!-- CHECKOUT MODAL -->
+    <div class="cust-modal-backdrop" id="checkoutModalBackdrop">
+        <div class="cust-modal-box">
+            <button class="cust-modal-close" id="checkoutModalClose">×</button>
+            <h2 class="cust-modal-title">Thanh toán đơn hàng</h2>
+            <form id="checkoutForm">
+                <div class="cust-form-group">
+                    <label>Họ và tên người nhận *</label>
+                    <input type="text" id="orderFullName" required placeholder="Nguyễn Văn A">
+                </div>
+                <div class="cust-form-group">
+                    <label>Số điện thoại *</label>
+                    <input type="tel" id="orderPhone" required placeholder="0901234567">
+                </div>
+                <div class="cust-form-group">
+                    <label>Địa chỉ giao hàng *</label>
+                    <input type="text" id="orderAddress" required placeholder="Số 123 Đường ABC, Phường X, Quận Y, TP.HCM">
+                </div>
+                <div class="cust-form-group">
+                    <label>Ghi chú đơn hàng</label>
+                    <textarea id="orderNote" rows="2" placeholder="Ghi chú thời gian giao hàng, hướng dẫn..."></textarea>
+                </div>
+                <div class="cust-form-group">
+                    <label>Mã Voucher giảm giá</label>
+                    <div style="display:flex;gap:8px;">
+                        <input type="text" id="orderVoucherCode" placeholder="Nhập mã voucher (nếu có)">
+                        <button type="button" class="add-cart" id="applyVoucherBtn" style="margin:0;width:auto;white-space:nowrap;">Áp dụng</button>
+                    </div>
+                    <small id="voucherMessage" style="color:var(--coral);font-weight:600;display:block;margin-top:4px;"></small>
+                </div>
+                <div class="cust-form-group">
+                    <label>Phương thức thanh toán</label>
+                    <select id="orderPaymentMethod">
+                        <option value="COD">Thanh toán khi nhận hàng (COD)</option>
+                        <option value="Banking">Chuyển khoản ngân hàng</option>
+                    </select>
+                </div>
+                <div class="cart-summary-row total" style="margin-bottom:16px;">
+                    <span>Tổng thanh toán:</span>
+                    <strong id="checkoutFinalTotal">0đ</strong>
+                </div>
+                <button class="cart-checkout-btn" type="submit">Xác nhận đặt hàng</button>
+            </form>
+        </div>
+    </div>
+
+    <!-- CUSTOMER AUTH MODAL -->
+    <div class="cust-modal-backdrop" id="customerAuthModalBackdrop">
+        <div class="cust-modal-box">
+            <button class="cust-modal-close" id="customerAuthModalClose">×</button>
+            <div id="authModalUnauthenticated">
+                <div class="cust-modal-tabs">
+                    <button class="cust-tab-btn active" id="tabLoginBtn" type="button">Đăng nhập</button>
+                    <button class="cust-tab-btn" id="tabRegisterBtn" type="button">Đăng ký</button>
+                </div>
+                
+                <form id="custLoginForm">
+                    <div class="cust-form-group">
+                        <label>Email *</label>
+                        <input type="email" id="custLoginEmail" required placeholder="email@toystore.vn">
+                    </div>
+                    <div class="cust-form-group">
+                        <label>Mật khẩu *</label>
+                        <input type="password" id="custLoginPassword" required placeholder="Nhập mật khẩu">
+                    </div>
+                    <p id="custLoginError" style="color:#b44235;font-size:12px;font-weight:600;margin-bottom:10px;"></p>
+                    <button class="cart-checkout-btn" type="submit">Đăng nhập</button>
+                </form>
+
+                <form id="custRegisterForm" style="display:none;">
+                    <div class="cust-form-group">
+                        <label>Họ và tên *</label>
+                        <input type="text" id="custRegFullName" required placeholder="Nguyễn Văn A">
+                    </div>
+                    <div class="cust-form-group">
+                        <label>Email *</label>
+                        <input type="email" id="custRegEmail" required placeholder="email@toystore.vn">
+                    </div>
+                    <div class="cust-form-group">
+                        <label>Số điện thoại</label>
+                        <input type="tel" id="custRegPhone" placeholder="0901234567">
+                    </div>
+                    <div class="cust-form-group">
+                        <label>Mật khẩu *</label>
+                        <input type="password" id="custRegPassword" required placeholder="Nhập mật khẩu (tối thiểu 6 ký tự)">
+                    </div>
+                    <p id="custRegError" style="color:#b44235;font-size:12px;font-weight:600;margin-bottom:10px;"></p>
+                    <button class="cart-checkout-btn" type="submit">Đăng ký tài khoản</button>
+                </form>
+            </div>
+
+            <div id="authModalAuthenticated" style="display:none;">
+                <h2 class="cust-modal-title">Thông tin tài khoản</h2>
+                <div style="background:#faf9f6;padding:16px;border-radius:8px;margin-bottom:16px;">
+                    <p style="margin:0 0 6px;"><strong>Họ tên:</strong> <span id="userProfileName"></span></p>
+                    <p style="margin:0 0 6px;"><strong>Email:</strong> <span id="userProfileEmail"></span></p>
+                    <p style="margin:0;"><strong>Vai trò:</strong> <span class="role-badge" id="userProfileRole"></span></p>
+                </div>
+
+                <button type="button" class="add-cart" id="toggleChangePassBtn" style="margin-bottom:12px;">🔒 Đổi mật khẩu</button>
+
+                <form id="custChangePassForm" style="display:none;margin-bottom:16px;border-top:1px solid #eee;padding-top:16px;">
+                    <div class="cust-form-group">
+                        <label>Mật khẩu hiện tại *</label>
+                        <input type="password" id="changePassCurrent" required>
+                    </div>
+                    <div class="cust-form-group">
+                        <label>Mật khẩu mới *</label>
+                        <input type="password" id="changePassNew" required>
+                    </div>
+                    <div class="cust-form-group">
+                        <label>Xác nhận mật khẩu mới *</label>
+                        <input type="password" id="changePassConfirm" required>
+                    </div>
+                    <p id="changePassError" style="color:#b44235;font-size:12px;font-weight:600;margin-bottom:10px;"></p>
+                    <button class="cart-checkout-btn" type="submit">Lưu mật khẩu mới</button>
+                </form>
+
+                <button type="button" class="add-cart" id="custLogoutBtn" style="border-color:#b44235;color:#b44235;">Đăng xuất</button>
+            </div>
+        </div>
+    </div>
+
     <div class="customer-toast" id="customerToast"></div>
     <script src="/js/customer.js"></script>
 </body>
