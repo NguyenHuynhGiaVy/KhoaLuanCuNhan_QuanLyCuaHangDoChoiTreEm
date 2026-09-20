@@ -40,13 +40,17 @@ const MODULES = {
     columns: ['Thương hiệu', 'Mô tả', 'Trạng thái'],
     canAdd: true, canEdit: true, canDelete: true
   },
-  inventory: {
-    title: 'Tồn kho', kicker: 'HÀNG HÓA',
-    desc: 'Theo dõi số lượng tồn, đã giữ chỗ và số lượng có thể bán.',
-    symbol: '▤', endpoint: 'Inventory',
-    columns: ['SKU', 'Sản phẩm', 'Tồn kho', 'Đã giữ', 'Có thể bán', 'Cập nhật'],
-    canAdd: true, canEdit: true, canDelete: false
-  },
+    inventory: {
+        title: 'Tồn kho',
+        kicker: 'HÀNG HÓA',
+        desc: 'Theo dõi số lượng tồn, đã giữ chỗ và số lượng có thể bán.',
+        symbol: '▤',
+        endpoint: 'Inventory',
+        columns: ['SKU', 'Sản phẩm', 'Tồn kho', 'Đã giữ', 'Có thể bán', 'Cập nhật'],
+        canAdd: true,
+        canEdit: true,
+        canDelete: true
+    },
   suppliers: {
     title: 'Nhà cung cấp', kicker: 'VẬN HÀNH',
     desc: 'Thông tin các đối tác cung ứng hàng hóa.',
@@ -87,6 +91,13 @@ const MODULES = {
     desc: 'Hồ sơ khách hàng, hạng thành viên và chi tiêu.',
     symbol: '◎', endpoint: 'Customer',
     columns: ['Khách hàng', 'Email', 'Số điện thoại', 'Hạng', 'Đơn hàng'],
+    canAdd: false, canEdit: false, canDelete: false
+  },
+  users: {
+    title: 'Phân quyền người dùng', kicker: 'HỆ THỐNG',
+    desc: 'Quản lý tài khoản hệ thống, phân quyền vai trò (Admin, Manager, Staff, Customer) và trạng thái tài khoản.',
+    symbol: '👥', endpoint: 'Auth/users',
+    columns: ['Tên người dùng', 'Email', 'Số điện thoại', 'Vai trò (Role)', 'Trạng thái'],
     canAdd: false, canEdit: false, canDelete: false
   }
 };
@@ -146,9 +157,13 @@ document.getElementById('confirmNo').addEventListener('click', () => {
 });
 
 // ── API FETCH ─────────────────────────────────────────────────
+const API_BASE = (window.location.protocol === 'file:' || (window.location.port && window.location.port !== '5225'))
+    ? 'http://localhost:5225'
+    : '';
+
 async function api(path, opt = {}) {
   if (!token) return null;
-  const res = await fetch(`/api/${path}`, {
+  const res = await fetch(`${API_BASE}/api/${path}`, {
     ...opt,
     headers: {
       'Content-Type': 'application/json',
@@ -176,7 +191,7 @@ async function checkApiStatus(manual = false) {
   btn.className = 'api-check-btn checking';
   lbl.textContent = 'Đang kiểm tra...';
   try {
-    const res = await fetch('/api/Health', { cache: 'no-store', signal: AbortSignal.timeout(5000) });
+    const res = await fetch(`${API_BASE}/api/Health`, { cache: 'no-store', signal: AbortSignal.timeout(5000) });
     if (res.ok) {
       btn.className = 'api-check-btn online';
       lbl.textContent = 'API Online';
@@ -223,7 +238,7 @@ document.getElementById('loginForm').addEventListener('submit', async e => {
   btn.textContent = 'Đang đăng nhập...';
   btn.disabled = true;
   try {
-    const res = await fetch('/api/Auth/login', {
+    const res = await fetch(`${API_BASE}/api/Auth/login`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ email: e.target.email.value, password: e.target.password.value })
@@ -510,11 +525,15 @@ function renderTable(key, data) {
   tbody.innerHTML = data.map((r, idx) => {
     const cells = getRowCells(key, r);
     const actions = [
+      key === 'users' ? `
+        <button class="primary-btn" style="padding:4px 9px;font-size:11px;" onclick="openRoleModal('${r.userId}', '${r.role}')">Đổi vai trò</button>
+        <button class="cancel-btn" style="padding:4px 9px;font-size:11px;color:${r.isActive ? '#b44235' : '#24724e'};border-color:${r.isActive ? '#f87171' : '#4ade80'};" onclick="toggleUserStatus('${r.userId}')">${r.isActive ? 'Khóa' : 'Kích hoạt'}</button>
+      ` : '',
       key === 'products' ? `<button class="icon-btn" title="Quản lý biến thể" data-action="variants" data-key="${key}" data-idx="${idx}">⌘</button>` : '',
       m.canEdit ? `<button class="icon-btn" title="${r.isMissing ? 'Thiết lập tồn kho' : 'Cập nhật tồn kho'}" data-action="edit" data-key="${key}" data-idx="${idx}">${r.isMissing ? '+' : '✎'}</button>` : '',
       m.canDelete ? `<button class="icon-btn del" title="Xóa" data-action="delete" data-key="${key}" data-idx="${idx}">🗑</button>` : ''
     ].join('');
-    return `<tr>${cells.map((c, ci) => `<td>${ci === cells.length - 1 ? pill(c) : esc(c)}</td>`).join('')}<td class="actions-cell">${actions}</td></tr>`;
+    return `<tr>${cells.map((c, ci) => `<td>${ci === cells.length - 1 ? (key === 'users' ? c : pill(c)) : (typeof c === 'string' && c.startsWith('<span') ? c : esc(c))}</td>`).join('')}<td class="actions-cell">${actions}</td></tr>`;
   }).join('');
 }
 
@@ -540,6 +559,10 @@ function getRowCells(key, r) {
       return [r.code, r.name || '—', DISCOUNT_TYPE[r.discountType] || '—', r.discountType === 0 ? `${r.discountValue}%` : money(r.discountValue), fmtDate(r.expiryDate), r.isActive ? 'Đang hoạt động' : 'Hết hạn'];
     case 'customers':
       return [r.fullName || r.name || '—', r.email || '—', r.phone || '—', r.loyaltyTier || r.tier || 'Thường', r.totalOrders ?? 0];
+    case 'users':
+      const rolePill = `<span class="pill ${r.role === 'Admin' ? 'danger' : r.role === 'Manager' ? 'warning' : r.role === 'Staff' ? 'info' : 'success'}">${r.role || 'Customer'}</span>`;
+      const statusPill = r.isActive ? 'Đang hoạt động' : 'Đã khóa';
+      return [r.fullName || '—', r.email || '—', r.phoneNumber || '—', rolePill, statusPill];
     default: return [JSON.stringify(r)];
   }
 }
@@ -611,7 +634,7 @@ function openModal(entity, record) {
 
   const form = document.getElementById('entityForm');
   form.dataset.entity = entity;
-  form.dataset.mode = isEdit && record?.inventoryId ? 'edit' : 'create';
+  form.dataset.mode = isEdit ? 'edit' : 'create';
   form.dataset.id = isEdit ? getRecordId(entity, record) : '';
 
   document.getElementById('modalFormFields').innerHTML = buildFormFields(entity, record);
@@ -644,6 +667,8 @@ async function openVariantManager(product) {
     <input type="hidden" name="variantId">
     <div class="form-grid"><label>SKU *<input name="sku" required placeholder="VD: TOY-001"></label><label>Giá bán *<input name="price" type="number" min="0" required></label></div>
     <div class="form-grid"><label>Màu sắc<input name="color"></label><label>Kích thước<input name="size"></label></div>
+    <div class="variant-editor-heading"><strong>Loại thuộc tính khác</strong><button type="button" class="ghost-btn" data-variant-editor-action="add-attribute">+ Thêm loại</button></div>
+    <div class="variant-attributes"></div>
     <div class="form-grid"><label>Giá vốn *<input name="costPrice" type="number" min="0" required></label><label>Khối lượng<input name="weight" type="number" min="0" step="0.01"></label></div>
     <label>Link hình ảnh<input name="variantImageUrl" type="url" placeholder="https://..."></label>
     <label>Trạng thái<select name="variantStatus"><option value="1">Đang hoạt động</option><option value="0">Tạm ngưng</option></select></label>`;
@@ -664,7 +689,43 @@ function fillVariantForm(variant) {
   form.elements.weight.value = variant.weight ?? '';
   form.elements.variantImageUrl.value = variant.imageUrl || '';
   form.elements.variantStatus.value = variant.status ?? 1;
+  form.querySelector('.variant-attributes').innerHTML = (variant.attributes || []).filter(attribute => !['màu sắc', 'color', 'kích thước', 'size'].includes(String(attribute.attributeName).toLowerCase())).map(productVariantAttributeRow).join('');
   document.getElementById('variantFormTitle').textContent = 'Chỉnh sửa biến thể';
+}
+
+function productVariantAttributeRow(attribute = {}) {
+  return `<div class="variant-attribute-row">
+    <input name="variantAttributeName" placeholder="Tên loại (ví dụ: Chất liệu)" value="${esc(attribute.attributeName || '')}">
+    <input name="variantAttributeValue" placeholder="Giá trị (ví dụ: Nhựa ABS)" value="${esc(attribute.attributeValue || '')}">
+    <button type="button" class="icon-btn del" data-variant-editor-action="remove-attribute" title="Xóa thuộc tính">×</button>
+  </div>`;
+}
+
+function productVariantEditorRow() {
+  return `<div class="product-variant-row">
+    <div class="form-grid"><label>SKU variant *<input name="variantSku" required placeholder="VD: TOY-001"></label><label>Giá variant *<input name="variantPrice" type="number" min="0" required placeholder="150000"></label></div>
+    <div class="form-grid"><label>Giá vốn *<input name="variantCostPrice" type="number" min="0" required placeholder="100000"></label><label>Link hình ảnh<input name="variantImageUrl" type="url" placeholder="https://..."></label></div>
+    <div class="form-grid"><label>Tồn kho ban đầu<input name="initialQuantity" type="number" min="0" value="0"></label><label>Đã giữ<input name="initialReservedQuantity" type="number" min="0" value="0"></label></div>
+    <div class="variant-editor-heading"><strong>Thuộc tính biến thể</strong><button type="button" class="ghost-btn" data-variant-editor-action="add-attribute">+ Thêm loại</button><button type="button" class="icon-btn del" data-variant-editor-action="remove" title="Xóa variant">×</button></div>
+    <div class="variant-attributes">${productVariantAttributeRow()}</div>
+  </div>`;
+}
+
+function readProductVariants(form) {
+  return [...form.querySelectorAll('.product-variant-row')].map(row => ({
+    sku: row.querySelector('[name="variantSku"]').value.trim(),
+    price: Number(row.querySelector('[name="variantPrice"]').value),
+    costPrice: Number(row.querySelector('[name="variantCostPrice"]').value),
+    imageUrl: row.querySelector('[name="variantImageUrl"]').value.trim() || null,
+    status: 1,
+    initialQuantity: Number(row.querySelector('[name="initialQuantity"]').value || 0),
+    initialReservedQuantity: Number(row.querySelector('[name="initialReservedQuantity"]').value || 0),
+    attributes: [...row.querySelectorAll('.variant-attribute-row')].map((attribute, index) => ({
+      attributeName: attribute.querySelector('[name="variantAttributeName"]').value.trim(),
+      attributeValue: attribute.querySelector('[name="variantAttributeValue"]').value.trim(),
+      displayOrder: index
+    })).filter(attribute => attribute.attributeName && attribute.attributeValue)
+  }));
 }
 
 function buildFormFields(entity, r) {
@@ -686,8 +747,38 @@ function buildFormFields(entity, r) {
       return `
         <label>Tên sản phẩm *<input name="name" required placeholder="Ví dụ: Robot lắp ráp Technic" value="${esc(v.name||'')}"></label>
         <div class="form-grid">
-          <label>Danh mục *<select name="categoryId" required>${catOpts}</select></label>
-          <label>Thương hiệu *<select name="brandId" required>${brandOpts}</select></label>
+          <label>
+    Danh mục *
+    <div class="d-flex gap-2">
+        <select name="categoryId" required class="form-control">
+            ${catOpts}
+        </select>
+
+        <button
+            type="button"
+            class="icon-btn"
+            title="Thêm danh mục"
+            data-add-reference="category">
+            +
+        </button>
+    </div>
+</label>
+          <label>
+    Thương hiệu *
+    <div class="d-flex gap-2">
+        <select name="brandId" required class="form-control">
+            ${brandOpts}
+        </select>
+
+        <button
+            type="button"
+            class="icon-btn"
+            title="Thêm thương hiệu"
+            data-add-reference="brand">
+            +
+        </button>
+    </div>
+</label>
         </div>
         <div class="form-grid">
           <label>Nhà cung cấp<select name="supplierId">${supOpts}</select></label>
@@ -710,7 +801,7 @@ function buildFormFields(entity, r) {
         </div>
         <label>Link hình ảnh (URL)<input name="imageUrl" type="url" placeholder="https://..." value="${esc(v.imageUrl||'')}"></label>
         <label>Mô tả sản phẩm *<textarea name="description" required rows="3" placeholder="Mô tả chi tiết sản phẩm...">${esc(v.description||'')}</textarea></label>
-        ${!r ? `<div class="form-grid"><label>SKU variant *<input name="variantSku" required placeholder="VD: TOY-001"></label><label>Giá variant *<input name="variantPrice" type="number" min="0" required placeholder="150000"></label></div><div class="form-grid"><label>Tồn kho ban đầu<input name="initialQuantity" type="number" min="0" value="0"></label><label>Đã giữ<input name="initialReservedQuantity" type="number" min="0" value="0"></label></div>` : ''}`;
+        ${!r ? `<section class="product-variants-editor"><div class="variant-editor-title"><strong>Biến thể sản phẩm</strong><button type="button" class="primary-btn" data-variant-editor-action="add">+ Thêm variant</button></div><p class="form-hint">Mỗi variant có thể có một hoặc nhiều loại thuộc tính tùy ý.</p><div id="productVariantsEditor">${productVariantEditorRow()}</div></section>` : ''}`;
 
     case 'categories':
       return `
@@ -831,6 +922,25 @@ function closeModal() {
   document.getElementById('modalBackdrop').classList.remove('show');
 }
 
+document.getElementById('modalFormFields').addEventListener('click', e => {
+  const action = e.target.closest('[data-variant-editor-action]');
+  if (!action) return;
+
+  const editor = document.getElementById('productVariantsEditor');
+  if (!editor) return;
+
+  if (action.dataset.variantEditorAction === 'add') {
+    editor.insertAdjacentHTML('beforeend', productVariantEditorRow());
+  } else if (action.dataset.variantEditorAction === 'remove') {
+    const rows = editor.querySelectorAll('.product-variant-row');
+    if (rows.length > 1) action.closest('.product-variant-row').remove();
+  } else if (action.dataset.variantEditorAction === 'add-attribute') {
+    action.closest('.product-variant-row').querySelector('.variant-attributes').insertAdjacentHTML('beforeend', productVariantAttributeRow());
+  } else if (action.dataset.variantEditorAction === 'remove-attribute') {
+    action.closest('.variant-attribute-row').remove();
+  }
+});
+
 document.getElementById('entityForm').addEventListener('submit', async e => {
   e.preventDefault();
   const form = e.currentTarget;
@@ -842,10 +952,12 @@ document.getElementById('entityForm').addEventListener('submit', async e => {
   const m = MODULES[entity];
 
   let payload = {};
+  let productVariants = [];
 
   try {
     switch (entity) {
       case 'products':
+        productVariants = !isEdit ? readProductVariants(form) : [];
         payload = {
           name: g('name'), categoryId: Number(g('categoryId')), brandId: Number(g('brandId')),
           supplierId: g('supplierId') ? Number(g('supplierId')) : null,
@@ -853,7 +965,8 @@ document.getElementById('entityForm').addEventListener('submit', async e => {
           status: Number(g('status')), imageUrl: g('imageUrl') || null,
           gender: Number(g('gender')),
           ageFrom: g('ageFrom') ? Number(g('ageFrom')) : null,
-          ageTo: g('ageTo') ? Number(g('ageTo')) : null, isNew: !isEdit
+          ageTo: g('ageTo') ? Number(g('ageTo')) : null, isNew: !isEdit,
+          variants: productVariants.map(({ initialQuantity, initialReservedQuantity, ...variant }) => variant)
         };
         break;
       case 'categories':
@@ -866,7 +979,9 @@ document.getElementById('entityForm').addEventListener('submit', async e => {
         payload = { variantId: Number(g('variantId')), quantity: Number(g('quantity')), reservedQuantity: Number(g('reservedQuantity')) };
         break;
       case 'variants':
-        payload = { sku: g('sku'), color: g('color') || '', size: g('size') || '', price: Number(g('price')), costPrice: Number(g('costPrice')), weight: g('weight') ? Number(g('weight')) : null, imageUrl: g('variantImageUrl') || '', status: Number(g('variantStatus')) };
+        payload = { sku: g('sku'), price: Number(g('price')), costPrice: Number(g('costPrice')), weight: g('weight') ? Number(g('weight')) : null, imageUrl: g('variantImageUrl') || '', status: Number(g('variantStatus')), attributes: [...form.querySelectorAll('.variant-attribute-row')].map((row, index) => ({ attributeName: row.querySelector('[name="variantAttributeName"]').value.trim(), attributeValue: row.querySelector('[name="variantAttributeValue"]').value.trim(), displayOrder: index })).filter(attribute => attribute.attributeName && attribute.attributeValue) };
+        if (g('color')) payload.attributes.push({ attributeName: 'Màu sắc', attributeValue: g('color'), displayOrder: payload.attributes.length });
+        if (g('size')) payload.attributes.push({ attributeName: 'Kích thước', attributeValue: g('size'), displayOrder: payload.attributes.length });
         break;
       case 'suppliers':
         payload = { name: g('name'), phone: g('phone'), email: g('email'), address: g('address'), taxCode: g('taxCode'), contactPerson: g('contactPerson') || null, isActive: g('isActive') === 'true' };
@@ -890,30 +1005,21 @@ document.getElementById('entityForm').addEventListener('submit', async e => {
       ? (isEdit ? `Product/variants/${id}` : `Product/${form.dataset.productId}/variants`)
       : (isEdit ? `${m.endpoint}/${id}` : m.endpoint);
     const savedProduct = await api(url, { method, body: JSON.stringify(payload) });
-    if (entity === 'products' && !isEdit && savedProduct?.productId && g('variantSku')) {
-      const variant = await api(`Product/${savedProduct.productId}/variants`, {
-        method: 'POST',
-        body: JSON.stringify({
-          productId: savedProduct.productId,
-          sku: g('variantSku'),
-          color: '',
-          size: '',
-          price: Number(g('variantPrice')),
-          costPrice: Number(g('variantPrice')),
-          weight: null,
-          imageUrl: g('imageUrl') || null,
-          status: 1
-        })
-      });
-      if (variant?.variantId) {
-        await api('Inventory', {
-          method: 'POST',
-          body: JSON.stringify({
-            variantId: variant.variantId,
-            quantity: Number(g('initialQuantity') || 0),
-            reservedQuantity: Number(g('initialReservedQuantity') || 0)
-          })
-        });
+    if (entity === 'products' && !isEdit && savedProduct?.productId) {
+      const createdProduct = await api(`Product/${savedProduct.productId}`);
+      const createdVariants = createdProduct?.productVariants || [];
+      for (const variantInput of productVariants) {
+        const variant = createdVariants.find(item => item.sku === variantInput.sku);
+        if (variant?.variantId) {
+          await api('Inventory', {
+            method: 'POST',
+            body: JSON.stringify({
+              variantId: variant.variantId,
+              quantity: variantInput.initialQuantity,
+              reservedQuantity: variantInput.initialReservedQuantity
+            })
+          });
+        }
       }
     }
     closeModal();
@@ -1194,3 +1300,185 @@ document.getElementById('loginForm').addEventListener('submit', async e => {
 
 if (token) { showAdmin(); navigate(); loadReferenceData(); } else { document.getElementById('loginScreen').classList.add('show'); }
 }
+
+document.addEventListener('click', async e => {
+    const btn = e.target.closest('[data-add-reference]');
+    if (!btn) return;
+
+    const type = btn.dataset.addReference;
+
+    const name = prompt(
+        type === 'category'
+            ? 'Nhập tên danh mục mới:'
+            : 'Nhập tên thương hiệu mới:'
+    );
+
+    if (!name || !name.trim()) {
+        return;
+    }
+
+    try {
+        let result;
+
+        if (type === 'category') {
+            result = await api('Category', {
+                method: 'POST',
+                body: JSON.stringify({
+                    name: name.trim(),
+                    description: ""
+                })
+            });
+        } else {
+            result = await api('Brand', {
+                method: 'POST',
+                body: JSON.stringify({
+                    name: name.trim(),
+                    description: ""
+                })
+            });
+        }
+
+        await loadRef();
+
+        const selectName =
+            type === 'category'
+                ? 'categoryId'
+                : 'brandId';
+
+        const select =
+            document.querySelector(
+                `#entityForm select[name="${selectName}"]`
+            );
+
+        if (select && result?.id) {
+            select.innerHTML =
+                type === 'category'
+                    ? ref.categories.map(c =>
+                        `<option value="${c.id}">
+                            ${esc(c.name)}
+                        </option>`
+                    ).join('')
+                    : ref.brands.map(b =>
+                        `<option value="${b.id}">
+                            ${esc(b.name)}
+                        </option>`
+                    ).join('');
+
+            select.value = result.id;
+        }
+
+        toast(
+            type === 'category'
+                ? 'Thêm danh mục thành công!'
+                : 'Thêm thương hiệu thành công!',
+            'success'
+        );
+    }
+    catch (err) {
+        toast(err.message, 'error');
+    }
+});
+
+/* ============================================================
+   USER ROLE MANAGEMENT & ADMIN CHANGE PASSWORD
+   ============================================================ */
+
+window.openRoleModal = function(userId, currentRole) {
+  const roles = ['Admin', 'Manager', 'Staff', 'Customer'];
+  const roleLabels = { Admin: 'Admin (Quản trị hệ thống)', Manager: 'Manager (Quản lý cửa hàng)', Staff: 'Staff (Nhân viên cửa hàng)', Customer: 'Customer (Khách hàng)' };
+  
+  const optionsHtml = roles.map(r => `<option value="${r}" ${r === currentRole ? 'selected' : ''}>${roleLabels[r]}</option>`).join('');
+
+  document.getElementById('modalTitle').textContent = 'Đổi vai trò người dùng';
+  document.getElementById('modalKicker').textContent = 'PHÂN QUYỀN';
+  document.getElementById('modalSubtitle').textContent = 'Chọn vai trò mới cho tài khoản này.';
+  document.getElementById('modalFormFields').innerHTML = `
+    <div class="form-group full">
+      <label>Vai trò mới *</label>
+      <select class="input-control" id="newRoleSelect">${optionsHtml}</select>
+    </div>
+  `;
+
+  document.getElementById('modalBackdrop').classList.add('show');
+
+  const form = document.getElementById('entityForm');
+  const onSubmit = async (e) => {
+    e.preventDefault();
+    const newRole = document.getElementById('newRoleSelect').value;
+    try {
+      await api('Auth/assign-role', {
+        method: 'POST',
+        body: JSON.stringify({ userId: userId, role: newRole })
+      });
+      document.getElementById('modalBackdrop').classList.remove('show');
+      toast('Cập nhật vai trò người dùng thành công!', 'success');
+      renderModule('users');
+    } catch (err) {
+      toast(err.message, 'error');
+    } finally {
+      form.removeEventListener('submit', onSubmit);
+    }
+  };
+  form.addEventListener('submit', onSubmit, { once: true });
+};
+
+window.toggleUserStatus = function(userId) {
+  confirm('Xác nhận cập nhật', 'Bạn có chắc muốn thay đổi trạng thái kích hoạt của tài khoản này?', async () => {
+    try {
+      await api(`Auth/users/${userId}/toggle-status`, { method: 'POST' });
+      toast('Cập nhật trạng thái tài khoản thành công!', 'success');
+      renderModule('users');
+    } catch (err) {
+      toast(err.message, 'error');
+    }
+  });
+};
+
+document.getElementById('adminChangePassBtn')?.addEventListener('click', () => {
+  document.getElementById('modalTitle').textContent = 'Đổi mật khẩu tài khoản';
+  document.getElementById('modalKicker').textContent = 'TÀI KHOẢN';
+  document.getElementById('modalSubtitle').textContent = 'Nhập mật khẩu hiện tại và mật khẩu mới.';
+  document.getElementById('modalFormFields').innerHTML = `
+    <div class="form-group full">
+      <label>Mật khẩu hiện tại *</label>
+      <input class="input-control" type="password" id="adminCurPass" required>
+    </div>
+    <div class="form-group full">
+      <label>Mật khẩu mới *</label>
+      <input class="input-control" type="password" id="adminNewPass" required minlength="6">
+    </div>
+    <div class="form-group full">
+      <label>Xác nhận mật khẩu mới *</label>
+      <input class="input-control" type="password" id="adminConfPass" required>
+    </div>
+  `;
+
+  document.getElementById('modalBackdrop').classList.add('show');
+
+  const form = document.getElementById('entityForm');
+  const onSubmit = async (e) => {
+    e.preventDefault();
+    const currentPassword = document.getElementById('adminCurPass').value;
+    const newPassword = document.getElementById('adminNewPass').value;
+    const confirmPassword = document.getElementById('adminConfPass').value;
+
+    if (newPassword !== confirmPassword) {
+      toast('Mật khẩu xác nhận không khớp.', 'error');
+      return;
+    }
+
+    try {
+      await api('Auth/change-password', {
+        method: 'POST',
+        body: JSON.stringify({ currentPassword, newPassword, confirmPassword })
+      });
+      document.getElementById('modalBackdrop').classList.remove('show');
+      toast('🔒 Đổi mật khẩu thành công!', 'success');
+    } catch (err) {
+      toast(err.message, 'error');
+    } finally {
+      form.removeEventListener('submit', onSubmit);
+    }
+  };
+  form.addEventListener('submit', onSubmit, { once: true });
+});

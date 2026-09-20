@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Text;
@@ -10,6 +10,9 @@ using ToyStoreManagement.Application.Interfaces.Services;
 using ToyStoreManagement.Domain.Entities;
 using ToyStore.Application.Interfaces.Repositories;
 
+using Microsoft.EntityFrameworkCore;
+using ToyStoreManagement.Infrastructure.Data;
+
 namespace ToyStoreManagement.Infrastructure.Services
 {
     public class OrderService : IOrderService
@@ -19,19 +22,22 @@ namespace ToyStoreManagement.Infrastructure.Services
         private readonly IGenericRepository<ProductVariant> _variantRepository;
         private readonly IGenericRepository<Shipping> _shippingRepository;
         private readonly IUnitOfWork _unitOfWork;
+        private readonly ApplicationDbContext _context;
 
         public OrderService(
             IOrderRepository orderRepository,
             IPaymentRepository paymentRepository,
             IGenericRepository<ProductVariant> variantRepository,
             IGenericRepository<Shipping> shippingRepository,
-            IUnitOfWork unitOfWork)
+            IUnitOfWork unitOfWork,
+            ApplicationDbContext context)
         {
             _orderRepository = orderRepository;
             _paymentRepository = paymentRepository;
             _variantRepository = variantRepository;
             _shippingRepository = shippingRepository;
             _unitOfWork = unitOfWork;
+            _context = context;
         }
 
         public async Task<IEnumerable<OrderDto>> GetAllAsync()
@@ -81,6 +87,15 @@ namespace ToyStoreManagement.Infrastructure.Services
                 if (variant == null)
                     throw new Exception(
                         $"Không tìm thấy biến thể sản phẩm ID {detail.VariantId}.");
+
+                var inventory = await _context.Inventories
+                    .FirstOrDefaultAsync(i => i.VariantId == detail.VariantId);
+
+                if (inventory != null && inventory.Quantity < detail.Quantity)
+                {
+                    throw new Exception(
+                        $"Sản phẩm (SKU: {variant.SKU}) không đủ số lượng tồn kho. Hiện chỉ còn {inventory.Quantity} sản phẩm.");
+                }
             }
 
             var order = new Order
@@ -116,6 +131,28 @@ namespace ToyStoreManagement.Infrastructure.Services
 
                 order.OrderDetails.Add(detail);
                 subtotal += totalAmount;
+
+                // Trừ số lượng tồn kho
+                var inventory = await _context.Inventories
+                    .FirstOrDefaultAsync(i => i.VariantId == detailDto.VariantId);
+                
+                if (inventory != null)
+                {
+                    inventory.Quantity -= detailDto.Quantity;
+                    if (inventory.Quantity < 0) inventory.Quantity = 0;
+                    inventory.UpdatedAt = DateTime.UtcNow;
+                }
+                else
+                {
+                    // Nếu sản phẩm chưa từng khởi tạo bảng tồn kho, tự động tạo bản ghi tồn kho
+                    _context.Inventories.Add(new Inventory
+                    {
+                        VariantId = detailDto.VariantId,
+                        Quantity = 0,
+                        ReservedQuantity = 0,
+                        UpdatedAt = DateTime.UtcNow
+                    });
+                }
             }
 
             order.Subtotal = subtotal;
@@ -126,6 +163,22 @@ namespace ToyStoreManagement.Infrastructure.Services
                 + order.ShippingFee;
 
             await _orderRepository.AddAsync(order);
+            await _unitOfWork.SaveChangesAsync();
+
+            // Ghi nhận nhật ký xuất kho
+            foreach (var detailDto in dto.OrderDetails)
+            {
+                _context.InventoryTransactions.Add(new InventoryTransaction
+                {
+                    VariantId = detailDto.VariantId,
+                    TransactionType = 2, // 2: Bán hàng / Xuất kho
+                    Quantity = -detailDto.Quantity,
+                    ReferenceType = "Order",
+                    ReferenceId = order.OrderId,
+                    Note = $"Xuất kho bán hàng cho đơn {order.OrderCode}",
+                    CreatedAt = DateTime.UtcNow
+                });
+            }
             await _unitOfWork.SaveChangesAsync();
 
             var result = await _orderRepository
@@ -144,22 +197,20 @@ namespace ToyStoreManagement.Infrastructure.Services
             if (order == null)
                 return null;
 
-            if (dto.DiscountAmount < 0)
-                throw new Exception(
-                    "Số tiền giảm giá không hợp lệ.");
+            if (dto.DiscountAmount.HasValue && dto.DiscountAmount < 0)
+                throw new Exception("Số tiền giảm giá không hợp lệ.");
 
-            if (dto.ShippingFee < 0)
-                throw new Exception(
-                    "Phí vận chuyển không hợp lệ.");
+            if (dto.ShippingFee.HasValue && dto.ShippingFee < 0)
+                throw new Exception("Phí vận chuyển không hợp lệ.");
 
-            if (dto.DiscountAmount > order.Subtotal)
-                throw new Exception(
-                    "Số tiền giảm giá không được lớn hơn tổng tiền sản phẩm.");
+            if (dto.DiscountAmount.HasValue && dto.DiscountAmount > order.Subtotal)
+                throw new Exception("Số tiền giảm giá không được lớn hơn tổng tiền sản phẩm.");
 
+            int oldStatus = order.Status;
             order.Status = dto.Status;
-            order.DiscountAmount = dto.DiscountAmount;
-            order.ShippingFee = dto.ShippingFee;
-            order.Note = dto.Note;
+            if (dto.DiscountAmount.HasValue) order.DiscountAmount = dto.DiscountAmount.Value;
+            if (dto.ShippingFee.HasValue) order.ShippingFee = dto.ShippingFee.Value;
+            if (dto.Note != null) order.Note = dto.Note;
 
             order.TotalAmount =
                 order.Subtotal
@@ -167,6 +218,32 @@ namespace ToyStoreManagement.Infrastructure.Services
                 + order.ShippingFee;
 
             order.UpdatedAt = DateTime.UtcNow;
+
+            // Hoàn tồn kho nếu đơn bị Hủy (5) và trước đó chưa hủy
+            if (dto.Status == 5 && oldStatus != 5)
+            {
+                foreach (var detail in order.OrderDetails)
+                {
+                    var inventory = await _context.Inventories
+                        .FirstOrDefaultAsync(i => i.VariantId == detail.VariantId);
+                    if (inventory != null)
+                    {
+                        inventory.Quantity += detail.Quantity;
+                        inventory.UpdatedAt = DateTime.UtcNow;
+
+                        _context.InventoryTransactions.Add(new InventoryTransaction
+                        {
+                            VariantId = detail.VariantId,
+                            TransactionType = 1, // 1: Nhập kho / Hoàn trả
+                            Quantity = detail.Quantity,
+                            ReferenceType = "OrderCancel",
+                            ReferenceId = order.OrderId,
+                            Note = $"Hoàn tồn kho do hủy đơn hàng #{order.OrderCode}",
+                            CreatedAt = DateTime.UtcNow
+                        });
+                    }
+                }
+            }
 
             _orderRepository.Update(order);
             await _unitOfWork.SaveChangesAsync();

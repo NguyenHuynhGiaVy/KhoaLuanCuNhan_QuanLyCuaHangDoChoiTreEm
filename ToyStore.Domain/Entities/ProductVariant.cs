@@ -8,16 +8,12 @@ namespace ToyStoreManagement.Domain.Entities
         public ProductVariant()
         {
             ImportReceiptDetails = new HashSet<ImportReceiptDetail>();
-
             InventoryTransactions = new HashSet<InventoryTransaction>();
-
             OrderDetails = new HashSet<OrderDetail>();
-
             PromotionProducts = new HashSet<PromotionProduct>();
-
             ProductReviews = new HashSet<ProductReview>();
-
             ReturnRequestDetails = new HashSet<ReturnRequestDetail>();
+            VariantAttributes = new HashSet<ProductVariantAttribute>();
         }
 
         public int VariantId { get; set; }
@@ -26,9 +22,9 @@ namespace ToyStoreManagement.Domain.Entities
 
         public string SKU { get; set; }
 
-        public string Color { get; set; }
+        public string Color { get; set; } = string.Empty;
 
-        public string Size { get; set; }
+        public string Size { get; set; } = string.Empty;
 
         public decimal Price { get; set; }
 
@@ -46,6 +42,8 @@ namespace ToyStoreManagement.Domain.Entities
 
         // Navigation
         public virtual Product Product { get; set; }
+
+        public virtual ICollection<ProductVariantAttribute> VariantAttributes { get; set; }
 
         public virtual ICollection<ImportReceiptDetail> ImportReceiptDetails { get; set; }
 

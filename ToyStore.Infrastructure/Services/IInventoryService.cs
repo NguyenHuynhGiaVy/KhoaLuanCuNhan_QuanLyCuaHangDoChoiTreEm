@@ -17,6 +17,8 @@ namespace ToyStoreManagement.Application.Interfaces.Services
 
         Task<InventoryDto> CreateAsync(CreateInventoryDto dto);
 
+        Task<bool> DeleteAsync(int inventoryId);
+
         Task<InventoryDto?> UpdateAsync(
             int inventoryId,
             UpdateInventoryDto dto);

@@ -1,4 +1,4 @@
-﻿using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.Mvc;
 
 using Microsoft.AspNetCore.Authorization;
 using System;
@@ -67,7 +67,7 @@ namespace ToyStoreManagement.API.Controllers
 
         // POST: api/Order
         [HttpPost]
-        [Authorize(Policy = "StaffAccess")]
+        [AllowAnonymous]
         public async Task<IActionResult> Create(
             [FromBody] CreateOrderDto dto)
         {
@@ -80,7 +80,8 @@ namespace ToyStoreManagement.API.Controllers
             }
             catch (Exception ex)
             {
-                return BadRequest(ex.Message);
+                var msg = ex.InnerException != null ? ex.InnerException.Message : ex.Message;
+                return BadRequest(msg);
             }
         }
 

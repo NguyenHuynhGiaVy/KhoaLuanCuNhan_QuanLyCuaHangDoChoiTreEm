@@ -742,6 +742,24 @@ input, select, textarea { outline: none; }
 .order-step.active .step-dot { background: var(--ink); color: white; }
 .step-label { font-size: 10px; color: var(--muted); margin-top: 5px; }
 
+/* ===== PRODUCT VARIANT EDITOR ===== */
+.product-variants-editor { border-top: 1px solid var(--line); margin-top: 20px; padding-top: 18px; }
+.variant-editor-title, .variant-editor-heading { display: flex; align-items: center; gap: 8px; }
+.variant-editor-title { justify-content: space-between; margin-bottom: 4px; }
+.variant-editor-title strong, .variant-editor-heading strong { font: 600 14px 'Space Grotesk'; }
+.form-hint { color: var(--muted); font-size: 12px; margin: 0 0 12px; }
+.product-variant-row { border: 1px solid var(--line); border-radius: 8px; padding: 14px; margin-bottom: 12px; background: #fffdf9; }
+.variant-editor-heading { margin: 4px 0 8px; }
+.variant-editor-heading strong { flex: 1; }
+.variant-attribute-row { display: grid; grid-template-columns: 1fr 1fr auto; gap: 8px; align-items: start; margin-bottom: 8px; }
+.variant-attribute-row input { margin-top: 0 !important; }
+.variant-attribute-row .icon-btn { margin-top: 2px; }
+
+@media (max-width: 520px) {
+  .form-grid, .variant-attribute-row { grid-template-columns: 1fr; }
+  .variant-attribute-row .icon-btn { justify-self: end; }
+}
+
 /* ===== RESPONSIVE ===== */
 @media (max-width: 1100px) {
   :root { --sidebar-w: 220px; }

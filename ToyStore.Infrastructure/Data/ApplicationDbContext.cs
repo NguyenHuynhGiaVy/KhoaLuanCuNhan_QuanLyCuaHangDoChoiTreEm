@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Text;
@@ -26,6 +26,8 @@ namespace ToyStoreManagement.Infrastructure.Data
         public DbSet<Product> Products { get; set; }
 
         public DbSet<ProductVariant> ProductVariants { get; set; }
+
+        public DbSet<ProductVariantAttribute> ProductVariantAttributes { get; set; }
 
         public DbSet<Supplier> Suppliers { get; set; }
 
@@ -70,6 +72,16 @@ namespace ToyStoreManagement.Infrastructure.Data
         protected override void OnModelCreating(ModelBuilder modelBuilder)
         {
             base.OnModelCreating(modelBuilder);
+
+            modelBuilder.Entity<InventoryTransaction>()
+                .HasOne(x => x.ProductVariant)
+                .WithMany(x => x.InventoryTransactions)
+                .HasForeignKey(x => x.VariantId);
+
+            modelBuilder.Entity<Inventory>()
+                .HasOne(x => x.ProductVariant)
+                .WithOne(x => x.Inventory)
+                .HasForeignKey<Inventory>(x => x.VariantId);
 
             modelBuilder.ApplyConfigurationsFromAssembly(
                 typeof(ApplicationDbContext).Assembly);

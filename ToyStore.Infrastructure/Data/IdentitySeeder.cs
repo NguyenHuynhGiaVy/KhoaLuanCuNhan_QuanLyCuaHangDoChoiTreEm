@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Text;
@@ -15,16 +15,10 @@ namespace ToyStoreManagement.Infrastructure.Data
             UserManager<ApplicationUser> userManager)
         {
             var email = Environment.GetEnvironmentVariable(
-                "TOYSTORE_ADMIN_EMAIL");
+                "TOYSTORE_ADMIN_EMAIL") ?? "admin@toystore.vn";
 
             var password = Environment.GetEnvironmentVariable(
-                "TOYSTORE_ADMIN_PASSWORD");
-
-            if (string.IsNullOrWhiteSpace(email)
-                || string.IsNullOrWhiteSpace(password))
-            {
-                return;
-            }
+                "TOYSTORE_ADMIN_PASSWORD") ?? "Admin@123";
 
             var existingUser = await userManager.FindByEmailAsync(email);
 

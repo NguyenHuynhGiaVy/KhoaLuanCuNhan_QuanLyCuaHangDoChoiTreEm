@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Text;
@@ -11,6 +11,8 @@ using ToyStoreManagement.Application.DTOs.Product;
 using ToyStoreManagement.Application.Interfaces;
 using ToyStoreManagement.Application.Interfaces.Repositories;
 using ToyStoreManagement.Application.Interfaces.Services;
+using Microsoft.EntityFrameworkCore;
+using ToyStoreManagement.Infrastructure.Data;
 
 
 namespace ToyStoreManagement.Infrastructure.Services
@@ -23,15 +25,18 @@ namespace ToyStoreManagement.Infrastructure.Services
             _variantRepository;
 
         private readonly IUnitOfWork _unitOfWork;
+        private readonly ApplicationDbContext _context;
 
         public ProductService(
-            IProductRepository productRepository,
-            IGenericRepository<ProductVariant> variantRepository,
-            IUnitOfWork unitOfWork)
+    IProductRepository productRepository,
+    IGenericRepository<ProductVariant> variantRepository,
+    IUnitOfWork unitOfWork,
+    ApplicationDbContext context)
         {
             _productRepository = productRepository;
             _variantRepository = variantRepository;
             _unitOfWork = unitOfWork;
+            _context = context;
         }
 
         // ==========================================
@@ -110,7 +115,44 @@ namespace ToyStoreManagement.Infrastructure.Services
             await _unitOfWork
                 .SaveChangesAsync();
 
-            return MapToDto(product);
+            if (dto.Variants.Count > 0)
+            {
+                foreach (var variantDto in dto.Variants)
+                {
+                    var existsSku = await _variantRepository.AnyAsync(v => v.SKU == variantDto.SKU);
+                    if (existsSku)
+                    {
+                        throw new InvalidOperationException($"Mã SKU '{variantDto.SKU}' đã tồn tại trong hệ thống. Vui lòng nhập mã SKU khác.");
+                    }
+
+                    var variant = new ProductVariant
+                    {
+                        ProductId = product.ProductId,
+                        SKU = variantDto.SKU,
+                        Color = GetAttributeValue(variantDto.Attributes, "Màu sắc", "Color"),
+                        Size = GetAttributeValue(variantDto.Attributes, "Kích thước", "Size"),
+                        Price = variantDto.Price,
+                        CostPrice = variantDto.CostPrice,
+                        Weight = variantDto.Weight,
+                        ImageUrl = variantDto.ImageUrl,
+                        Status = variantDto.Status,
+                        CreatedAt = DateTime.UtcNow,
+                        UpdatedAt = null,
+                        VariantAttributes = variantDto.Attributes.Select(attribute => new ProductVariantAttribute
+                        {
+                            AttributeName = attribute.AttributeName,
+                            AttributeValue = attribute.AttributeValue,
+                            DisplayOrder = attribute.DisplayOrder
+                        }).ToList()
+                    };
+
+                    await _variantRepository.AddAsync(variant);
+                }
+
+                await _unitOfWork.SaveChangesAsync();
+            }
+
+            return await GetByIdAsync(product.ProductId) ?? MapToDto(product);
         }
 
         // ==========================================
@@ -168,20 +210,85 @@ namespace ToyStoreManagement.Infrastructure.Services
         // DELETE PRODUCT
         // ==========================================
 
-        public async Task<bool> DeleteAsync(
-            int productId)
+        public async Task<bool> DeleteAsync(int productId)
         {
-            var product =
-                await _productRepository
-                    .GetProductWithDetailsAsync(productId);
+            var product = await _productRepository
+                .GetByIdAsync(productId);
 
             if (product == null)
                 return false;
 
-            _productRepository.Delete(product);
+            // Lấy toàn bộ Variant của sản phẩm
+            var variantIds = await _context.ProductVariants
+                .Where(x => x.ProductId == productId)
+                .Select(x => x.VariantId)
+                .ToListAsync();
 
-            await _unitOfWork
-                .SaveChangesAsync();
+            if (variantIds.Count > 0)
+            {
+                // Xóa đánh giá sản phẩm
+                var reviews = await _context.ProductReviews
+                    .Where(x =>
+                        x.ProductId == productId ||
+                        variantIds.Contains(x.VariantId))
+                    .ToListAsync();
+
+                _context.ProductReviews.RemoveRange(reviews);
+
+                // Xóa chi tiết yêu cầu trả hàng
+                var returnDetails = await _context.ReturnRequestDetails
+                    .Where(x => variantIds.Contains(x.VariantId))
+                    .ToListAsync();
+
+                _context.ReturnRequestDetails.RemoveRange(returnDetails);
+
+                // Xóa chi tiết phiếu nhập
+                var importDetails = await _context.ImportReceiptDetails
+                    .Where(x => variantIds.Contains(x.VariantId))
+                    .ToListAsync();
+
+                _context.ImportReceiptDetails.RemoveRange(importDetails);
+
+                // Xóa chi tiết đơn hàng
+                var orderDetails = await _context.OrderDetails
+                    .Where(x => variantIds.Contains(x.VariantId))
+                    .ToListAsync();
+
+                _context.OrderDetails.RemoveRange(orderDetails);
+
+                // Xóa sản phẩm khỏi chương trình khuyến mãi
+                var promotionProducts = await _context.PromotionProducts
+                    .Where(x => variantIds.Contains(x.VariantId))
+                    .ToListAsync();
+
+                _context.PromotionProducts.RemoveRange(promotionProducts);
+
+                // Xóa lịch sử biến động kho
+                var inventoryTransactions = await _context.InventoryTransactions
+                    .Where(x => variantIds.Contains(x.VariantId))
+                    .ToListAsync();
+
+                _context.InventoryTransactions.RemoveRange(inventoryTransactions);
+
+                // Xóa tồn kho
+                var inventories = await _context.Inventories
+                    .Where(x => variantIds.Contains(x.VariantId))
+                    .ToListAsync();
+
+                _context.Inventories.RemoveRange(inventories);
+
+                // Xóa toàn bộ Variant
+                var variants = await _context.ProductVariants
+                    .Where(x => variantIds.Contains(x.VariantId))
+                    .ToListAsync();
+
+                _context.ProductVariants.RemoveRange(variants);
+            }
+
+            // Cuối cùng xóa Product
+            _context.Products.Remove(product);
+
+            await _unitOfWork.SaveChangesAsync();
 
             return true;
         }
@@ -222,9 +329,9 @@ namespace ToyStoreManagement.Infrastructure.Services
 
                 SKU = dto.SKU,
 
-                Color = dto.Color,
+                Color = GetAttributeValue(dto.Attributes, "Màu sắc", "Color"),
 
-                Size = dto.Size,
+                Size = GetAttributeValue(dto.Attributes, "Kích thước", "Size"),
 
                 Price = dto.Price,
 
@@ -240,6 +347,13 @@ namespace ToyStoreManagement.Infrastructure.Services
 
                 UpdatedAt = null
             };
+
+            variant.VariantAttributes = dto.Attributes.Select(attribute => new ProductVariantAttribute
+            {
+                AttributeName = attribute.AttributeName,
+                AttributeValue = attribute.AttributeValue,
+                DisplayOrder = attribute.DisplayOrder
+            }).ToList();
 
             await _variantRepository
                 .AddAsync(variant);
@@ -280,9 +394,9 @@ namespace ToyStoreManagement.Infrastructure.Services
 
             variant.SKU = dto.SKU;
 
-            variant.Color = dto.Color;
+            variant.Color = GetAttributeValue(dto.Attributes, "Màu sắc", "Color");
 
-            variant.Size = dto.Size;
+            variant.Size = GetAttributeValue(dto.Attributes, "Kích thước", "Size");
 
             variant.Price = dto.Price;
 
@@ -293,6 +407,18 @@ namespace ToyStoreManagement.Infrastructure.Services
             variant.ImageUrl = dto.ImageUrl;
 
             variant.Status = dto.Status;
+
+            var oldAttributes = await _context.ProductVariantAttributes
+                .Where(attribute => attribute.VariantId == variantId)
+                .ToListAsync();
+            _context.ProductVariantAttributes.RemoveRange(oldAttributes);
+            variant.VariantAttributes = dto.Attributes.Select(attribute => new ProductVariantAttribute
+            {
+                VariantId = variantId,
+                AttributeName = attribute.AttributeName,
+                AttributeValue = attribute.AttributeValue,
+                DisplayOrder = attribute.DisplayOrder
+            }).ToList();
 
             variant.UpdatedAt = DateTime.UtcNow;
 
@@ -400,9 +526,22 @@ namespace ToyStoreManagement.Infrastructure.Services
 
                 SKU = variant.SKU,
 
-                Color = variant.Color,
+                Color = variant.VariantAttributes?
+                    .FirstOrDefault(x => x.AttributeName.Equals("Màu sắc", StringComparison.OrdinalIgnoreCase))?.AttributeValue
+                    ?? variant.VariantAttributes?.FirstOrDefault(x => x.AttributeName.Equals("Color", StringComparison.OrdinalIgnoreCase))?.AttributeValue,
 
-                Size = variant.Size,
+                Size = variant.VariantAttributes?
+                    .FirstOrDefault(x => x.AttributeName.Equals("Kích thước", StringComparison.OrdinalIgnoreCase))?.AttributeValue
+                    ?? variant.VariantAttributes?.FirstOrDefault(x => x.AttributeName.Equals("Size", StringComparison.OrdinalIgnoreCase))?.AttributeValue,
+
+                Attributes = variant.VariantAttributes?
+                    .OrderBy(x => x.DisplayOrder)
+                    .Select(x => new CreateProductVariantAttributeDto
+                    {
+                        AttributeName = x.AttributeName,
+                        AttributeValue = x.AttributeValue,
+                        DisplayOrder = x.DisplayOrder
+                    }).ToList() ?? new List<CreateProductVariantAttributeDto>(),
 
                 Price = variant.Price,
 
@@ -418,6 +557,16 @@ namespace ToyStoreManagement.Infrastructure.Services
 
                 UpdatedAt = variant.UpdatedAt
             };
+        }
+
+        private static string GetAttributeValue(
+            IEnumerable<CreateProductVariantAttributeDto> attributes,
+            params string[] names)
+        {
+            return attributes
+                .FirstOrDefault(attribute => names.Any(name =>
+                    attribute.AttributeName.Equals(name, StringComparison.OrdinalIgnoreCase)))
+                ?.AttributeValue ?? string.Empty;
         }
     }
 }

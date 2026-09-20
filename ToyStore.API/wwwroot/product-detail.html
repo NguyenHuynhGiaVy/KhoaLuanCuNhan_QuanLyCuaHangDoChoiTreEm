@@ -4,33 +4,31 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="theme-color" content="#fff9f0">
-  <title>ToyStore - Đồ chơi cho những ngày thật vui</title>
+  <title>Chi tiết sản phẩm - ToyStore</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Space+Grotesk:wght@500;600;700&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="/css/customer.css">
-  <link rel="stylesheet" href="/css/home.css">
-  <style>.customer-api-status{font-size:11px;font-weight:700;color:#9b6b18}.customer-api-status.online{color:#24724e}.customer-api-status.offline{color:#b44235}.home-products{max-width:1180px;margin:0 auto;padding:70px 28px}.home-products-head{display:flex;align-items:end;justify-content:space-between;margin-bottom:26px}.home-products-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:20px}.home-products-grid .product-card{background:#fff;border:1px solid #e7e9e3;border-radius:8px;overflow:hidden}.home-products-grid .product-img{aspect-ratio:1;background:#f4f0e7}.home-products-grid .product-img img{width:100%;height:100%;object-fit:cover}.home-products-grid .product-detail{padding:16px}.home-products-grid h3{margin:7px 0}.home-products-grid .add-cart{border:0;background:#173f35;color:#fff;padding:9px 12px;border-radius:6px}@media(max-width:800px){.home-products-grid{grid-template-columns:repeat(2,minmax(0,1fr))}}</style>
+  <link rel="stylesheet" href="/css/product-detail.css">
 </head>
 <body>
   <div class="announcement">Miễn phí giao hàng cho đơn từ 500.000đ <span>✦</span> Đổi trả trong 7 ngày</div>
   <header class="store-header">
     <div class="header-inner">
       <a class="store-logo" href="/customer.html"><span class="logo-mark">T</span><span>ToyStore<span class="logo-dot">.</span></span></a>
-      <nav class="store-nav" aria-label="Menu cửa hàng"><a href="/products.html">Sản phẩm</a><a href="#categories">Danh mục</a><a href="#about">Về ToyStore</a><a href="#contact">Liên hệ</a></nav>
+      <nav class="store-nav" aria-label="Menu cửa hàng"><a href="/products.html">Sản phẩm</a><a href="/customer.html#categories">Danh mục</a><a href="/customer.html#about">Về ToyStore</a><a href="/customer.html#contact">Liên hệ</a></nav>
       <div class="header-actions"><span class="customer-api-status" id="customerApiStatus">Đang kết nối API</span><button class="header-icon search-trigger" aria-label="Tìm kiếm">⌕</button><button class="header-icon" id="custAccountBtn" aria-label="Tài khoản">◎</button><button class="cart-button" id="custCartBtn" aria-label="Giỏ hàng"><span>♧</span><i id="cartCount">0</i></button><button class="mobile-menu" id="mobileMenu" aria-label="Mở menu">☰</button></div>
     </div>
-    <div class="mobile-nav" id="mobileNav"><a href="/products.html">Sản phẩm</a><a href="#categories">Danh mục</a><a href="#about">Về ToyStore</a><a href="#contact">Liên hệ</a></div>
+    <div class="mobile-nav" id="mobileNav"><a href="/products.html">Sản phẩm</a><a href="/customer.html#categories">Danh mục</a><a href="/customer.html#about">Về ToyStore</a><a href="/customer.html#contact">Liên hệ</a></div>
   </header>
 
-  <main>
-    <section class="hero" id="about"><div class="hero-copy"><p class="eyebrow">PLAY · LEARN · GROW</p><h1>Niềm vui<br><em>bắt đầu</em> từ đây.</h1><p class="hero-text">Những món đồ chơi được chọn để mỗi giờ chơi đều trở thành một chuyến phiêu lưu nhỏ.</p><a class="hero-button" href="/products.html">Khám phá ngay <span>→</span></a></div><div class="hero-scene"><div class="sun"></div><div class="scene-label">NEW<br>ARRIVALS</div><div class="toy-block block-one">✦</div><div class="toy-block block-two">●</div><div class="toy-block block-three">▲</div><div class="hero-tape">TOYSTORE 2026</div></div></section>
-    <section class="category-strip" id="categories"><div id="homeCategoryList"><div><span class="category-icon">◈</span><b>Đang tải danh mục...</b><small>Kết nối API để xem danh mục</small></div></div></section>
-    <section class="home-products"><div class="home-products-head"><div><p class="eyebrow">SẢN PHẨM MỚI NHẤT</p><h2>Tất cả sản phẩm yêu thích</h2></div><a class="hero-button" href="/products.html">Xem tất cả <span>→</span></a></div><div class="home-products-grid" id="homeProductGrid"><p>Đang tải sản phẩm...</p></div></section>
-    <section class="home-callout"><div><p class="eyebrow">KHÁM PHÁ BỘ SƯU TẬP</p><h2>Mỗi món đồ chơi<br><span>một chuyến phiêu lưu.</span></h2><p>Khám phá những sản phẩm được chọn riêng cho từng sở thích và độ tuổi.</p></div><a class="hero-button" href="/products.html">Xem tất cả sản phẩm <span>→</span></a></section>
-    <section class="promise" id="contact"><div><p class="eyebrow">CHỌN TOYSTORE</p><h2>Chơi vui hơn,<br><span>yên tâm hơn.</span></h2></div><div class="promise-list"><article><b>01</b><h3>Đồ chơi chọn lọc</h3><p>Chất lượng và an toàn luôn là ưu tiên đầu tiên.</p></article><article><b>02</b><h3>Giao hàng tận tâm</h3><p>Đóng gói cẩn thận, gửi niềm vui đến mọi nhà.</p></article><article><b>03</b><h3>Đổi trả dễ dàng</h3><p>Hỗ trợ nhanh chóng trong 7 ngày đầu tiên.</p></article></div></section>
+  <main class="detail-page">
+    <div class="detail-breadcrumb"><a href="/products.html">Sản phẩm</a><span>/</span><span id="detailCategory">Đồ chơi</span><span>/</span><strong id="detailBreadcrumbName">Đang tải...</strong></div>
+    <section class="detail-shell" id="productDetail"><div class="detail-loading"><span class="loader"></span><p>Đang mở sản phẩm...</p></div></section>
+    <section class="detail-info"><div><span class="info-icon">▣</span><div><strong>Đổi trả trong 7 ngày</strong><p>Hỗ trợ nhanh chóng nếu sản phẩm có lỗi.</p></div></div><div><span class="info-icon">⌁</span><div><strong>Giao hàng toàn quốc</strong><p>Miễn phí với đơn hàng từ 500.000đ.</p></div></div><div><span class="info-icon">✦</span><div><strong>Đồ chơi an toàn</strong><p>Sản phẩm được chọn lọc kỹ càng.</p></div></div></section>
+    <section class="related-section"><div class="section-heading"><div><span class="eyebrow">CÓ THỂ BẠN SẼ THÍCH</span><h2>Khám phá thêm</h2></div><a href="/products.html">Xem tất cả <span>→</span></a></div><div class="related-grid" id="relatedProducts"></div></section>
   </main>
-  <footer class="store-footer"><div class="footer-main"><div><a class="store-logo footer-logo" href="/customer.html"><span class="logo-mark">T</span><span>ToyStore<span class="logo-dot">.</span></span></a><p>Để tuổi thơ luôn đầy ắp những điều kỳ diệu.</p></div><div><h4>Khám phá</h4><a href="/products.html">Tất cả sản phẩm</a><a href="#categories">Danh mục đồ chơi</a><a href="#about">Câu chuyện ToyStore</a></div><div><h4>Hỗ trợ</h4><a href="#contact">Liên hệ với chúng tôi</a><a href="#">Chính sách giao hàng</a><a href="#">Đổi trả & bảo hành</a></div><div><h4>Ghé thăm</h4><p>Hotline: 0901 234 567</p><p>hello@toystore.vn</p><p>08:00 - 21:00 mỗi ngày</p></div></div><div class="footer-bottom"><span>© 2026 ToyStore Management</span><span>Made for little explorers <b>✦</b></span></div></footer>
+  <footer class="store-footer"><div class="footer-main"><div><a class="store-logo footer-logo" href="/customer.html"><span class="logo-mark">T</span><span>ToyStore<span class="logo-dot">.</span></span></a><p>Để tuổi thơ luôn đầy ắp những điều kỳ diệu.</p></div><div><h4>Khám phá</h4><a href="/products.html">Tất cả sản phẩm</a><a href="/customer.html#categories">Danh mục đồ chơi</a></div><div><h4>Hỗ trợ</h4><a href="/customer.html#contact">Liên hệ với chúng tôi</a><a href="#">Chính sách giao hàng</a></div><div><h4>Ghé thăm</h4><p>Hotline: 0901 234 567</p><p>hello@toystore.vn</p><p>08:00 - 21:00 mỗi ngày</p></div></div><div class="footer-bottom"><span>© 2026 ToyStore Management</span><span>Made for little explorers <b>✦</b></span></div></footer>
 
   <!-- CART DRAWER -->
   <div class="cart-drawer-overlay" id="cartDrawerOverlay">

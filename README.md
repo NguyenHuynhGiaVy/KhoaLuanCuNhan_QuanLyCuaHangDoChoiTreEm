@@ -1,303 +1,111 @@
-ToyStoreManagement
+# 🧸 ToyStoreManagement
 
-Hệ thống quản lý cửa hàng đồ chơi gồm Backend ASP.NET Core Web API,
-Frontend Website và cơ sở dữ liệu SQL Server.
+> **Hệ thống Quản lý Cửa hàng Đồ chơi Trẻ em (ToyStore Management System)**
+> Kiến trúc Đa tầng (Clean Architecture) với ASP.NET Core Web API 8, EF Core, SQL Server, JWT Authentication và Giao diện Web Vanilla HTML5/CSS3/JavaScript.
 
-1. Yêu cầu môi trường
+---
 
-Cài đặt:
+## 🛠 Công Nghệ Sử Dụng
 
-Visual Studio 2022
+- **Backend Framework**: C# / ASP.NET Core 8.0 Web API
+- **Database & ORM**: SQL Server, Entity Framework Core 8
+- **Xác thực & Phân quyền**: ASP.NET Core Identity, JWT (JSON Web Token)
+- **Frontend**: HTML5, CSS3 (Custom Responsive Styling), Vanilla JavaScript (ES6+)
+- **Công cụ phát triển**: Visual Studio 2022 / VS Code, Swagger / OpenAPI UI
 
-.NET SDK phù hợp với project
+---
 
-SQL Server
+## ✨ Tính Năng Nổi Bật
 
-SQL Server Management Studio (SSMS)
+### 🛍️ Dành Cho Khách Hàng (Customer Storefront)
+- **Khám phá sản phẩm**: Xem danh sách sản phẩm mới nhất, sản phẩm nổi bật, chi tiết sản phẩm với nhiều biến thể (SKU, thuộc tính, màu sắc, kích thước).
+- **Bộ lọc sản phẩm thông minh**: Lọc sản phẩm theo danh mục, thương hiệu, khoảng giá, độ tuổi (tháng/tuổi) và giới tính.
+- **Giỏ hàng trực quan (Cart Drawer)**: Slide-over Drawer giỏ hàng tiện lợi, tự động lưu giỏ hàng (`localStorage`), tính toán tạm tính, ưu đãi miễn phí giao hàng (đơn từ 500.000đ).
+- **Thanh toán đơn hàng (Checkout)**: Đặt hàng nhanh chóng, nhập thông tin giao hàng, áp dụng Voucher giảm giá và chọn phương thức thanh toán (COD / Chuyển khoản).
+- **Tài khoản cá nhân**: Đăng ký, đăng nhập, đổi mật khẩu bảo mật và quản lý thông tin cá nhân.
 
-Git
+### ⚙️ Dành Cho Quản Trị Viên & Nhân Viên (Admin & Staff Space)
+- **Tổng quan (Dashboard)**: Thống kê doanh thu theo ngày/tháng/năm (Chart.js), theo dõi tổng đơn hàng, sản phẩm đang kinh doanh và số lượng khách hàng.
+- **Quản lý hàng hóa**: Sản phẩm, biến thể sản phẩm (SKU, giá, thuộc tính), danh mục, thương hiệu, tồn kho realtime.
+- **Quản lý vận hành**: Đơn hàng (cập nhật trạng thái đơn hàng), nhà cung cấp, phiếu nhập kho.
+- **Marketing**: Quản lý các chương trình khuyến mãi và mã giảm giá (Voucher).
+- **Phân quyền người dùng (Role-Based Access Control)**:
+  - Phân quyền 4 cấp độ: `Admin` (Quản trị hệ thống), `Manager` (Quản lý cửa hàng), `Staff` (Nhân viên), `Customer` (Khách hàng).
+  - Giao diện Admin quản lý tài khoản: xem danh sách tài khoản, chuyển đổi vai trò (Role) và khóa/kích hoạt tài khoản.
+- **Bảo mật tài khoản Admin**: Chức năng đổi mật khẩu trực tiếp trên giao diện Admin.
 
-2. Clone project
+---
 
-Mở Terminal hoặc Git Bash:
+## 🚀 Hướng Dẫn Chạy Dự Án
 
-git clone <LINK_GITHUB_REPOSITORY>
+### Bước 1: Tạo Database SQL Server
+1. Mở **SQL Server Management Studio (SSMS)** hoặc **Azure Data Studio**.
+2. Kết nối vào SQL Server trên máy của bạn.
+3. Mở file SQL Script `ToyStoreManagement.sql` nằm ở thư mục gốc của project.
+4. Chạy **Execute (F5)** để khởi tạo Database `ToyStoreManagement` cùng dữ liệu mẫu.
 
-Sau đó mở solution bằng Visual Studio 2022.
+---
 
-3. Cấu trúc project
+### Bước 2: Cấu hình Connection String
+Mở file `ToyStore.API/appsettings.json` và cập nhật thông tin tên Server SQL trên máy của bạn:
 
-ToyStoreManagement
-│
-├── ToyStoreManagement.API
-├── ToyStoreManagement.Application
-├── ToyStoreManagement.Domain
-├── ToyStoreManagement.Infrastructure
-├── ToyStoreManagement.Web
-│
-└── Database
-    └── ToyStoreManagementDb.sql
-
-Trong đó:
-
-ToyStoreManagement.API: Backend Web API và Swagger.
-
-ToyStoreManagement.Application: DTO, Interface Repository,
-Interface Service.
-
-ToyStoreManagement.Domain: Entity và các thành phần Domain.
-
-ToyStoreManagement.Infrastructure: DbContext, Repository, Service,
-Configuration.
-
-ToyStoreManagement.Web: Frontend Website.
-
-Database/ToyStoreManagementDb.sql: Script tạo cơ sở dữ liệu.
-
-4. Cấu hình Database
-
-Bước 1: Mở SQL Server Management Studio
-
-Kết nối tới SQL Server trên máy.
-
-Bước 2: Chạy script Database
-
-Mở file:
-
-Database/ToyStoreManagementDb.sql
-
-Sau đó chạy toàn bộ script.
-
-Database cần tạo:
-
-ToyStoreManagementDb
-
-Bước 3: Kiểm tra Connection String
-
-Mở:
-
-ToyStoreManagement.API/appsettings.json
-
-Kiểm tra phần:
-
+```json
 "ConnectionStrings": {
-  "DefaultConnection": "Server=.;Database=ToyStoreManagementDb;Trusted_Connection=True;TrustServerCertificate=True;"
+  "DefaultConnection": "Data Source=YOUR_SERVER_NAME;Initial Catalog=ToyStoreManagement;Integrated Security=True;Persist Security Info=False;Pooling=False;MultipleActiveResultSets=True;Encrypt=True;TrustServerCertificate=True;"
 }
+```
 
-Nếu SQL Server trên máy sử dụng Server Name khác thì sửa Server= cho
-phù hợp.
+*Lưu ý: Thay `YOUR_SERVER_NAME` bằng tên SQL Server trên máy (ví dụ: `DESKTOP-ABC123\SQLEXPRESS` hoặc `.` hoặc `localhost`).*
 
-Ví dụ:
+---
 
-Server=localhost
+### Bước 3: Khởi Chạy Ứng Dụng
 
-hoặc:
+#### Cách 1: Chạy bằng Visual Studio 2022
+1. Mở file solution `ToyStoreManagement.sln`.
+2. Chuột phải vào project **ToyStore.API** → Chọn **Set as Startup Project**.
+3. Nhấn **F5** hoặc **Ctrl + F5** để khởi chạy.
 
-Server=.\SQLEXPRESS
+#### Cách 2: Chạy bằng .NET CLI (Terminal / Command Prompt)
+Mở Terminal tại thư mục gốc của dự án và chạy lệnh:
 
-Sau khi sửa connection string, lưu file.
+```bash
+dotnet run --project ToyStore.API/ToyStore.API.csproj
+```
 
-5. Chạy Backend API
+---
 
-Trong Visual Studio:
+## 🌐 Các Đường Dẫn Truy Cập Web
 
-Chọn project:
+Sau khi ứng dụng khởi chạy thành công (mặc định tại cổng `http://localhost:5225`):
 
-ToyStoreManagement.API
+| Trang Web | URL Truy Cập |
+| :--- | :--- |
+| 🛒 **Trang chủ Khách hàng** | [http://localhost:5225](http://localhost:5225) hoặc [http://localhost:5225/customer.html](http://localhost:5225/customer.html) |
+| 🧸 **Danh sách sản phẩm** | [http://localhost:5225/products.html](http://localhost:5225/products.html) |
+| ⚙️ **Quản trị Admin** | [http://localhost:5225/admin](http://localhost:5225/admin) hoặc [http://localhost:5225/index.html](http://localhost:5225/index.html) |
+| 📜 **Swagger API Docs** | [http://localhost:5225/swagger](http://localhost:5225/swagger) |
 
-Chọn profile:
+---
 
-https
+## ❗ Lưu Ý Khi Kiểm Tra Giao Diện
 
-Nhấn Run.
+- **Vui lòng truy cập qua đường dẫn HTTP (`http://localhost:5225/...`)**: Không double-click trực tiếp file `.html` từ ổ đĩa (giao thức `file://`) để tránh bị trình duyệt chặn các yêu cầu kết nối API (`fetch`).
+- Project đã tích hợp cơ chế **Smart API Fallback** tự động nhận diện và gửi request đến `http://localhost:5225/api/...`.
 
-Backend API chạy tại:
+---
+/index.html](http://localhost:5225/index.html) |
+| 📜 **Swagger API Docs** | [http://localhost:5225/swagger](http://localhost:5225/swagger) |
 
-https://localhost:7078
+---
 
-Swagger:
+## ❗ Lưu Ý Khi Kiểm Tra Giao Diện
 
-https://localhost:7078/swagger
+- **Vui lòng truy cập qua đường dẫn HTTP (`http://localhost:5225/...`)**: Không double-click trực tiếp file `.html` từ ổ đĩa (giao thức `file://`) để tránh bị trình duyệt chặn các yêu cầu kết nối API (`fetch`).
+- Project đã tích hợp cơ chế **Smart API Fallback** tự động nhận diện và gửi request đến `http://localhost:5225/api/...`.
 
-Swagger dùng để kiểm tra và test các API của hệ thống.
+---
 
-6. Chạy Frontend Website
+## 📄 Bản Quyền
 
-Chọn project:
-
-ToyStoreManagement.Web
-
-Để Frontend chạy đúng port của nhóm, chọn profile:
-
-http
-
-Sau đó nhấn Run.
-
-Frontend chạy tại:
-
-http://localhost:5225
-
-Trang khách hàng:
-
-http://localhost:5225/customer.html
-
-Trang quản trị:
-
-http://localhost:5225/admin.html
-
-Không chọn profile https nếu muốn sử dụng Frontend chính tại port
-5225.
-
-7. Cấu hình Frontend gọi API
-
-Frontend sử dụng Backend API tại:
-
-https://localhost:7078/api
-
-Kiểm tra file cấu hình/API URL trong Frontend và đảm bảo Base URL trỏ
-tới:
-
-https://localhost:7078/api
-
-Ví dụ:
-
-const API_BASE_URL = "https://localhost:7078/api";
-
-Frontend:
-
-http://localhost:5225
-
-gọi API:
-
-https://localhost:7078/api
-
-8. Thứ tự chạy hệ thống
-
-Mỗi thành viên sau khi clone project nên chạy theo thứ tự:
-
-1. Clone GitHub
-        ↓
-2. Mở Solution bằng Visual Studio 2022
-        ↓
-3. Chạy Database/ToyStoreManagementDb.sql
-        ↓
-4. Kiểm tra Connection String
-        ↓
-5. Chạy ToyStoreManagement.API
-        ↓
-6. API → https://localhost:7078
-        ↓
-7. Swagger → https://localhost:7078/swagger
-        ↓
-8. Chạy ToyStoreManagement.Web bằng profile http
-        ↓
-9. UI → http://localhost:5225
-
-9. Địa chỉ sử dụng
-
-Thành phần         Địa chỉ
-
-Frontend Website   http://localhost:5225
-Customer UI        http://localhost:5225/customer.html
-Admin UI           http://localhost:5225/admin.html
-Backend API        https://localhost:7078
-Swagger            https://localhost:7078/swagger
-Database           ToyStoreManagementDb
-
-10. Tài khoản test
-
-Nếu database script đã có tài khoản mẫu, sử dụng các tài khoản được cung
-cấp trong dữ liệu seed của database.
-
-Các role chính:
-
-Admin
-Manager
-Staff
-Customer
-
-Quyền truy cập được kiểm soát bằng JWT và Role Authorization.
-
-11. Lưu ý khi chạy lần đầu
-
-Lỗi port đã được sử dụng
-
-Nếu gặp:
-
-Failed to bind to address
-Address already in use
-
-Kiểm tra process đang sử dụng port.
-
-Ví dụ port 5225:
-
-netstat -ano | findstr :5225
-
-Ví dụ port 7078:
-
-netstat -ano | findstr :7078
-
-Sau đó dừng process tương ứng hoặc đóng instance Visual Studio/API đang
-chạy.
-
-Lỗi kết nối SQL Server
-
-Kiểm tra:
-
-SQL Server đang chạy.
-
-Database ToyStoreManagementDb đã được tạo.
-
-ConnectionStrings trong appsettings.json đúng.
-
-Tài khoản Windows/SQL Server có quyền truy cập database.
-
-Frontend không gọi được API
-
-Kiểm tra:
-
-Frontend: http://localhost:5225
-API:      https://localhost:7078
-
-và kiểm tra API Base URL trong JavaScript:
-
-const API_BASE_URL = "https://localhost:7078/api";
-
-Đồng thời đảm bảo Backend API đang chạy.
-
-12. Quy tắc khi làm việc nhóm
-
-Trước khi code:
-
-git pull
-
-Sau khi hoàn thành:
-
-git add .
-git commit -m "mô tả công việc"
-git push
-
-Không commit các file chứa thông tin cá nhân hoặc thông tin bảo mật.
-
-13. Tóm tắt nhanh
-
-DATABASE
-└── ToyStoreManagementDb
-        ↑
-        │
-BACKEND API
-└── https://localhost:7078
-        │
-        ├── /swagger
-        │
-        ↓
-FRONTEND WEB
-└── http://localhost:5225
-        │
-        ├── customer.html
-        └── admin.html
-
-Khi clone project về máy mới, chỉ cần:
-
-Clone → Chạy SQL Script → Kiểm tra Connection String
-→ Run API (https/7078) → Run Web (http/5225)
+© 2026 **ToyStore Management System**. All rights reserved.

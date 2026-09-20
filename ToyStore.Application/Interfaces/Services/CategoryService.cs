@@ -56,12 +56,22 @@ namespace ToyStore.Application.Services
             };
         }
 
-        public async Task<CategoryDto> CreateAsync(
-            CreateCategoryDto request)
+        public async Task<CategoryDto> CreateAsync(CreateCategoryDto request)
         {
+            var name = request.Name.Trim();
+
+            var exists = await _categoryRepository
+                .AnyAsync(x => x.Name.ToLower() == name.ToLower());
+
+            if (exists)
+            {
+                throw new InvalidOperationException(
+                    "Tên danh mục đã tồn tại.");
+            }
+
             var category = new Category
             {
-                Name = request.Name.Trim(),
+                Name = name,
                 Description = request.Description?.Trim(),
                 IsActive = true,
                 CreatedAt = DateTime.UtcNow
@@ -75,8 +85,7 @@ namespace ToyStore.Application.Services
                 Id = category.CategoryId,
                 Name = category.Name,
                 Description = category.Description,
-                IsActive = category.IsActive,
-                ProductCount = 0
+                IsActive = category.IsActive
             };
         }
 

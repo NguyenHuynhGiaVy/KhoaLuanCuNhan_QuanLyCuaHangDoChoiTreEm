@@ -19,9 +19,11 @@ namespace ToyStoreManagement.Infrastructure.Configurations
                 .IsUnique();
 
             builder.Property(x => x.Color)
+                .IsRequired()
                 .HasMaxLength(50);
 
             builder.Property(x => x.Size)
+                .IsRequired()
                 .HasMaxLength(50);
 
             builder.Property(x => x.Price)

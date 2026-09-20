@@ -1,4 +1,4 @@
-﻿using ToyStore.API.Middleware;
+using ToyStore.API.Middleware;
 using ToyStore.Application.Common;
 using Microsoft.EntityFrameworkCore;
 using ToyStoreManagement.Infrastructure.Data;
@@ -238,6 +238,16 @@ app.MapGet("/admin", () => Results.Redirect("/index.html"));
 
 using (var scope = app.Services.CreateScope())
 {
+    var dbContext = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+    try
+    {
+        await dbContext.Database.MigrateAsync();
+    }
+    catch (Exception ex)
+    {
+        Console.WriteLine($"[Database Migration] Warning during migration: {ex.Message}");
+    }
+
     var roleManager =
         scope.ServiceProvider
             .GetRequiredService<RoleManager<ApplicationRole>>();

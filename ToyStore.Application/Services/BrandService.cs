@@ -52,9 +52,20 @@ namespace ToyStore.Application.Services
 
         public async Task<BrandDto> CreateAsync(CreateBrandDto request)
         {
+            var name = request.Name.Trim();
+
+            var exists = await _brandRepository
+                .AnyAsync(x => x.Name.ToLower() == name.ToLower());
+
+            if (exists)
+            {
+                throw new InvalidOperationException(
+                    "Tên thương hiệu đã tồn tại.");
+            }
+
             var brand = new Brand
             {
-                Name = request.Name.Trim(),
+                Name = name,
                 Description = request.Description?.Trim(),
                 IsActive = true,
                 CreatedAt = DateTime.UtcNow
