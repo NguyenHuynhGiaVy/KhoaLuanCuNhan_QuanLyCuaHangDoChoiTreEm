@@ -94,7 +94,7 @@ namespace ToyStoreManagement.Infrastructure.Services
 
                 Gender = dto.Gender,
 
-                Status = dto.Status,
+                Status = 0,
 
                 IsFeatured = dto.IsFeatured,
 
@@ -186,8 +186,6 @@ namespace ToyStoreManagement.Infrastructure.Services
 
             product.Gender = dto.Gender;
 
-            product.Status = dto.Status;
-
             product.IsFeatured = dto.IsFeatured;
 
             product.BasePrice = dto.BasePrice;
@@ -203,7 +201,24 @@ namespace ToyStoreManagement.Infrastructure.Services
             await _unitOfWork
                 .SaveChangesAsync();
 
+            await SyncProductStatusAsync(product.ProductId);
+
             return true;
+        }
+
+        private async Task SyncProductStatusAsync(int productId)
+        {
+            var totalQuantity = await _context.Inventories
+                .Where(x => x.ProductVariant.ProductId == productId)
+                .SumAsync(x => (int?)x.Quantity) ?? 0;
+
+            var product = await _context.Products.FindAsync(productId);
+            if (product == null)
+                return;
+
+            product.Status = totalQuantity > 0 ? 1 : 0;
+            product.UpdatedAt = DateTime.UtcNow;
+            await _unitOfWork.SaveChangesAsync();
         }
 
         // ==========================================

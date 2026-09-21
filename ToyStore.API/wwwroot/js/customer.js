@@ -458,6 +458,11 @@ function getAuthUser() {
     }
 }
 
+function redirectByRole(role) {
+    const normalizedRole = String(role || 'Customer').trim().toLowerCase();
+    window.location.replace(normalizedRole === 'customer' ? '/customer.html' : '/index.html');
+}
+
 function openAuthModal() {
     updateAuthUI();
     document.getElementById('customerAuthModalBackdrop')?.classList.add('open');
@@ -518,8 +523,7 @@ async function handleCustomerLogin(e) {
             role: data.role
         }));
 
-        closeAuthModal();
-        showToast(`Chào mừng trở lại, ${data.fullName}!`);
+        redirectByRole(data.role);
     } catch (err) {
         if (errNode) errNode.textContent = err.message;
     }
@@ -752,7 +756,12 @@ document.getElementById('clearFilters')?.addEventListener('click', () => {
    START
    ========================================================= */
 updateCartCountBadge();
-checkApi();
-loadData();
-setInterval(loadData, 30000);
+const storedUser = getAuthUser();
+if (storedUser && String(storedUser.role || '').toLowerCase() !== 'customer') {
+    redirectByRole(storedUser.role);
+} else {
+    checkApi();
+    loadData();
+    setInterval(loadData, 30000);
+}
 

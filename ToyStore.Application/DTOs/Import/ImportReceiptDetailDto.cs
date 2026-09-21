@@ -20,6 +20,8 @@ namespace ToyStoreManagement.Application.DTOs.Import
 
         public int Quantity { get; set; }
 
+        public int ReceivedQuantity { get; set; }
+
         public decimal UnitCost { get; set; }
 
         public decimal TotalAmount { get; set; }

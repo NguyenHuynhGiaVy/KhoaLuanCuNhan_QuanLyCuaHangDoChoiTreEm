@@ -70,7 +70,7 @@ const MODULES = {
     desc: 'Quản lý phiếu nhập hàng từ nhà cung cấp.',
     symbol: '📦', endpoint: 'ImportReceipt',
     columns: ['Mã phiếu', 'Nhà cung cấp', 'Ngày nhập', 'Tổng tiền', 'Ghi chú'],
-    canAdd: true, canEdit: false, canDelete: true
+    canAdd: true, canEdit: true, canDelete: true
   },
   promotions: {
     title: 'Khuyến mãi', kicker: 'MARKETING',
@@ -104,6 +104,22 @@ const MODULES = {
 
 const ORDER_STATUS = ['Chờ xác nhận', 'Đã xác nhận', 'Đang xử lý', 'Đang giao', 'Hoàn tất', 'Đã hủy'];
 const DISCOUNT_TYPE = { 0: 'Phần trăm (%)', 1: 'Số tiền cố định (đ)' };
+
+function discountTypeLabel(value) {
+  const type = Number(value);
+  return DISCOUNT_TYPE[type] || `Loại giảm giá #${value}`;
+}
+
+function isPercentageDiscount(value) {
+  return Number(value) === 0;
+}
+
+function dateInputValue(date = new Date()) {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const day = String(date.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+}
 
 // ── UTILITIES ────────────────────────────────────────────────
 const esc = v => String(v ?? '').replace(/[&<>'"]/g, c =>
@@ -214,6 +230,11 @@ function doLogout() {
   location.reload();
 }
 
+function redirectByRole(role) {
+  const normalizedRole = String(role || 'Customer').trim().toLowerCase();
+  window.location.replace(normalizedRole === 'customer' ? '/customer.html' : '/index.html');
+}
+
 function showAdmin() {
   document.getElementById('loginScreen').classList.remove('show');
   document.querySelector('.app-shell').classList.add('show');
@@ -249,7 +270,7 @@ document.getElementById('loginForm').addEventListener('submit', async e => {
       currentUser = data;
       localStorage.setItem('toyStoreToken', token);
       localStorage.setItem('toyStoreUser', JSON.stringify(data));
-      showAdmin();
+      redirectByRole(data.role);
     } else {
       errEl.textContent = data.message || 'Đăng nhập thất bại. Vui lòng kiểm tra lại.';
     }
@@ -478,12 +499,15 @@ async function renderModule(key) {
   try {
     const data = await api(m.endpoint);
     let rows = data || [];
-    if (key === 'inventory') {
-      const products = await api('Product') || [];
+    let products = [];
+    if (key === 'inventory' || key === 'imports') {
+      products = await api('Product') || [];
       variantCatalog = products.flatMap(product => (product.productVariants || []).map(variant => ({
         ...variant,
         productName: product.name
       })));
+    }
+    if (key === 'inventory') {
       const inventoryByVariant = new Map(rows.map(item => [item.variantId, item]));
       rows = products.flatMap(product => (product.productVariants || []).map(variant => {
         const inventory = inventoryByVariant.get(variant.variantId);
@@ -531,7 +555,7 @@ function renderTable(key, data) {
       ` : '',
       key === 'products' ? `<button class="icon-btn" title="Quản lý biến thể" data-action="variants" data-key="${key}" data-idx="${idx}">⌘</button>` : '',
       m.canEdit ? `<button class="icon-btn" title="${r.isMissing ? 'Thiết lập tồn kho' : 'Cập nhật tồn kho'}" data-action="edit" data-key="${key}" data-idx="${idx}">${r.isMissing ? '+' : '✎'}</button>` : '',
-      m.canDelete ? `<button class="icon-btn del" title="Xóa" data-action="delete" data-key="${key}" data-idx="${idx}">🗑</button>` : ''
+      m.canDelete && !(key === 'inventory' && r.isMissing) ? `<button class="icon-btn del" title="Xóa" data-action="delete" data-key="${key}" data-idx="${idx}">🗑</button>` : ''
     ].join('');
     return `<tr>${cells.map((c, ci) => `<td>${ci === cells.length - 1 ? (key === 'users' ? c : pill(c)) : (typeof c === 'string' && c.startsWith('<span') ? c : esc(c))}</td>`).join('')}<td class="actions-cell">${actions}</td></tr>`;
   }).join('');
@@ -552,11 +576,11 @@ function getRowCells(key, r) {
     case 'orders':
       return [`#${r.id}`, r.customerName || 'Khách lẻ', fmtDate(r.orderDate), money(r.totalAmount), ORDER_STATUS[r.status] || '?'];
     case 'imports':
-      return [r.importReceiptId ? `#${r.importReceiptId}` : '—', r.supplierName || '—', fmtDate(r.importDate), money(r.totalAmount), r.note || '—'];
+      return [r.receiptCode || (r.importReceiptId ? `#${r.importReceiptId}` : '—'), r.supplierName || '—', fmtDate(r.importDate), money(r.totalAmount), r.note || '—'];
     case 'promotions':
-      return [r.name, DISCOUNT_TYPE[r.discountType] || '—', r.discountType === 0 ? `${r.discountValue}%` : money(r.discountValue), fmtDate(r.startDate) + ' – ' + fmtDate(r.endDate), r.isActive ? 'Đang hoạt động' : 'Tạm ngưng'];
+      return [r.name, discountTypeLabel(r.promotionType), isPercentageDiscount(r.promotionType) ? `${r.discountValue}%` : money(r.discountValue), fmtDate(r.startDate) + ' – ' + fmtDate(r.endDate), Number(r.status) === 1 ? 'Đang hoạt động' : `Tạm ngưng (${r.status ?? '—'})`];
     case 'vouchers':
-      return [r.code, r.name || '—', DISCOUNT_TYPE[r.discountType] || '—', r.discountType === 0 ? `${r.discountValue}%` : money(r.discountValue), fmtDate(r.expiryDate), r.isActive ? 'Đang hoạt động' : 'Hết hạn'];
+      return [r.code, r.name || '—', discountTypeLabel(r.discountType), isPercentageDiscount(r.discountType) ? `${r.discountValue}%` : money(r.discountValue), fmtDate(r.endDate), Number(r.status) === 1 ? 'Đang hoạt động' : `Tạm ngưng (${r.status ?? '—'})`];
     case 'customers':
       return [r.fullName || r.name || '—', r.email || '—', r.phone || '—', r.loyaltyTier || r.tier || 'Thường', r.totalOrders ?? 0];
     case 'users':
@@ -622,7 +646,7 @@ function getRecordId(key, r) {
 
 // ── MODAL ─────────────────────────────────────────────────────
 function openModal(entity, record) {
-  const isEdit = !!record;
+  const isEdit = !!record && !(entity === 'inventory' && record.isMissing);
   const titles = {
     products: 'Sản phẩm', categories: 'Danh mục', brands: 'Thương hiệu', inventory: 'Tồn kho',
     suppliers: 'Nhà cung cấp', orders: 'Đơn hàng', imports: 'Phiếu nhập kho',
@@ -647,6 +671,23 @@ function buildVariantOptions(selectedId) {
     const label = `${variant.productName} - ${variant.sku || `Variant #${variant.variantId}`}`;
     return `<option value="${variant.variantId}" ${String(selectedId) === String(variant.variantId) ? 'selected' : ''}>${esc(label)}</option>`;
   }).join('');
+}
+
+function importDetailRow(detail = {}) {
+  return `<div class="form-grid import-detail-row">
+    <label>Sản phẩm / SKU *<select name="detailVariantId" required>${buildVariantOptions(detail.variantId)}</select></label>
+    <label>Số lượng *<input name="detailQuantity" type="number" min="1" required value="${esc(detail.quantity ?? 1)}"></label>
+    <label>Giá nhập / đơn vị *<input name="detailUnitCost" type="number" min="0" step="0.01" required value="${esc(detail.unitCost ?? '')}"></label>
+    <button type="button" class="icon-btn del" data-import-detail-action="remove" title="Xóa sản phẩm">×</button>
+  </div>`;
+}
+
+function readImportDetails(form) {
+  return [...form.querySelectorAll('.import-detail-row')].map(row => ({
+    variantId: Number(row.querySelector('[name="detailVariantId"]').value),
+    quantity: Number(row.querySelector('[name="detailQuantity"]').value),
+    unitCost: Number(row.querySelector('[name="detailUnitCost"]').value)
+  }));
 }
 
 async function openVariantManager(product) {
@@ -704,8 +745,8 @@ function productVariantAttributeRow(attribute = {}) {
 function productVariantEditorRow() {
   return `<div class="product-variant-row">
     <div class="form-grid"><label>SKU variant *<input name="variantSku" required placeholder="VD: TOY-001"></label><label>Giá variant *<input name="variantPrice" type="number" min="0" required placeholder="150000"></label></div>
-    <div class="form-grid"><label>Giá vốn *<input name="variantCostPrice" type="number" min="0" required placeholder="100000"></label><label>Link hình ảnh<input name="variantImageUrl" type="url" placeholder="https://..."></label></div>
-    <div class="form-grid"><label>Tồn kho ban đầu<input name="initialQuantity" type="number" min="0" value="0"></label><label>Đã giữ<input name="initialReservedQuantity" type="number" min="0" value="0"></label></div>
+    <div class="form-grid"><label>Giá vốn *<input name="variantCostPrice" type="number" min="0" required placeholder="100000"></label><label>Khối lượng<input name="variantWeight" type="number" min="0" step="0.01" placeholder="gram"></label></div>
+    <label>Link hình ảnh<input name="variantImageUrl" type="url" placeholder="https://..."></label>
     <div class="variant-editor-heading"><strong>Thuộc tính biến thể</strong><button type="button" class="ghost-btn" data-variant-editor-action="add-attribute">+ Thêm loại</button><button type="button" class="icon-btn del" data-variant-editor-action="remove" title="Xóa variant">×</button></div>
     <div class="variant-attributes">${productVariantAttributeRow()}</div>
   </div>`;
@@ -716,10 +757,9 @@ function readProductVariants(form) {
     sku: row.querySelector('[name="variantSku"]').value.trim(),
     price: Number(row.querySelector('[name="variantPrice"]').value),
     costPrice: Number(row.querySelector('[name="variantCostPrice"]').value),
+    weight: row.querySelector('[name="variantWeight"]').value ? Number(row.querySelector('[name="variantWeight"]').value) : null,
     imageUrl: row.querySelector('[name="variantImageUrl"]').value.trim() || null,
     status: 1,
-    initialQuantity: Number(row.querySelector('[name="initialQuantity"]').value || 0),
-    initialReservedQuantity: Number(row.querySelector('[name="initialReservedQuantity"]').value || 0),
     attributes: [...row.querySelectorAll('.variant-attribute-row')].map((attribute, index) => ({
       attributeName: attribute.querySelector('[name="variantAttributeName"]').value.trim(),
       attributeValue: attribute.querySelector('[name="variantAttributeValue"]').value.trim(),
@@ -794,11 +834,8 @@ function buildFormFields(entity, r) {
         </div>
         <div class="form-grid">
           <label>Giá bán (đ) *<input name="basePrice" type="number" min="0" step="1000" required placeholder="150000" value="${esc(v.basePrice??'')}"></label>
-          <label>Trạng thái<select name="status">
-            <option value="1" ${v.status==1||v.status==null?'selected':''}>Đang kinh doanh</option>
-            <option value="0" ${v.status==0?'selected':''}>Tạm ngưng</option>
-          </select></label>
         </div>
+        <label class="checkbox-label"><input name="isFeatured" type="checkbox" ${v.isFeatured ? 'checked' : ''}> Sản phẩm nổi bật</label>
         <label>Link hình ảnh (URL)<input name="imageUrl" type="url" placeholder="https://..." value="${esc(v.imageUrl||'')}"></label>
         <label>Mô tả sản phẩm *<textarea name="description" required rows="3" placeholder="Mô tả chi tiết sản phẩm...">${esc(v.description||'')}</textarea></label>
         ${!r ? `<section class="product-variants-editor"><div class="variant-editor-title"><strong>Biến thể sản phẩm</strong><button type="button" class="primary-btn" data-variant-editor-action="add">+ Thêm variant</button></div><p class="form-hint">Mỗi variant có thể có một hoặc nhiều loại thuộc tính tùy ý.</p><div id="productVariantsEditor">${productVariantEditorRow()}</div></section>` : ''}`;
@@ -812,8 +849,6 @@ function buildFormFields(entity, r) {
     case 'brands':
       return `
         <label>Tên thương hiệu *<input name="name" required placeholder="Ví dụ: LEGO" value="${esc(v.name||'')}"></label>
-        <label>Xuất xứ<input name="origin" placeholder="Ví dụ: Đan Mạch" value="${esc(v.origin||'')}"></label>
-        <label>Website thương hiệu<input name="website" type="url" placeholder="https://..." value="${esc(v.website||'')}"></label>
         <label>Mô tả<textarea name="description" rows="3" placeholder="Thông tin về thương hiệu...">${esc(v.description||'')}</textarea></label>
         ${activeField(v.isActive)}`;
 
@@ -835,7 +870,6 @@ function buildFormFields(entity, r) {
         <label>Địa chỉ *<input name="address" required placeholder="Số 1 đường ABC, Quận 1, TP.HCM" value="${esc(v.address||'')}"></label>
         <div class="form-grid">
           <label>Mã số thuế *<input name="taxCode" required placeholder="0123456789" value="${esc(v.taxCode||'')}"></label>
-          <label>Người liên hệ<input name="contactPerson" placeholder="Nguyễn Văn A" value="${esc(v.contactPerson||'')}"></label>
         </div>
         ${activeField(v.isActive)}`;
 
@@ -846,15 +880,26 @@ function buildFormFields(entity, r) {
             ${ORDER_STATUS.map((s, i) => `<option value="${i}" ${v.status==i?'selected':''}>${s}</option>`).join('')}
           </select>
         </label>
+        <div class="form-grid">
+          <label>Giảm giá (đ)<input name="discountAmount" type="number" min="0" step="1000" value="${esc(v.discountAmount ?? 0)}"></label>
+          <label>Phí vận chuyển (đ)<input name="shippingFee" type="number" min="0" step="1000" value="${esc(v.shippingFee ?? 0)}"></label>
+        </div>
         <label>Ghi chú<textarea name="note" rows="3" placeholder="Ghi chú cho đơn hàng...">${esc(v.note||'')}</textarea></label>`;
 
     case 'imports':
       return `
-        <label>Nhà cung cấp *<select name="supplierId" required>${supOpts}</select></label>
         <div class="form-grid">
-          <label>Ngày nhập *<input name="importDate" type="date" required value="${v.importDate ? v.importDate.slice(0,10) : new Date().toISOString().slice(0,10)}"></label>
-          <label>Tổng tiền (đ)<input name="totalAmount" type="number" min="0" step="1000" placeholder="0" value="${esc(v.totalAmount??'')}"></label>
+          <label>ReceiptCode / Mã phiếu *<input name="receiptCode" id="importReceiptCode" type="text" required maxlength="50" autocomplete="off" placeholder="PN-2026-001" value="${esc(v.receiptCode||'')}"></label>
+          <label>Mã nhân viên *<input name="employeeId" type="number" min="1" required value="${esc(v.employeeId||'')}"></label>
         </div>
+        <label>Nhà cung cấp *<select name="supplierId" required>${supOpts.replace('value=""', 'value="" disabled')}</select></label>
+        <div class="form-grid">
+          <label>Ngày nhập *<input name="importDate" type="date" required value="${v.importDate ? v.importDate.slice(0,10) : dateInputValue()}"></label>
+        </div>
+        <section class="import-details-editor">
+          <div class="variant-editor-title"><strong>Chi tiết hàng nhập *</strong><button type="button" class="primary-btn" data-import-detail-action="add">+ Thêm sản phẩm</button></div>
+          <div id="importDetailsEditor">${(v.importReceiptDetails || []).length ? v.importReceiptDetails.map(importDetailRow).join('') : importDetailRow()}</div>
+        </section>
         <label>Ghi chú<textarea name="note" rows="3" placeholder="Ghi chú phiếu nhập...">${esc(v.note||'')}</textarea></label>`;
 
     case 'promotions':
@@ -862,29 +907,31 @@ function buildFormFields(entity, r) {
         <label>Tên chương trình *<input name="name" required placeholder="Ví dụ: Khuyến mãi Tết 2026" value="${esc(v.name||'')}"></label>
         <label>Mô tả<textarea name="description" rows="2" placeholder="Mô tả chương trình khuyến mãi...">${esc(v.description||'')}</textarea></label>
         <div class="form-grid">
-          <label>Loại giảm giá *<select name="discountType" required>
-            <option value="0" ${v.discountType==0?'selected':''}>Phần trăm (%)</option>
-            <option value="1" ${v.discountType==1?'selected':''}>Số tiền cố định (đ)</option>
+          <label>Loại khuyến mãi *<select name="promotionType" required>
+            <option value="0" ${v.promotionType==0?'selected':''}>Phần trăm (%)</option>
+            <option value="1" ${v.promotionType==1?'selected':''}>Số tiền cố định (đ)</option>
           </select></label>
           <label>Giá trị giảm *<input name="discountValue" type="number" min="0" required placeholder="10" value="${esc(v.discountValue??'')}"></label>
         </div>
         <div class="form-grid">
-          <label>Ngày bắt đầu *<input name="startDate" type="date" required value="${v.startDate ? v.startDate.slice(0,10) : ''}"></label>
-          <label>Ngày kết thúc *<input name="endDate" type="date" required value="${v.endDate ? v.endDate.slice(0,10) : ''}"></label>
+          <label>Ngày bắt đầu *<input name="startDate" type="date" required value="${v.startDate ? v.startDate.slice(0,10) : dateInputValue()}"></label>
+          <label>Ngày kết thúc *<input name="endDate" type="date" required value="${v.endDate ? v.endDate.slice(0,10) : dateInputValue(new Date(Date.now() + 86400000))}"></label>
         </div>
         <div class="form-grid">
-          <label>Giảm tối đa (đ)<input name="maxDiscountAmount" type="number" min="0" step="1000" placeholder="Không giới hạn" value="${esc(v.maxDiscountAmount??'')}"></label>
-          <label>Đơn tối thiểu (đ)<input name="minOrderAmount" type="number" min="0" step="1000" placeholder="0" value="${esc(v.minOrderAmount??'')}"></label>
+          <label>Giảm tối đa (đ)<input name="maximumDiscount" type="number" min="0" step="1000" placeholder="Không giới hạn" value="${esc(v.maximumDiscount??'')}"></label>
+          <label>Độ ưu tiên<input name="priority" type="number" min="0" value="${esc(v.priority??0)}"></label>
         </div>
-        ${activeField(v.isActive)}`;
+        <div class="form-grid">
+          <label>Trạng thái<select name="status"><option value="1" ${v.status==1||v.status==null?'selected':''}>Đang hoạt động</option><option value="0" ${v.status==0?'selected':''}>Tạm ngưng</option></select></label>
+          <label class="checkbox-label"><input name="canCombine" type="checkbox" ${v.canCombine ? 'checked' : ''}> Cho phép kết hợp</label>
+        </div>`;
 
     case 'vouchers':
       return `
         <div class="form-grid">
-          <label>Mã voucher *<input name="code" required placeholder="TOYSTORE2026" style="text-transform:uppercase" value="${esc(v.code||'')}"></label>
+          <label>Mã voucher *<input name="code" required ${r ? 'readonly' : ''} placeholder="TOYSTORE2026" style="text-transform:uppercase" value="${esc(v.code||'')}"></label>
           <label>Tên voucher *<input name="name" required placeholder="Voucher giảm 50%" value="${esc(v.name||'')}"></label>
         </div>
-        <label>Mô tả<textarea name="description" rows="2" placeholder="Mô tả voucher...">${esc(v.description||'')}</textarea></label>
         <div class="form-grid">
           <label>Loại giảm giá *<select name="discountType" required>
             <option value="0" ${v.discountType==0?'selected':''}>Phần trăm (%)</option>
@@ -893,18 +940,18 @@ function buildFormFields(entity, r) {
           <label>Giá trị giảm *<input name="discountValue" type="number" min="0" required placeholder="10" value="${esc(v.discountValue??'')}"></label>
         </div>
         <div class="form-grid">
-          <label>Giảm tối đa (đ)<input name="maxDiscountAmount" type="number" min="0" step="1000" placeholder="Không giới hạn" value="${esc(v.maxDiscountAmount??'')}"></label>
-          <label>Đơn tối thiểu (đ)<input name="minOrderAmount" type="number" min="0" step="1000" placeholder="0" value="${esc(v.minOrderAmount??'')}"></label>
+          <label>Giảm tối đa (đ)<input name="maximumDiscount" type="number" min="0" step="1000" placeholder="Không giới hạn" value="${esc(v.maximumDiscount??'')}"></label>
+          <label>Đơn tối thiểu (đ)<input name="minimumOrderValue" type="number" min="0" step="1000" placeholder="0" value="${esc(v.minimumOrderValue??'')}"></label>
         </div>
         <div class="form-grid">
-          <label>Ngày bắt đầu<input name="startDate" type="date" value="${v.startDate ? v.startDate.slice(0,10) : ''}"></label>
-          <label>Hạn sử dụng *<input name="expiryDate" type="date" required value="${v.expiryDate ? v.expiryDate.slice(0,10) : ''}"></label>
+          <label>Ngày bắt đầu *<input name="startDate" type="date" required value="${v.startDate ? v.startDate.slice(0,10) : dateInputValue()}"></label>
+          <label>Hạn sử dụng *<input name="endDate" type="date" required value="${v.endDate ? v.endDate.slice(0,10) : dateInputValue(new Date(Date.now() + 86400000))}"></label>
         </div>
         <div class="form-grid">
-          <label>Số lượng phát hành<input name="totalQuantity" type="number" min="1" placeholder="Không giới hạn" value="${esc(v.totalQuantity??'')}"></label>
-          <label>Giới hạn dùng/người<input name="usageLimitPerUser" type="number" min="1" placeholder="1" value="${esc(v.usageLimitPerUser??'')}"></label>
+          <label>Giới hạn sử dụng *<input name="usageLimit" type="number" min="1" required value="${esc(v.usageLimit??1)}"></label>
+          <label>Giới hạn dùng/người<input name="usageLimitPerCustomer" type="number" min="1" placeholder="Không giới hạn" value="${esc(v.usageLimitPerCustomer??'')}"></label>
         </div>
-        ${activeField(v.isActive)}`;
+        <label>Trạng thái<select name="status"><option value="1" ${v.status==1||v.status==null?'selected':''}>Đang hoạt động</option><option value="0" ${v.status==0?'selected':''}>Tạm ngưng</option></select></label>`;
 
     default:
       return '<p style="color:var(--muted)">Không có form cho module này.</p>';
@@ -923,6 +970,16 @@ function closeModal() {
 }
 
 document.getElementById('modalFormFields').addEventListener('click', e => {
+  const importAction = e.target.closest('[data-import-detail-action]');
+  if (importAction) {
+    const editor = document.getElementById('importDetailsEditor');
+    if (importAction.dataset.importDetailAction === 'add') {
+      editor.insertAdjacentHTML('beforeend', importDetailRow());
+    } else if (editor.querySelectorAll('.import-detail-row').length > 1) {
+      importAction.closest('.import-detail-row').remove();
+    }
+    return;
+  }
   const action = e.target.closest('[data-variant-editor-action]');
   if (!action) return;
 
@@ -962,18 +1019,19 @@ document.getElementById('entityForm').addEventListener('submit', async e => {
           name: g('name'), categoryId: Number(g('categoryId')), brandId: Number(g('brandId')),
           supplierId: g('supplierId') ? Number(g('supplierId')) : null,
           basePrice: Number(g('basePrice')), description: g('description'),
-          status: Number(g('status')), imageUrl: g('imageUrl') || null,
+          imageUrl: g('imageUrl') || null,
           gender: Number(g('gender')),
           ageFrom: g('ageFrom') ? Number(g('ageFrom')) : null,
           ageTo: g('ageTo') ? Number(g('ageTo')) : null, isNew: !isEdit,
-          variants: productVariants.map(({ initialQuantity, initialReservedQuantity, ...variant }) => variant)
+          isFeatured: form.elements.isFeatured.checked,
+          variants: productVariants
         };
         break;
       case 'categories':
         payload = { name: g('name'), description: g('description') || null, isActive: g('isActive') === 'true' };
         break;
       case 'brands':
-        payload = { name: g('name'), description: g('description') || null, origin: g('origin') || null, website: g('website') || null, isActive: g('isActive') === 'true' };
+        payload = { name: g('name'), description: g('description') || null, isActive: g('isActive') === 'true' };
         break;
       case 'inventory':
         payload = { variantId: Number(g('variantId')), quantity: Number(g('quantity')), reservedQuantity: Number(g('reservedQuantity')) };
@@ -984,19 +1042,28 @@ document.getElementById('entityForm').addEventListener('submit', async e => {
         if (g('size')) payload.attributes.push({ attributeName: 'Kích thước', attributeValue: g('size'), displayOrder: payload.attributes.length });
         break;
       case 'suppliers':
-        payload = { name: g('name'), phone: g('phone'), email: g('email'), address: g('address'), taxCode: g('taxCode'), contactPerson: g('contactPerson') || null, isActive: g('isActive') === 'true' };
+        payload = { name: g('name'), phone: g('phone'), email: g('email'), address: g('address'), taxCode: g('taxCode'), isActive: g('isActive') === 'true' };
         break;
       case 'orders':
-        payload = { status: Number(g('status')), note: g('note') || null };
+        payload = { status: Number(g('status')), discountAmount: Number(g('discountAmount') || 0), shippingFee: Number(g('shippingFee') || 0), note: g('note') || null };
         break;
       case 'imports':
-        payload = { supplierId: Number(g('supplierId')), importDate: g('importDate'), totalAmount: g('totalAmount') ? Number(g('totalAmount')) : null, note: g('note') || null };
+        payload = {
+          supplierId: Number(g('supplierId')),
+          employeeId: Number(g('employeeId')),
+          receiptCode: g('receiptCode').trim(),
+          importDate: g('importDate'),
+          status: 1,
+          note: g('note') || null,
+          details: readImportDetails(form)
+        };
         break;
       case 'promotions':
-        payload = { name: g('name'), description: g('description') || null, discountType: Number(g('discountType')), discountValue: Number(g('discountValue')), startDate: g('startDate'), endDate: g('endDate'), maxDiscountAmount: g('maxDiscountAmount') ? Number(g('maxDiscountAmount')) : null, minOrderAmount: g('minOrderAmount') ? Number(g('minOrderAmount')) : 0, isActive: g('isActive') === 'true' };
+        payload = { name: g('name'), description: g('description') || null, promotionType: Number(g('promotionType')), discountValue: Number(g('discountValue')), maximumDiscount: g('maximumDiscount') ? Number(g('maximumDiscount')) : null, startDate: g('startDate'), endDate: g('endDate'), priority: Number(g('priority') || 0), canCombine: form.elements.canCombine.checked, status: Number(g('status')) };
         break;
       case 'vouchers':
-        payload = { code: g('code').toUpperCase(), name: g('name'), description: g('description') || null, discountType: Number(g('discountType')), discountValue: Number(g('discountValue')), maxDiscountAmount: g('maxDiscountAmount') ? Number(g('maxDiscountAmount')) : null, minOrderAmount: g('minOrderAmount') ? Number(g('minOrderAmount')) : 0, startDate: g('startDate') || null, expiryDate: g('expiryDate'), totalQuantity: g('totalQuantity') ? Number(g('totalQuantity')) : null, usageLimitPerUser: g('usageLimitPerUser') ? Number(g('usageLimitPerUser')) : 1, isActive: g('isActive') === 'true' };
+        payload = { name: g('name'), discountType: Number(g('discountType')), discountValue: Number(g('discountValue')), maximumDiscount: g('maximumDiscount') ? Number(g('maximumDiscount')) : null, minimumOrderValue: g('minimumOrderValue') ? Number(g('minimumOrderValue')) : null, usageLimit: Number(g('usageLimit')), usageLimitPerCustomer: g('usageLimitPerCustomer') ? Number(g('usageLimitPerCustomer')) : null, startDate: g('startDate'), endDate: g('endDate'), status: Number(g('status')) };
+        if (!isEdit) payload.code = g('code').toUpperCase();
         break;
     }
 
@@ -1005,23 +1072,6 @@ document.getElementById('entityForm').addEventListener('submit', async e => {
       ? (isEdit ? `Product/variants/${id}` : `Product/${form.dataset.productId}/variants`)
       : (isEdit ? `${m.endpoint}/${id}` : m.endpoint);
     const savedProduct = await api(url, { method, body: JSON.stringify(payload) });
-    if (entity === 'products' && !isEdit && savedProduct?.productId) {
-      const createdProduct = await api(`Product/${savedProduct.productId}`);
-      const createdVariants = createdProduct?.productVariants || [];
-      for (const variantInput of productVariants) {
-        const variant = createdVariants.find(item => item.sku === variantInput.sku);
-        if (variant?.variantId) {
-          await api('Inventory', {
-            method: 'POST',
-            body: JSON.stringify({
-              variantId: variant.variantId,
-              quantity: variantInput.initialQuantity,
-              reservedQuantity: variantInput.initialReservedQuantity
-            })
-          });
-        }
-      }
-    }
     closeModal();
     toast(isEdit ? 'Cập nhật thành công!' : 'Thêm mới thành công!', 'success');
     if (entity === 'variants') {
@@ -1037,7 +1087,11 @@ document.getElementById('entityForm').addEventListener('submit', async e => {
 
 // ── INIT ──────────────────────────────────────────────────────
 if (token) {
-  showAdmin();
+  if (String(currentUser?.role || '').toLowerCase() === 'customer') {
+    redirectByRole(currentUser.role);
+  } else {
+    showAdmin();
+  }
 } else {
   document.getElementById('loginScreen').classList.add('show');
 }
