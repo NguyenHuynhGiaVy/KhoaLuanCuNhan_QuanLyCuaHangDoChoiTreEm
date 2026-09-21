@@ -3,11 +3,14 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
+using System.Data;
+using Microsoft.EntityFrameworkCore;
 using ToyStore.Application.Interfaces.Repositories;
 using ToyStoreManagement.Application.DTOs.Import;
 using ToyStoreManagement.Application.Interfaces.Repositories;
 using ToyStoreManagement.Application.Interfaces.Services;
 using ToyStoreManagement.Domain.Entities;
+using ToyStoreManagement.Infrastructure.Data;
 
 namespace ToyStoreManagement.Infrastructure.Services
 {
@@ -17,24 +20,27 @@ namespace ToyStoreManagement.Infrastructure.Services
         private readonly IGenericRepository<Supplier> _supplierRepository;
         private readonly IGenericRepository<ProductVariant> _variantRepository;
         private readonly IUnitOfWork _unitOfWork;
+        private readonly ApplicationDbContext _context;
 
         public ImportReceiptService(
             IImportReceiptRepository repository,
             IGenericRepository<Supplier> supplierRepository,
             IGenericRepository<ProductVariant> variantRepository,
-            IUnitOfWork unitOfWork)
+            IUnitOfWork unitOfWork,
+            ApplicationDbContext context)
         {
             _repository = repository;
             _supplierRepository = supplierRepository;
             _variantRepository = variantRepository;
             _unitOfWork = unitOfWork;
+            _context = context;
         }
 
         public async Task<IEnumerable<ImportReceiptDto>> GetAllAsync()
         {
             var receipts = await _repository.GetAllWithDetailsAsync();
 
-            return receipts.Select(MapToDto);
+            return await Task.WhenAll(receipts.Select(MapToDtoAsync));
         }
 
         public async Task<ImportReceiptDto?> GetByIdAsync(int id)
@@ -44,7 +50,7 @@ namespace ToyStoreManagement.Infrastructure.Services
             if (receipt == null)
                 return null;
 
-            return MapToDto(receipt);
+            return await MapToDtoAsync(receipt);
         }
 
         public async Task<ImportReceiptDto> CreateAsync(
@@ -59,9 +65,14 @@ namespace ToyStoreManagement.Infrastructure.Services
             if (!supplier.IsActive)
                 throw new Exception("Supplier đang không hoạt động.");
 
+            ValidateReceiptDetails(dto);
+
             if (dto.Details == null || dto.Details.Count == 0)
                 throw new Exception(
                     "Phiếu nhập phải có ít nhất một sản phẩm.");
+
+            if (dto.Details.GroupBy(x => x.VariantId).Any(x => x.Count() > 1))
+                throw new Exception("Không được trùng sản phẩm trong cùng phiếu.");
 
             var receipt = new ImportReceipt
             {
@@ -121,7 +132,7 @@ namespace ToyStoreManagement.Infrastructure.Services
                     .GetByIdWithDetailsAsync(
                         receipt.ImportReceiptId);
 
-            return MapToDto(result!);
+            return await MapToDtoAsync(result!);
         }
 
         public async Task<ImportReceiptDto?> UpdateAsync(
@@ -134,24 +145,193 @@ namespace ToyStoreManagement.Infrastructure.Services
             if (receipt == null)
                 return null;
 
+            if (receipt.Status != 1)
+                throw new Exception("Chỉ được cập nhật phiếu đang ở trạng thái nháp.");
+
+            ValidateReceiptDetails(dto);
+
             var supplier =
                 await _supplierRepository.GetByIdAsync(dto.SupplierId);
 
             if (supplier == null)
                 throw new Exception("Supplier không tồn tại.");
 
+            if (!supplier.IsActive)
+                throw new Exception("Supplier đang không hoạt động.");
+
             receipt.SupplierId = dto.SupplierId;
             receipt.EmployeeId = dto.EmployeeId;
             receipt.ReceiptCode = dto.ReceiptCode;
             receipt.ImportDate = dto.ImportDate;
-            receipt.Status = dto.Status;
+            receipt.Status = 1;
             receipt.Note = dto.Note;
+
+            receipt.ImportReceiptDetails.Clear();
+            receipt.TotalAmount = 0;
+
+            foreach (var item in dto.Details)
+            {
+                var variant = await _variantRepository.GetByIdAsync(item.VariantId);
+                if (variant == null)
+                    throw new Exception($"Variant {item.VariantId} không tồn tại.");
+
+                var detailTotal = item.Quantity * item.UnitCost;
+                receipt.ImportReceiptDetails.Add(new ImportReceiptDetail
+                {
+                    VariantId = item.VariantId,
+                    Quantity = item.Quantity,
+                    UnitCost = item.UnitCost,
+                    TotalAmount = detailTotal
+                });
+                receipt.TotalAmount += detailTotal;
+            }
 
             _repository.Update(receipt);
 
             await _unitOfWork.SaveChangesAsync();
 
             return await GetByIdAsync(id);
+        }
+
+        public async Task<ImportReceiptDto?> ReceiveAsync(
+            int id,
+            ReceiveImportReceiptDto dto)
+        {
+            if (dto.Details == null || dto.Details.Count == 0)
+                throw new Exception("Phiếu nhập phải có ít nhất một sản phẩm.");
+
+            if (dto.Details.GroupBy(x => x.ImportReceiptDetailId)
+                .Any(x => x.Count() > 1))
+                throw new Exception("Không được trùng chi tiết trong cùng lần nhập.");
+
+            await using var transaction = await _context.Database
+                .BeginTransactionAsync(IsolationLevel.Serializable);
+
+            try
+            {
+                var receipt = await _context.ImportReceipts
+                    .Include(x => x.ImportReceiptDetails)
+                        .ThenInclude(x => x.ProductVariant)
+                            .ThenInclude(x => x.Product)
+                    .FirstOrDefaultAsync(x => x.ImportReceiptId == id);
+
+                if (receipt == null)
+                    return null;
+
+                if (receipt.Status == 4)
+                    throw new Exception("Không thể nhập hàng vào phiếu đã hủy.");
+
+                if (receipt.Status == 3)
+                    throw new Exception("Phiếu đã nhận đủ hàng.");
+
+                var affectedProductIds = new HashSet<int>();
+
+                foreach (var received in dto.Details)
+                {
+                    if (received.Quantity <= 0)
+                        throw new Exception("Số lượng nhập phải lớn hơn 0.");
+
+                    var detail = receipt.ImportReceiptDetails
+                        .FirstOrDefault(x => x.ImportReceiptDetailId == received.ImportReceiptDetailId);
+
+                    if (detail == null)
+                        throw new Exception("Chi tiết nhập hàng không thuộc phiếu này.");
+
+                    var receivedQuantity = await _context.InventoryTransactions
+                        .Where(x => x.ReferenceType == "ImportReceipt"
+                            && x.ReferenceId == receipt.ImportReceiptId
+                            && x.VariantId == detail.VariantId)
+                        .SumAsync(x => (int?)x.Quantity) ?? 0;
+
+                    if (receivedQuantity + received.Quantity > detail.Quantity)
+                        throw new Exception(
+                            $"Số lượng nhận của sản phẩm {detail.ProductVariant?.SKU} vượt số lượng đã đặt.");
+
+                    var inventory = await _context.Inventories
+                        .FirstOrDefaultAsync(x => x.VariantId == detail.VariantId);
+
+                    if (inventory == null)
+                    {
+                        inventory = new Inventory
+                        {
+                            VariantId = detail.VariantId,
+                            Quantity = 0,
+                            ReservedQuantity = 0,
+                            UpdatedAt = DateTime.UtcNow
+                        };
+                        _context.Inventories.Add(inventory);
+                    }
+
+                    inventory.Quantity += received.Quantity;
+                    inventory.UpdatedAt = DateTime.UtcNow;
+                    affectedProductIds.Add(detail.ProductVariant.ProductId);
+
+                    _context.InventoryTransactions.Add(new InventoryTransaction
+                    {
+                        VariantId = detail.VariantId,
+                        TransactionType = 1,
+                        Quantity = received.Quantity,
+                        ReferenceType = "ImportReceipt",
+                        ReferenceId = receipt.ImportReceiptId,
+                        Note = $"Nhập hàng từ phiếu {receipt.ReceiptCode}",
+                        CreatedAt = DateTime.UtcNow
+                    });
+                }
+
+                await _unitOfWork.SaveChangesAsync();
+
+                var receivedByVariant = await _context.InventoryTransactions
+                    .Where(x => x.ReferenceType == "ImportReceipt"
+                        && x.ReferenceId == receipt.ImportReceiptId)
+                    .GroupBy(x => x.VariantId)
+                    .Select(x => new { VariantId = x.Key, Quantity = x.Sum(y => y.Quantity) })
+                    .ToDictionaryAsync(x => x.VariantId, x => x.Quantity);
+
+                receipt.Status = receipt.ImportReceiptDetails.All(x =>
+                    receivedByVariant.GetValueOrDefault(x.VariantId) == x.Quantity) ? 3 : 2;
+
+                await _unitOfWork.SaveChangesAsync();
+
+                foreach (var productId in affectedProductIds)
+                {
+                    var product = await _context.Products.FindAsync(productId);
+                    if (product == null)
+                        continue;
+
+                    var totalQuantity = await _context.Inventories
+                        .Where(x => x.ProductVariant.ProductId == productId)
+                        .SumAsync(x => (int?)x.Quantity) ?? 0;
+
+                    product.Status = totalQuantity > 0 ? 1 : 0;
+
+                    product.UpdatedAt = DateTime.UtcNow;
+                }
+
+                await _unitOfWork.SaveChangesAsync();
+                await transaction.CommitAsync();
+
+                return await GetByIdAsync(id);
+            }
+            catch
+            {
+                await transaction.RollbackAsync();
+                throw;
+            }
+        }
+
+        public async Task<bool> CancelAsync(int id)
+        {
+            var receipt = await _repository.GetByIdAsync(id);
+            if (receipt == null)
+                return false;
+
+            if (receipt.Status != 1)
+                throw new Exception("Chỉ được hủy phiếu đang ở trạng thái nháp.");
+
+            receipt.Status = 4;
+            _repository.Update(receipt);
+            await _unitOfWork.SaveChangesAsync();
+            return true;
         }
 
         public async Task<bool> DeleteAsync(int id)
@@ -161,6 +341,9 @@ namespace ToyStoreManagement.Infrastructure.Services
             if (receipt == null)
                 return false;
 
+            if (receipt.Status != 1)
+                throw new Exception("Chỉ được xóa phiếu đang ở trạng thái nháp.");
+
             _repository.Delete(receipt);
 
             await _unitOfWork.SaveChangesAsync();
@@ -168,9 +351,16 @@ namespace ToyStoreManagement.Infrastructure.Services
             return true;
         }
 
-        private static ImportReceiptDto MapToDto(
+        private async Task<ImportReceiptDto> MapToDtoAsync(
             ImportReceipt receipt)
         {
+            var receivedByVariant = await _context.InventoryTransactions
+                .Where(x => x.ReferenceType == "ImportReceipt"
+                    && x.ReferenceId == receipt.ImportReceiptId)
+                .GroupBy(x => x.VariantId)
+                .Select(x => new { VariantId = x.Key, Quantity = x.Sum(y => y.Quantity) })
+                .ToDictionaryAsync(x => x.VariantId, x => x.Quantity);
+
             return new ImportReceiptDto
             {
                 ImportReceiptId = receipt.ImportReceiptId,
@@ -206,6 +396,9 @@ namespace ToyStoreManagement.Infrastructure.Services
                             Quantity =
                                 x.Quantity,
 
+                            ReceivedQuantity =
+                                receivedByVariant.GetValueOrDefault(x.VariantId),
+
                             UnitCost =
                                 x.UnitCost,
 
@@ -214,6 +407,27 @@ namespace ToyStoreManagement.Infrastructure.Services
                         })
                         .ToList()
             };
+        }
+
+        private static void ValidateReceiptDetails(CreateImportReceiptDto dto)
+        {
+            if (dto.EmployeeId <= 0)
+                throw new Exception("EmployeeId phải lớn hơn 0.");
+
+            if (string.IsNullOrWhiteSpace(dto.ReceiptCode))
+                throw new Exception("ReceiptCode không được để trống.");
+
+            if (dto.Details == null || dto.Details.Count == 0)
+                throw new Exception("Phiếu nhập phải có ít nhất một sản phẩm.");
+
+            if (dto.Details.GroupBy(x => x.VariantId).Any(x => x.Count() > 1))
+                throw new Exception("Không được trùng sản phẩm trong cùng phiếu.");
+
+            if (dto.Details.Any(x => x.Quantity <= 0))
+                throw new Exception("Quantity phải lớn hơn 0.");
+
+            if (dto.Details.Any(x => x.UnitCost < 0))
+                throw new Exception("UnitCost không được nhỏ hơn 0.");
         }
     }
 }

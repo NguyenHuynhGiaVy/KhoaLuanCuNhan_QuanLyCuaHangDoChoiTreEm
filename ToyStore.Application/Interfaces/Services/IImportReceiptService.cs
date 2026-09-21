@@ -22,6 +22,12 @@ namespace ToyStoreManagement.Application.Interfaces.Services
             int id,
             CreateImportReceiptDto dto);
 
+        Task<ImportReceiptDto?> ReceiveAsync(
+            int id,
+            ReceiveImportReceiptDto dto);
+
+        Task<bool> CancelAsync(int id);
+
         Task<bool> DeleteAsync(int id);
     }
 }

@@ -76,6 +76,11 @@ namespace ToyStoreManagement.Infrastructure.Services
             if (dto.OrderDetails == null || !dto.OrderDetails.Any())
                 throw new Exception("Đơn hàng phải có ít nhất một sản phẩm.");
 
+            await using var transaction = await _context.Database
+                .BeginTransactionAsync(System.Data.IsolationLevel.Serializable);
+
+            var affectedProductIds = new HashSet<int>();
+
             foreach (var detail in dto.OrderDetails)
             {
                 if (detail.Quantity <= 0)
@@ -136,23 +141,15 @@ namespace ToyStoreManagement.Infrastructure.Services
                 var inventory = await _context.Inventories
                     .FirstOrDefaultAsync(i => i.VariantId == detailDto.VariantId);
                 
-                if (inventory != null)
-                {
-                    inventory.Quantity -= detailDto.Quantity;
-                    if (inventory.Quantity < 0) inventory.Quantity = 0;
-                    inventory.UpdatedAt = DateTime.UtcNow;
-                }
-                else
-                {
-                    // Nếu sản phẩm chưa từng khởi tạo bảng tồn kho, tự động tạo bản ghi tồn kho
-                    _context.Inventories.Add(new Inventory
-                    {
-                        VariantId = detailDto.VariantId,
-                        Quantity = 0,
-                        ReservedQuantity = 0,
-                        UpdatedAt = DateTime.UtcNow
-                    });
-                }
+                if (inventory == null)
+                    throw new Exception("Sản phẩm chưa có thông tin tồn kho.");
+
+                inventory.Quantity -= detailDto.Quantity;
+                if (inventory.Quantity < 0)
+                    throw new Exception("Số lượng tồn kho không được âm.");
+
+                inventory.UpdatedAt = DateTime.UtcNow;
+                affectedProductIds.Add(variant.ProductId);
             }
 
             order.Subtotal = subtotal;
@@ -163,6 +160,23 @@ namespace ToyStoreManagement.Infrastructure.Services
                 + order.ShippingFee;
 
             await _orderRepository.AddAsync(order);
+            await _unitOfWork.SaveChangesAsync();
+
+            foreach (var productId in affectedProductIds)
+            {
+                var product = await _context.Products.FindAsync(productId);
+                if (product == null)
+                    continue;
+
+                var totalQuantity = await _context.Inventories
+                    .Where(x => x.ProductVariant.ProductId == productId)
+                    .SumAsync(x => (int?)x.Quantity) ?? 0;
+
+                product.Status = totalQuantity > 0 ? 1 : 0;
+
+                product.UpdatedAt = DateTime.UtcNow;
+            }
+
             await _unitOfWork.SaveChangesAsync();
 
             // Ghi nhận nhật ký xuất kho
@@ -181,6 +195,8 @@ namespace ToyStoreManagement.Infrastructure.Services
             }
             await _unitOfWork.SaveChangesAsync();
 
+            await transaction.CommitAsync();
+
             var result = await _orderRepository
                 .GetByIdWithDetailsAsync(order.OrderId);
 
@@ -196,6 +212,11 @@ namespace ToyStoreManagement.Infrastructure.Services
 
             if (order == null)
                 return null;
+
+            await using var transaction = await _context.Database
+                .BeginTransactionAsync(System.Data.IsolationLevel.Serializable);
+
+            var affectedProductIds = new HashSet<int>();
 
             if (dto.DiscountAmount.HasValue && dto.DiscountAmount < 0)
                 throw new Exception("Số tiền giảm giá không hợp lệ.");
@@ -230,6 +251,11 @@ namespace ToyStoreManagement.Infrastructure.Services
                     {
                         inventory.Quantity += detail.Quantity;
                         inventory.UpdatedAt = DateTime.UtcNow;
+                        var productId = await _context.ProductVariants
+                            .Where(x => x.VariantId == detail.VariantId)
+                            .Select(x => x.ProductId)
+                            .FirstAsync();
+                        affectedProductIds.Add(productId);
 
                         _context.InventoryTransactions.Add(new InventoryTransaction
                         {
@@ -247,6 +273,24 @@ namespace ToyStoreManagement.Infrastructure.Services
 
             _orderRepository.Update(order);
             await _unitOfWork.SaveChangesAsync();
+
+            foreach (var productId in affectedProductIds)
+            {
+                var product = await _context.Products.FindAsync(productId);
+                if (product == null)
+                    continue;
+
+                var totalQuantity = await _context.Inventories
+                    .Where(x => x.ProductVariant.ProductId == productId)
+                    .SumAsync(x => (int?)x.Quantity) ?? 0;
+
+                product.Status = totalQuantity > 0 ? 1 : 0;
+
+                product.UpdatedAt = DateTime.UtcNow;
+            }
+
+            await _unitOfWork.SaveChangesAsync();
+            await transaction.CommitAsync();
 
             return MapToDto(order);
         }

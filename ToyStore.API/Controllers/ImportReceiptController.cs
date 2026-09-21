@@ -101,6 +101,43 @@ namespace ToyStoreManagement.API.Controllers
             }
         }
 
+        [HttpPost("{id}/receive")]
+        [Authorize(Policy = "AdminOrManager")]
+        public async Task<IActionResult> Receive(
+            int id,
+            [FromBody] ReceiveImportReceiptDto dto)
+        {
+            try
+            {
+                var receipt = await _service.ReceiveAsync(id, dto);
+                if (receipt == null)
+                    return NotFound(new { message = "Không tìm thấy phiếu nhập." });
+
+                return Ok(receipt);
+            }
+            catch (Exception ex)
+            {
+                return BadRequest(new { message = ex.Message });
+            }
+        }
+
+        [HttpPost("{id}/cancel")]
+        [Authorize(Policy = "AdminOrManager")]
+        public async Task<IActionResult> Cancel(int id)
+        {
+            try
+            {
+                if (!await _service.CancelAsync(id))
+                    return NotFound(new { message = "Không tìm thấy phiếu nhập." });
+
+                return Ok(new { message = "Hủy phiếu nhập thành công." });
+            }
+            catch (Exception ex)
+            {
+                return BadRequest(new { message = ex.Message });
+            }
+        }
+
         // DELETE: api/ImportReceipt/1
         [HttpDelete("{id}")]
         [Authorize(Policy = "AdminOrManager")]

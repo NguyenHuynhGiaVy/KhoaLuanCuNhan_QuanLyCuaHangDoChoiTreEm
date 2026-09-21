@@ -9,6 +9,8 @@ using ToyStoreManagement.Application.Interfaces.Repositories;
 using ToyStoreManagement.Application.Interfaces.Services;
 using ToyStoreManagement.Domain.Entities;
 using ToyStore.Application.Interfaces.Repositories;
+using Microsoft.EntityFrameworkCore;
+using ToyStoreManagement.Infrastructure.Data;
 
 namespace ToyStoreManagement.Infrastructure.Services
 {
@@ -17,15 +19,18 @@ namespace ToyStoreManagement.Infrastructure.Services
         private readonly IInventoryRepository _inventoryRepository;
         private readonly IGenericRepository<ProductVariant> _variantRepository;
         private readonly IUnitOfWork _unitOfWork;
+        private readonly ApplicationDbContext _context;
 
         public InventoryService(
             IInventoryRepository inventoryRepository,
             IGenericRepository<ProductVariant> variantRepository,
-            IUnitOfWork unitOfWork)
+            IUnitOfWork unitOfWork,
+            ApplicationDbContext context)
         {
             _inventoryRepository = inventoryRepository;
             _variantRepository = variantRepository;
             _unitOfWork = unitOfWork;
+            _context = context;
         }
 
         public async Task<IEnumerable<InventoryDto>> GetAllAsync()
@@ -88,6 +93,8 @@ namespace ToyStoreManagement.Infrastructure.Services
             await _inventoryRepository.AddAsync(inventory);
             await _unitOfWork.SaveChangesAsync();
 
+            await SyncProductStatusAsync(dto.VariantId);
+
             var result =
                 await _inventoryRepository.GetByIdWithDetailsAsync(
                     inventory.InventoryId);
@@ -123,11 +130,36 @@ namespace ToyStoreManagement.Infrastructure.Services
 
             await _unitOfWork.SaveChangesAsync();
 
+            await SyncProductStatusAsync(inventory.VariantId);
+
             var result =
                 await _inventoryRepository.GetByIdWithDetailsAsync(
                     inventoryId);
 
             return MapToDto(result!);
+        }
+
+        private async Task SyncProductStatusAsync(int variantId)
+        {
+            var variant = await _context.ProductVariants
+                .AsNoTracking()
+                .FirstOrDefaultAsync(x => x.VariantId == variantId);
+
+            if (variant == null)
+                return;
+
+            var product = await _context.Products.FindAsync(variant.ProductId);
+            if (product == null)
+                return;
+
+            var totalQuantity = await _context.Inventories
+                .Where(x => x.ProductVariant.ProductId == product.ProductId)
+                .SumAsync(x => (int?)x.Quantity) ?? 0;
+
+            product.Status = totalQuantity > 0 ? 1 : 0;
+
+            product.UpdatedAt = DateTime.UtcNow;
+            await _unitOfWork.SaveChangesAsync();
         }
 
         private static InventoryDto MapToDto(Inventory inventory)
@@ -157,6 +189,8 @@ namespace ToyStoreManagement.Infrastructure.Services
             _inventoryRepository.Delete(inventory);
 
             await _unitOfWork.SaveChangesAsync();
+
+            await SyncProductStatusAsync(inventory.VariantId);
 
             return true;
         }
