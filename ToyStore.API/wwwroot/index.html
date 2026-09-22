@@ -3,13 +3,13 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <meta name="theme-color" content="#173f35">
-  <title>ToyStore Admin</title>
+  <meta name="theme-color" content="#0f172a">
+  <title>ToyStore Admin - Quản Trị Cửa Hàng Đồ Chơi</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Space+Grotesk:wght@500;600;700&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="/css/admin.css">
-  <link rel="stylesheet" href="/css/login.css">
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:ital,wght@0,400;0,500;0,600;0,700;0,800;1,400;1,600&family=Space+Grotesk:wght@500;600;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/css/admin.css?v=20260922-3">
+  <link rel="stylesheet" href="/css/login.css?v=20260922-3">
   <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 </head>
 <body>
@@ -19,107 +19,147 @@
       <div class="login-shape shape-one"></div>
       <div class="login-shape shape-two"></div>
       <span class="login-star">✦</span>
-      <p>TOYSTORE<br><strong>ADMIN SPACE</strong></p>
+      <p>TOYSTORE<br><strong>ADMIN PORTAL</strong></p>
     </div>
     <div class="login-card">
-      <div class="brand login-brand"><span class="brand-mark">T</span><span>ToyStore<span class="brand-dot">.</span></span></div>
-      <p class="eyebrow">QUẢN TRỊ CỬA HÀNG</p>
+      <div class="brand login-brand">
+        <span class="brand-mark">T</span>
+        <span>ToyStore<span class="brand-dot">.</span></span>
+      </div>
+      <p class="eyebrow">HỆ THỐNG QUẢN TRỊ</p>
       <h1>Đăng nhập Admin</h1>
-      <form id="loginForm">
-        <label>Email *<input name="email" type="email" required placeholder="admin@toystore.vn"></label>
-        <label>Mật khẩu *<input name="password" type="password" required placeholder="Nhập mật khẩu"></label>
-        <button class="primary-btn full" type="submit">Đăng nhập <span>→</span></button>
+      <form id="loginForm" autocomplete="off">
+        <label>Email đăng nhập *
+          <input name="email" type="email" required placeholder="admin@toystore.vn">
+        </label>
+        <label>Mật khẩu *
+          <input name="password" type="password" required placeholder="Nhập mật khẩu của bạn">
+        </label>
+        <button class="primary-btn full" type="submit" id="loginSubmitBtn">
+          <span>Đăng nhập hệ thống</span> <span>→</span>
+        </button>
         <p class="login-error" id="loginError"></p>
       </form>
     </div>
   </section>
 
-  <!-- APP -->
+  <!-- APP SHELL -->
   <div class="app-shell">
     <aside class="sidebar" id="sidebar">
-      <div class="brand"><span class="brand-mark">T</span><span>ToyStore<span class="brand-dot">.</span></span></div>
+      <div class="brand">
+        <span class="brand-mark">T</span>
+        <span>ToyStore<span class="brand-dot">.</span></span>
+      </div>
       <nav class="main-nav">
         <p class="nav-label">Tổng quan</p>
-        <a class="nav-item active" href="#dashboard" data-view="dashboard"><span>◈</span>Dashboard</a>
-        <p class="nav-label">Hàng hóa</p>
-        <a class="nav-item" href="#products" data-view="products"><span>▦</span>Sản phẩm</a>
-        <a class="nav-item" href="#categories" data-view="categories"><span>⊞</span>Danh mục</a>
-        <a class="nav-item" href="#brands" data-view="brands"><span>✺</span>Thương hiệu</a>
-        <a class="nav-item" href="#inventory" data-view="inventory"><span>▤</span>Tồn kho</a>
-        <p class="nav-label">Vận hành</p>
-        <a class="nav-item" href="#orders" data-view="orders"><span>↗</span>Đơn hàng</a>
-        <a class="nav-item" href="#suppliers" data-view="suppliers"><span>♧</span>Nhà cung cấp</a>
-        <a class="nav-item" href="#imports" data-view="imports"><span>📦</span>Phiếu nhập kho</a>
+        <a class="nav-item active" href="#dashboard" data-view="dashboard">
+          <span class="nav-icon">◈</span>
+          <span>Dashboard</span>
+        </a>
+
+        <p class="nav-label">Hàng hóa & Kho</p>
+        <a class="nav-item" href="#products" data-view="products">
+          <span class="nav-icon">▦</span>
+          <span>Sản phẩm</span>
+        </a>
+        <a class="nav-item" href="#categories" data-view="categories">
+          <span class="nav-icon">⊞</span>
+          <span>Danh mục</span>
+        </a>
+        <a class="nav-item" href="#brands" data-view="brands">
+          <span class="nav-icon">✺</span>
+          <span>Thương hiệu</span>
+        </a>
+        <a class="nav-item" href="#inventory" data-view="inventory">
+          <span class="nav-icon">▤</span>
+          <span>Tồn kho</span>
+        </a>
+
+        <p class="nav-label">Vận hành & Nhập hàng</p>
+        <a class="nav-item" href="#orders" data-view="orders">
+          <span class="nav-icon">↗</span>
+          <span>Đơn hàng</span>
+        </a>
+        <a class="nav-item" href="#suppliers" data-view="suppliers">
+          <span class="nav-icon">♧</span>
+          <span>Nhà cung cấp</span>
+        </a>
+        <a class="nav-item" href="#imports" data-view="imports">
+          <span class="nav-icon">📦</span>
+          <span>Phiếu đặt hàng NCC</span>
+        </a>
+
         <p class="nav-label">Marketing</p>
-        <a class="nav-item" href="#promotions" data-view="promotions"><span>🏷</span>Khuyến mãi</a>
-        <a class="nav-item" href="#vouchers" data-view="vouchers"><span>🎟</span>Voucher</a>
+        <a class="nav-item" href="#promotions" data-view="promotions">
+          <span class="nav-icon">🏷</span>
+          <span>Khuyến mãi</span>
+        </a>
+        <a class="nav-item" href="#vouchers" data-view="vouchers">
+          <span class="nav-icon">🎟</span>
+          <span>Voucher</span>
+        </a>
+
         <p class="nav-label">Khách hàng</p>
-        <a class="nav-item" href="#customers" data-view="customers"><span>◎</span>Khách hàng</a>
+        <a class="nav-item" href="#customers" data-view="customers">
+          <span class="nav-icon">◎</span>
+          <span>Khách hàng</span>
+        </a>
+
         <p class="nav-label">Hệ thống</p>
-        <a class="nav-item" href="#users" data-view="users"><span>👥</span>Phân quyền người dùng</a>
+        <a class="nav-item" href="#users" data-view="users">
+          <span class="nav-icon">👥</span>
+          <span>Phân quyền người dùng</span>
+        </a>
       </nav>
+
       <div class="sidebar-footer">
-        <button class="help-box" id="logoutButton"><span>↪</span><b>Đăng xuất</b></button>
+        <a href="/customer.html" target="_blank" class="portal-link-btn" title="Mở trang khách hàng">
+          <span>🛍</span> Xem Store Khách Hàng
+        </a>
+        <button class="logout-btn" id="logoutButton">
+          <span>↪</span> <b>Đăng xuất</b>
+        </button>
       </div>
     </aside>
 
     <main class="main-content">
       <header class="topbar">
         <div class="breadcrumb">
-          <button class="menu-toggle" id="menuToggle">☰</button>
-          <span>ToyStore</span><b>/</b><strong id="breadcrumbCurrent">Dashboard</strong>
+          <button class="menu-toggle" id="menuToggle" aria-label="Toggle menu">☰</button>
+          <span>ToyStore Admin</span>
+          <b>/</b>
+          <strong id="breadcrumbCurrent">Dashboard</strong>
         </div>
         <div class="top-actions">
-          <button class="api-check-btn" id="adminChangePassBtn" title="Đổi mật khẩu tài khoản" style="background:#f4f0e7;color:#173f35;border-color:#e0dad0;">
+          <button class="topbar-action-btn" id="adminChangePassBtn" title="Đổi mật khẩu tài khoản">
             <span>🔒</span> Đổi mật khẩu
           </button>
-          <button class="api-check-btn" id="apiBadge" onclick="checkApiStatus(true)">
+          <button class="topbar-action-btn" id="apiBadge" onclick="checkApiStatus(true)" title="Kiểm tra trạng thái kết nối Backend API">
             <span class="api-dot" id="apiDot"></span>
-            <span id="apiLabel">Kiểm tra API</span>
+            <span id="apiLabel">API Online</span>
           </button>
-          <div class="user-menu">
-            <div class="avatar" id="userAvatar">GV</div>
-            <div><b id="currentUserName">Admin</b><small id="userRole">Quản trị viên</small></div>
+          <div class="user-menu" id="userMenuProfile">
+            <div class="avatar" id="userAvatar">AD</div>
+            <div class="user-info">
+              <b id="currentUserName">Admin</b>
+              <small id="userRole">Quản trị viên</small>
+            </div>
           </div>
         </div>
       </header>
-      <div class="page-content" id="app"></div>
+
+      <div class="page-content" id="app">
+        <!-- Rendered in-page dynamically -->
+      </div>
     </main>
   </div>
 
-  <!-- TOAST -->
-  <div class="toast" id="toast"><span id="toastIcon">✓</span> <span id="toastMsg"></span></div>
-
-  <!-- MODAL -->
-  <div class="modal-backdrop" id="modalBackdrop">
-    <section class="modal" id="modalBox">
-      <button class="modal-close" id="modalClose">×</button>
-      <p class="modal-kicker" id="modalKicker">THÊM MỚI</p>
-      <h2 id="modalTitle">Thêm mới</h2>
-      <p class="modal-subtitle" id="modalSubtitle">Vui lòng điền đủ thông tin bắt buộc (*).</p>
-      <form id="entityForm" autocomplete="off">
-        <div id="modalFormFields"></div>
-        <div class="form-actions">
-          <button type="button" class="cancel-btn" id="modalCancel">Hủy</button>
-          <button class="primary-btn" type="submit" id="modalSubmit">Lưu <span>→</span></button>
-        </div>
-      </form>
-    </section>
+  <!-- TOAST NOTIFICATION -->
+  <div class="toast" id="toast">
+    <span class="toast-icon" id="toastIcon">✓</span>
+    <span class="toast-msg" id="toastMsg"></span>
   </div>
 
-  <!-- CONFIRM DIALOG -->
-  <div class="modal-backdrop" id="confirmBackdrop">
-    <section class="modal confirm-modal">
-      <div class="confirm-icon">⚠</div>
-      <h3 id="confirmTitle">Xác nhận xóa</h3>
-      <p id="confirmMsg">Bạn có chắc muốn xóa mục này? Hành động này không thể hoàn tác.</p>
-      <div class="form-actions">
-        <button class="cancel-btn" id="confirmNo">Hủy</button>
-        <button class="danger-btn" id="confirmYes">Xóa</button>
-      </div>
-    </section>
-  </div>
-
-  <script src="/js/admin.js?v=20260921-1"></script>
+  <script src="/js/admin.js?v=20260922-2"></script>
 </body>
 </html>

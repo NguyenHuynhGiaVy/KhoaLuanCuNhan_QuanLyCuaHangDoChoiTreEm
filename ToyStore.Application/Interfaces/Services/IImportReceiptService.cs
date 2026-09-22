@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Text;
@@ -25,6 +25,8 @@ namespace ToyStoreManagement.Application.Interfaces.Services
         Task<ImportReceiptDto?> ReceiveAsync(
             int id,
             ReceiveImportReceiptDto dto);
+
+        Task<ImportReceiptDto?> ApproveAsync(int id);
 
         Task<bool> CancelAsync(int id);
 

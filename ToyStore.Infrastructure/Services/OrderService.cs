@@ -193,6 +193,32 @@ namespace ToyStoreManagement.Infrastructure.Services
                     CreatedAt = DateTime.UtcNow
                 });
             }
+
+            // Tự động tích lũy điểm thưởng cho khách hàng (1 điểm cho mỗi 10.000đ chi tiêu)
+            if (order.CustomerId.HasValue && order.CustomerId.Value > 0)
+            {
+                var customer = await _context.Customers.FindAsync(order.CustomerId.Value);
+                if (customer != null)
+                {
+                    int earnedPoints = (int)(order.TotalAmount / 10000);
+                    if (earnedPoints > 0)
+                    {
+                        customer.LoyaltyPoint += earnedPoints;
+                        customer.UpdatedAt = DateTime.UtcNow;
+
+                        _context.LoyaltyTransactions.Add(new LoyaltyTransaction
+                        {
+                            CustomerId = customer.CustomerId,
+                            OrderId = order.OrderId,
+                            Points = earnedPoints,
+                            TransactionType = 1, // 1: Tích điểm
+                            Description = $"Tích {earnedPoints} điểm thưởng từ đơn hàng #{order.OrderCode}",
+                            CreatedAt = DateTime.UtcNow
+                        });
+                    }
+                }
+            }
+
             await _unitOfWork.SaveChangesAsync();
 
             await transaction.CommitAsync();

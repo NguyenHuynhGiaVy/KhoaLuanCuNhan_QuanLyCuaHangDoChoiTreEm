@@ -3,43 +3,192 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <meta name="theme-color" content="#fff9f0">
-  <title>ToyStore - Đồ chơi cho những ngày thật vui</title>
+  <meta name="theme-color" content="#f43f5e">
+  <title>ToyStore - Thế Giới Đồ Chơi Thông Minh Cho Trẻ Em</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Space+Grotesk:wght@500;600;700&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="/css/customer.css">
-  <link rel="stylesheet" href="/css/home.css">
-  <style>.customer-api-status{font-size:11px;font-weight:700;color:#9b6b18}.customer-api-status.online{color:#24724e}.customer-api-status.offline{color:#b44235}.home-products{max-width:1180px;margin:0 auto;padding:70px 28px}.home-products-head{display:flex;align-items:end;justify-content:space-between;margin-bottom:26px}.home-products-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:20px}.home-products-grid .product-card{background:#fff;border:1px solid #e7e9e3;border-radius:8px;overflow:hidden}.home-products-grid .product-img{aspect-ratio:1;background:#f4f0e7}.home-products-grid .product-img img{width:100%;height:100%;object-fit:cover}.home-products-grid .product-detail{padding:16px}.home-products-grid h3{margin:7px 0}.home-products-grid .add-cart{border:0;background:#173f35;color:#fff;padding:9px 12px;border-radius:6px}@media(max-width:800px){.home-products-grid{grid-template-columns:repeat(2,minmax(0,1fr))}}</style>
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:ital,wght@0,400;0,500;0,600;0,700;0,800;1,400;1,600&family=Space+Grotesk:wght@500;600;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/css/customer.css?v=20260922-3">
+  <link rel="stylesheet" href="/css/home.css?v=20260922-3">
+  <style>
+    .home-products { max-width: 1280px; margin: 0 auto; padding: 40px 24px 70px; }
+    .home-products-head { display: flex; align-items: flex-end; justify-content: space-between; margin-bottom: 28px; }
+    .home-products-head h2 { font: 800 32px/1.2 'Space Grotesk', sans-serif; color: var(--text-main); margin-top: 4px; }
+    .home-products-head .eyebrow { font-size: 12px; font-weight: 800; color: var(--primary); letter-spacing: 1.5px; text-transform: uppercase; }
+    .home-products-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 24px; }
+    @media(max-width: 992px) { .home-products-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
+    @media(max-width: 680px) { .home-products-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; } }
+  </style>
 </head>
 <body>
-  <div class="announcement">Miễn phí giao hàng cho đơn từ 500.000đ <span>✦</span> Đổi trả trong 7 ngày</div>
+  <!-- TOP ANNOUNCEMENT -->
+  <div class="announcement">
+    <span>✦</span> Miễn phí giao hàng cho đơn từ 500.000đ <span>✦</span> Đổi trả trong 7 ngày <span>✦</span> Tích điểm 1% hoàn tiền <span>✦</span>
+  </div>
+
+  <!-- STORE HEADER -->
   <header class="store-header">
     <div class="header-inner">
-      <a class="store-logo" href="/customer.html"><span class="logo-mark">T</span><span>ToyStore<span class="logo-dot">.</span></span></a>
-      <nav class="store-nav" aria-label="Menu cửa hàng"><a href="/products.html">Sản phẩm</a><a href="#categories">Danh mục</a><a href="#about">Về ToyStore</a><a href="#contact">Liên hệ</a></nav>
-      <div class="header-actions"><span class="customer-api-status" id="customerApiStatus">Đang kết nối API</span><button class="header-icon search-trigger" aria-label="Tìm kiếm">⌕</button><button class="header-icon" id="custAccountBtn" aria-label="Tài khoản">◎</button><button class="cart-button" id="custCartBtn" aria-label="Giỏ hàng"><span>♧</span><i id="cartCount">0</i></button><button class="mobile-menu" id="mobileMenu" aria-label="Mở menu">☰</button></div>
+      <a class="store-logo" href="/customer.html">
+        <span class="logo-mark">T</span>
+        <span>ToyStore<span class="logo-dot">.</span></span>
+      </a>
+      <nav class="store-nav" aria-label="Menu cửa hàng">
+        <a href="/products.html">Sản phẩm</a>
+        <a href="#categories">Danh mục</a>
+        <a href="#loyaltyClub">Tích điểm thưởng</a>
+        <a href="#about">Về ToyStore</a>
+        <a href="#contact">Liên hệ</a>
+      </nav>
+      <div class="header-actions">
+        <span class="customer-api-status" id="customerApiStatus">Đang kết nối API</span>
+        <button class="header-icon search-trigger" aria-label="Tìm kiếm" onclick="location.href='/products.html'">⌕</button>
+        <button class="header-icon" id="custAccountBtn" aria-label="Tài khoản & Tích điểm" title="Tài khoản & Tích điểm">◎</button>
+        <button class="cart-button" id="custCartBtn" aria-label="Giỏ hàng">
+          <span>🛍</span>
+          <i id="cartCount">0</i>
+        </button>
+        <button class="mobile-menu" id="mobileMenu" aria-label="Mở menu">☰</button>
+      </div>
     </div>
-    <div class="mobile-nav" id="mobileNav"><a href="/products.html">Sản phẩm</a><a href="#categories">Danh mục</a><a href="#about">Về ToyStore</a><a href="#contact">Liên hệ</a></div>
+    <div class="mobile-nav" id="mobileNav">
+      <a href="/products.html">Sản phẩm</a>
+      <a href="#categories">Danh mục</a>
+      <a href="#loyaltyClub">Tích điểm thưởng</a>
+      <a href="#about">Về ToyStore</a>
+      <a href="#contact">Liên hệ</a>
+    </div>
   </header>
 
   <main>
-    <section class="hero" id="about"><div class="hero-copy"><p class="eyebrow">PLAY · LEARN · GROW</p><h1>Niềm vui<br><em>bắt đầu</em> từ đây.</h1><p class="hero-text">Những món đồ chơi được chọn để mỗi giờ chơi đều trở thành một chuyến phiêu lưu nhỏ.</p><a class="hero-button" href="/products.html">Khám phá ngay <span>→</span></a></div><div class="hero-scene"><div class="sun"></div><div class="scene-label">NEW<br>ARRIVALS</div><div class="toy-block block-one">✦</div><div class="toy-block block-two">●</div><div class="toy-block block-three">▲</div><div class="hero-tape">TOYSTORE 2026</div></div></section>
-    <section class="category-strip" id="categories"><div id="homeCategoryList"><div><span class="category-icon">◈</span><b>Đang tải danh mục...</b><small>Kết nối API để xem danh mục</small></div></div></section>
-    <section class="home-products"><div class="home-products-head"><div><p class="eyebrow">SẢN PHẨM MỚI NHẤT</p><h2>Tất cả sản phẩm yêu thích</h2></div><a class="hero-button" href="/products.html">Xem tất cả <span>→</span></a></div><div class="home-products-grid" id="homeProductGrid"><p>Đang tải sản phẩm...</p></div></section>
-    <section class="home-callout"><div><p class="eyebrow">KHÁM PHÁ BỘ SƯU TẬP</p><h2>Mỗi món đồ chơi<br><span>một chuyến phiêu lưu.</span></h2><p>Khám phá những sản phẩm được chọn riêng cho từng sở thích và độ tuổi.</p></div><a class="hero-button" href="/products.html">Xem tất cả sản phẩm <span>→</span></a></section>
-    <section class="promise" id="contact"><div><p class="eyebrow">CHỌN TOYSTORE</p><h2>Chơi vui hơn,<br><span>yên tâm hơn.</span></h2></div><div class="promise-list"><article><b>01</b><h3>Đồ chơi chọn lọc</h3><p>Chất lượng và an toàn luôn là ưu tiên đầu tiên.</p></article><article><b>02</b><h3>Giao hàng tận tâm</h3><p>Đóng gói cẩn thận, gửi niềm vui đến mọi nhà.</p></article><article><b>03</b><h3>Đổi trả dễ dàng</h3><p>Hỗ trợ nhanh chóng trong 7 ngày đầu tiên.</p></article></div></section>
-  </main>
-  <footer class="store-footer"><div class="footer-main"><div><a class="store-logo footer-logo" href="/customer.html"><span class="logo-mark">T</span><span>ToyStore<span class="logo-dot">.</span></span></a><p>Để tuổi thơ luôn đầy ắp những điều kỳ diệu.</p></div><div><h4>Khám phá</h4><a href="/products.html">Tất cả sản phẩm</a><a href="#categories">Danh mục đồ chơi</a><a href="#about">Câu chuyện ToyStore</a></div><div><h4>Hỗ trợ</h4><a href="#contact">Liên hệ với chúng tôi</a><a href="#">Chính sách giao hàng</a><a href="#">Đổi trả & bảo hành</a></div><div><h4>Ghé thăm</h4><p>Hotline: 0901 234 567</p><p>hello@toystore.vn</p><p>08:00 - 21:00 mỗi ngày</p></div></div><div class="footer-bottom"><span>© 2026 ToyStore Management</span><span>Made for little explorers <b>✦</b></span></div></footer>
+    <!-- HERO -->
+    <section class="hero" id="about">
+      <div class="hero-copy">
+        <p class="eyebrow">CHƠI VUI · HỌC HAY · PHÁT TRIỂN TOÀN DIỆN</p>
+        <h1>Niềm vui tuổi thơ<br><em>bắt đầu</em> từ đây.</h1>
+        <p class="hero-text">Những món đồ chơi giáo dục và sáng tạo cao cấp được chọn lọc kỹ càng, an toàn tuyệt đối cho bé khám phá thế giới.</p>
+        <a class="hero-button" href="/products.html">Khám phá bộ sưu tập <span>→</span></a>
+      </div>
+      <div class="hero-scene">
+        <div class="sun"></div>
+        <div class="scene-label">NEW ARRIVALS 2026</div>
+        <div class="toy-block block-one">✦</div>
+        <div class="toy-block block-two">●</div>
+        <div class="toy-block block-three">▲</div>
+        <div class="hero-tape">TOYSTORE PREMIUM</div>
+      </div>
+    </section>
 
-  <!-- CART DRAWER -->
+    <!-- CATEGORIES STRIP -->
+    <section class="category-strip" id="categories">
+      <div id="homeCategoryList">
+        <div>
+          <span class="category-icon">◈</span>
+          <b>Đang tải danh mục...</b>
+          <small>Kết nối API xem danh mục</small>
+        </div>
+      </div>
+    </section>
+
+    <!-- LATEST PRODUCTS -->
+    <section class="home-products">
+      <div class="home-products-head">
+        <div>
+          <p class="eyebrow">BỘ SƯU TẬP MỚI NHẤT</p>
+          <h2>Sản phẩm đồ chơi nổi bật</h2>
+        </div>
+        <a class="hero-button" href="/products.html" style="padding:10px 22px;font-size:13.5px;">Xem tất cả sản phẩm <span>→</span></a>
+      </div>
+      <div class="home-products-grid" id="homeProductGrid">
+        <p>Đang tải sản phẩm...</p>
+      </div>
+    </section>
+
+    <!-- LOYALTY CLUB HIGHLIGHT -->
+    <section class="home-callout" id="loyaltyClub">
+      <div>
+        <p class="eyebrow" style="color:var(--secondary);background:rgba(245,158,11,0.2);">CHƯƠNG TRÌNH KHÁCH HÀNG THÂN THIẾT</p>
+        <h2>Tích điểm thả ga<br><span>Mua sắm càng nhiều, quà càng lớn.</span></h2>
+        <p>Tích lũy 1 điểm cho mỗi 10.000đ khi mua hàng. Dễ dàng đổi điểm trừ tiền trực tiếp trên hóa đơn hoặc nhận voucher quà tặng độc quyền!</p>
+      </div>
+      <button class="hero-button" id="joinLoyaltyBtn" style="background:#ffffff;color:var(--text-main);box-shadow:var(--shadow-md);">
+        <span>👑</span> Xem Điểm Tích Lũy Của Bạn
+      </button>
+    </section>
+
+    <!-- PROMISE -->
+    <section class="promise" id="contact">
+      <div>
+        <p class="eyebrow">CAM KẾT CHẤT LƯỢNG</p>
+        <h2>Chơi vui hơn,<br><span>an tâm trọn vẹn.</span></h2>
+      </div>
+      <div class="promise-list">
+        <article>
+          <b>01</b>
+          <h3>100% Chính Hãng</h3>
+          <p>Sản phẩm đạt chuẩn an toàn quốc tế, không hóa chất độc hại.</p>
+        </article>
+        <article>
+          <b>02</b>
+          <h3>Giao Hàng Siêu Tốc</h3>
+          <p>Đóng gói cẩn thận 2 lớp, gửi trọn niềm vui đến tận tay bé.</p>
+        </article>
+        <article>
+          <b>03</b>
+          <h3>Đổi Trả Dễ Dàng</h3>
+          <p>Hỗ trợ đổi mới tận nhà trong 7 ngày đầu nếu có lỗi sản xuất.</p>
+        </article>
+      </div>
+    </section>
+  </main>
+
+  <!-- STORE FOOTER -->
+  <footer class="store-footer">
+    <div class="footer-main">
+      <div>
+        <a class="store-logo footer-logo" href="/customer.html">
+          <span class="logo-mark">T</span>
+          <span>ToyStore<span class="logo-dot">.</span></span>
+        </a>
+        <p>Hệ thống cửa hàng đồ chơi trẻ em cao cấp hàng đầu Việt Nam.</p>
+        <p style="margin-top:14px;color:#94a3b8;font-size:12.5px;">Hotline tư vấn: <strong>1900 6868</strong> (8:00 - 21:30)</p>
+      </div>
+      <div>
+        <h4>Khám phá</h4>
+        <a href="/products.html">Tất cả sản phẩm</a>
+        <a href="#categories">Danh mục đồ chơi</a>
+        <a href="#loyaltyClub">Chính sách tích điểm</a>
+        <a href="#about">Câu chuyện thương hiệu</a>
+      </div>
+      <div>
+        <h4>Hỗ trợ</h4>
+        <a href="#contact">Liên hệ chúng tôi</a>
+        <a href="#">Chính sách giao hàng</a>
+        <a href="#">Đổi trả & bảo hành</a>
+        <a href="#">Điều khoản dịch vụ</a>
+      </div>
+      <div>
+        <h4>ToyStore Club</h4>
+        <p>Tích lũy điểm thưởng với mỗi đơn hàng để nhận ưu đãi thành viên VIP.</p>
+        <p style="color:var(--secondary);font-weight:700;">★ Hạng Đồng &bull; Bạc &bull; Vàng &bull; Kim Cương</p>
+      </div>
+    </div>
+    <div class="footer-bottom">
+      <span>© 2026 ToyStore Management - Đồ chơi cho những ngày thật vui.</span>
+      <span>Made with love for little explorers <b>✦</b></span>
+    </div>
+  </footer>
+
+  <!-- 1. CART DRAWER (SLIDING PANEL - NO DIALOG) -->
   <div class="cart-drawer-overlay" id="cartDrawerOverlay">
-    <div class="cart-drawer">
+    <div class="cart-drawer" id="cartDrawer">
       <div class="cart-drawer-header">
         <h2>Giỏ hàng (<span id="cartDrawerCount">0</span>)</h2>
-        <button class="cart-drawer-close" id="cartDrawerClose">×</button>
+        <button class="cart-drawer-close" id="cartDrawerClose" aria-label="Đóng giỏ hàng">×</button>
       </div>
-      <div class="cart-drawer-body" id="cartDrawerBody"></div>
+      <div class="cart-drawer-body" id="cartDrawerBody">
+        <!-- Rendered via JS -->
+      </div>
       <div class="cart-drawer-footer">
         <div class="cart-summary-row">
           <span>Tạm tính:</span>
@@ -47,141 +196,191 @@
         </div>
         <div class="cart-summary-row">
           <span>Phí giao hàng:</span>
-          <span id="cartShippingFee">Miễn phí</span>
+          <span id="cartShippingFee" style="color:var(--success);font-weight:700;">Miễn phí</span>
         </div>
         <div class="cart-summary-row total">
-          <span>Tổng tiền:</span>
+          <span>Tổng thanh toán:</span>
           <strong id="cartTotal">0đ</strong>
         </div>
-        <button class="cart-checkout-btn" id="openCheckoutBtn">Tiến hành thanh toán <span>→</span></button>
+        <div style="font-size:12px;color:var(--secondary);margin-top:6px;font-weight:600;" id="cartPointsEstimate">
+          ✨ Dự kiến tích lũy: <b>0 điểm thưởng</b>
+        </div>
+        <button class="cart-checkout-btn" id="openCheckoutDrawerBtn">
+          Tiến hành đặt hàng <span>→</span>
+        </button>
       </div>
     </div>
   </div>
 
-  <!-- CHECKOUT MODAL -->
-  <div class="cust-modal-backdrop" id="checkoutModalBackdrop">
-    <div class="cust-modal-box">
-      <button class="cust-modal-close" id="checkoutModalClose">×</button>
-      <h2 class="cust-modal-title">Thanh toán đơn hàng</h2>
-      <form id="checkoutForm">
-        <div class="cust-form-group">
-          <label>Họ và tên người nhận *</label>
-          <input type="text" id="orderFullName" required placeholder="Nguyễn Văn A">
-        </div>
-        <div class="cust-form-group">
-          <label>Số điện thoại *</label>
-          <input type="tel" id="orderPhone" required placeholder="0901234567">
-        </div>
-        <div class="cust-form-group">
-          <label>Địa chỉ giao hàng *</label>
-          <input type="text" id="orderAddress" required placeholder="Số 123 Đường ABC, Phường X, Quận Y, TP.HCM">
-        </div>
-        <div class="cust-form-group">
-          <label>Ghi chú đơn hàng</label>
-          <textarea id="orderNote" rows="2" placeholder="Ghi chú thời gian giao hàng, hướng dẫn..."></textarea>
-        </div>
-        <div class="cust-form-group">
-          <label>Mã Voucher giảm giá</label>
-          <div style="display:flex;gap:8px;">
-            <input type="text" id="orderVoucherCode" placeholder="Nhập mã voucher (nếu có)">
-            <button type="button" class="add-cart" id="applyVoucherBtn" style="margin:0;width:auto;white-space:nowrap;">Áp dụng</button>
+  <!-- 2. CHECKOUT DRAWER (SLIDING PANEL - NO DIALOG) -->
+  <div class="cart-drawer-overlay" id="checkoutDrawerOverlay">
+    <div class="cart-drawer" id="checkoutDrawer">
+      <div class="cart-drawer-header">
+        <h2>Thanh toán đơn hàng</h2>
+        <button class="cart-drawer-close" id="checkoutDrawerClose" aria-label="Đóng thanh toán">×</button>
+      </div>
+      <div class="cart-drawer-body" style="padding-bottom:10px;">
+        <form id="checkoutDrawerForm">
+          <div class="cust-form-group">
+            <label>Họ và tên người nhận *</label>
+            <input type="text" id="orderFullName" required placeholder="Nguyễn Văn A">
           </div>
-          <small id="voucherMessage" style="color:var(--coral);font-weight:600;display:block;margin-top:4px;"></small>
-        </div>
-        <div class="cust-form-group">
-          <label>Phương thức thanh toán</label>
-          <select id="orderPaymentMethod">
-            <option value="COD">Thanh toán khi nhận hàng (COD)</option>
-            <option value="Banking">Chuyển khoản ngân hàng</option>
-          </select>
-        </div>
-        <div class="cart-summary-row total" style="margin-bottom:16px;">
+          <div class="cust-form-group">
+            <label>Số điện thoại liên hệ *</label>
+            <input type="tel" id="orderPhone" required placeholder="0901234567">
+          </div>
+          <div class="cust-form-group">
+            <label>Địa chỉ giao hàng tận nơi *</label>
+            <input type="text" id="orderAddress" required placeholder="Số nhà, Tên đường, Phường/Xã, Quận/Huyện, Tỉnh/TP">
+          </div>
+          <div class="cust-form-group">
+            <label>Ghi chú đơn hàng (Thời gian giao, chỉ dẫn...)</label>
+            <textarea id="orderNote" rows="2" placeholder="Ví dụ: Giao giờ hành chính, gọi trước khi đến..."></textarea>
+          </div>
+          <div class="cust-form-group">
+            <label>Mã Voucher giảm giá</label>
+            <div style="display:flex;gap:8px;">
+              <input type="text" id="orderVoucherCode" placeholder="Nhập mã voucher (nếu có)">
+              <button type="button" class="add-cart" id="applyVoucherBtn" style="margin:0;width:auto;white-space:nowrap;padding:8px 16px;">Áp dụng</button>
+            </div>
+            <small id="voucherMessage" style="color:var(--primary);font-weight:700;display:block;margin-top:4px;"></small>
+          </div>
+          <div class="cust-form-group">
+            <label>Phương thức thanh toán</label>
+            <select id="orderPaymentMethod">
+              <option value="COD">Thanh toán khi nhận hàng (COD)</option>
+              <option value="Banking">Chuyển khoản ngân hàng (QR Code)</option>
+            </select>
+          </div>
+          
+          <div class="form-section-card" style="background:#fff7ed;border-color:#ffedd5;padding:14px;border-radius:10px;margin:16px 0;">
+            <p style="font-size:12.5px;color:#9a3412;margin:0;display:flex;align-items:center;gap:6px;">
+              <span>🎁</span> <strong>Ưu đãi tích điểm:</strong> Đơn hàng này sẽ cộng điểm thưởng vào tài khoản của bạn sau khi hoàn tất.
+            </p>
+          </div>
+        </form>
+      </div>
+      <div class="cart-drawer-footer">
+        <div class="cart-summary-row total" style="margin-top:0;padding-top:0;border:none;">
           <span>Tổng thanh toán:</span>
           <strong id="checkoutFinalTotal">0đ</strong>
         </div>
-        <button class="cart-checkout-btn" type="submit">Xác nhận đặt hàng</button>
-      </form>
-    </div>
-  </div>
-
-  <!-- CUSTOMER AUTH MODAL -->
-  <div class="cust-modal-backdrop" id="customerAuthModalBackdrop">
-    <div class="cust-modal-box">
-      <button class="cust-modal-close" id="customerAuthModalClose">×</button>
-      <div id="authModalUnauthenticated">
-        <div class="cust-modal-tabs">
-          <button class="cust-tab-btn active" id="tabLoginBtn" type="button">Đăng nhập</button>
-          <button class="cust-tab-btn" id="tabRegisterBtn" type="button">Đăng ký</button>
-        </div>
-        
-        <form id="custLoginForm">
-          <div class="cust-form-group">
-            <label>Email *</label>
-            <input type="email" id="custLoginEmail" required placeholder="email@toystore.vn">
-          </div>
-          <div class="cust-form-group">
-            <label>Mật khẩu *</label>
-            <input type="password" id="custLoginPassword" required placeholder="Nhập mật khẩu">
-          </div>
-          <p id="custLoginError" style="color:#b44235;font-size:12px;font-weight:600;margin-bottom:10px;"></p>
-          <button class="cart-checkout-btn" type="submit">Đăng nhập</button>
-        </form>
-
-        <form id="custRegisterForm" style="display:none;">
-          <div class="cust-form-group">
-            <label>Họ và tên *</label>
-            <input type="text" id="custRegFullName" required placeholder="Nguyễn Văn A">
-          </div>
-          <div class="cust-form-group">
-            <label>Email *</label>
-            <input type="email" id="custRegEmail" required placeholder="email@toystore.vn">
-          </div>
-          <div class="cust-form-group">
-            <label>Số điện thoại</label>
-            <input type="tel" id="custRegPhone" placeholder="0901234567">
-          </div>
-          <div class="cust-form-group">
-            <label>Mật khẩu *</label>
-            <input type="password" id="custRegPassword" required placeholder="Nhập mật khẩu (tối thiểu 6 ký tự)">
-          </div>
-          <p id="custRegError" style="color:#b44235;font-size:12px;font-weight:600;margin-bottom:10px;"></p>
-          <button class="cart-checkout-btn" type="submit">Đăng ký tài khoản</button>
-        </form>
-      </div>
-
-      <div id="authModalAuthenticated" style="display:none;">
-        <h2 class="cust-modal-title">Thông tin tài khoản</h2>
-        <div style="background:#faf9f6;padding:16px;border-radius:8px;margin-bottom:16px;">
-          <p style="margin:0 0 6px;"><strong>Họ tên:</strong> <span id="userProfileName"></span></p>
-          <p style="margin:0 0 6px;"><strong>Email:</strong> <span id="userProfileEmail"></span></p>
-          <p style="margin:0;"><strong>Vai trò:</strong> <span class="role-badge" id="userProfileRole"></span></p>
-        </div>
-
-        <button type="button" class="add-cart" id="toggleChangePassBtn" style="margin-bottom:12px;">🔒 Đổi mật khẩu</button>
-
-        <form id="custChangePassForm" style="display:none;margin-bottom:16px;border-top:1px solid #eee;padding-top:16px;">
-          <div class="cust-form-group">
-            <label>Mật khẩu hiện tại *</label>
-            <input type="password" id="changePassCurrent" required>
-          </div>
-          <div class="cust-form-group">
-            <label>Mật khẩu mới *</label>
-            <input type="password" id="changePassNew" required>
-          </div>
-          <div class="cust-form-group">
-            <label>Xác nhận mật khẩu mới *</label>
-            <input type="password" id="changePassConfirm" required>
-          </div>
-          <p id="changePassError" style="color:#b44235;font-size:12px;font-weight:600;margin-bottom:10px;"></p>
-          <button class="cart-checkout-btn" type="submit">Lưu mật khẩu mới</button>
-        </form>
-
-        <button type="button" class="add-cart" id="custLogoutBtn" style="border-color:#b44235;color:#b44235;">Đăng xuất</button>
+        <button class="cart-checkout-btn" type="submit" form="checkoutDrawerForm" id="confirmOrderBtn">
+          Xác nhận đặt hàng ngay <span>✓</span>
+        </button>
       </div>
     </div>
   </div>
 
+  <!-- 3. CUSTOMER ACCOUNT & LOYALTY DRAWER (SLIDING PANEL - NO DIALOG) -->
+  <div class="cart-drawer-overlay" id="accountDrawerOverlay">
+    <div class="cart-drawer" id="accountDrawer">
+      <div class="cart-drawer-header">
+        <h2 id="accountDrawerTitle">Tài khoản & Tích điểm</h2>
+        <button class="cart-drawer-close" id="accountDrawerClose" aria-label="Đóng tài khoản">×</button>
+      </div>
+      
+      <div class="cart-drawer-body">
+        <!-- UNLOGGED STATE -->
+        <div id="drawerUnauthenticated">
+          <div class="cust-modal-tabs">
+            <button class="cust-tab-btn active" id="tabLoginBtn" type="button">Đăng nhập</button>
+            <button class="cust-tab-btn" id="tabRegisterBtn" type="button">Đăng ký mới</button>
+          </div>
+          
+          <!-- LOGIN FORM -->
+          <form id="custLoginForm">
+            <div class="cust-form-group">
+              <label>Email tài khoản *</label>
+              <input type="email" id="custLoginEmail" required placeholder="email@toystore.vn">
+            </div>
+            <div class="cust-form-group">
+              <label>Mật khẩu *</label>
+              <input type="password" id="custLoginPassword" required placeholder="Nhập mật khẩu">
+            </div>
+            <p id="custLoginError" style="color:var(--danger);font-size:12.5px;font-weight:700;margin-bottom:12px;"></p>
+            <button class="cart-checkout-btn" type="submit">Đăng nhập hệ thống</button>
+          </form>
+
+          <!-- REGISTER FORM -->
+          <form id="custRegisterForm" style="display:none;">
+            <div class="cust-form-group">
+              <label>Họ và tên của bạn *</label>
+              <input type="text" id="custRegFullName" required placeholder="Nguyễn Văn A">
+            </div>
+            <div class="cust-form-group">
+              <label>Email đăng ký *</label>
+              <input type="email" id="custRegEmail" required placeholder="email@toystore.vn">
+            </div>
+            <div class="cust-form-group">
+              <label>Số điện thoại</label>
+              <input type="tel" id="custRegPhone" placeholder="0901234567">
+            </div>
+            <div class="cust-form-group">
+              <label>Mật khẩu đăng nhập *</label>
+              <input type="password" id="custRegPassword" required placeholder="Tối thiểu 6 ký tự">
+            </div>
+            <p id="custRegError" style="color:var(--danger);font-size:12.5px;font-weight:700;margin-bottom:12px;"></p>
+            <button class="cart-checkout-btn" type="submit">Đăng ký thành viên</button>
+          </form>
+        </div>
+
+        <!-- LOGGED IN STATE & LOYALTY CARD -->
+        <div id="drawerAuthenticated" style="display:none;">
+          <!-- LOYALTY CARD -->
+          <div class="loyalty-card-box" style="background:linear-gradient(135deg, #1e1b4b 0%, #312e81 50%, #4338ca 100%);color:#fff;border-radius:16px;padding:22px;margin-bottom:20px;box-shadow:var(--shadow-md);position:relative;overflow:hidden;">
+            <div style="position:absolute;top:-15px;right:-15px;width:90px;height:90px;background:rgba(255,255,255,0.08);border-radius:50%;"></div>
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px;">
+              <span style="font-size:11px;font-weight:800;letter-spacing:1.5px;text-transform:uppercase;color:var(--secondary);">TOYSTORE REWARDS CLUB</span>
+              <span class="pill" id="userTierBadge" style="background:rgba(251,191,36,0.2);color:#fbbf24;border-color:rgba(251,191,36,0.4);font-size:11px;font-weight:700;">🥉 Hạng Đồng</span>
+            </div>
+            <div style="margin-bottom:12px;">
+              <span style="font-size:12px;color:#c7d2fe;display:block;">Điểm thưởng tích lũy:</span>
+              <strong style="font:800 32px 'Space Grotesk',sans-serif;color:#fbbf24;" id="userLoyaltyPoints">0</strong> <span style="font-size:14px;color:#e0e7ff;">điểm</span>
+            </div>
+            <p style="font-size:11.5px;color:#cbd5e1;margin:0;line-height:1.4;">
+              💡 Tích 1 điểm cho mỗi 10.000đ khi mua sắm. Điểm dùng để trừ tiền trực tiếp trên hóa đơn.
+            </p>
+          </div>
+
+          <!-- USER INFO -->
+          <div style="background:#ffffff;border:1px solid var(--border-color);padding:18px;border-radius:12px;margin-bottom:16px;">
+            <p style="margin:0 0 8px;font-size:14px;"><strong>Họ và tên:</strong> <span id="userProfileName"></span></p>
+            <p style="margin:0 0 8px;font-size:14px;"><strong>Email:</strong> <span id="userProfileEmail"></span></p>
+            <p style="margin:0;font-size:14px;"><strong>Vai trò tài khoản:</strong> <span class="pill info" id="userProfileRole">Customer</span></p>
+          </div>
+
+          <!-- CHANGE PASSWORD ACCORDION -->
+          <button type="button" class="add-cart" id="toggleChangePassBtn" style="margin-bottom:12px;">🔒 Đổi mật khẩu tài khoản</button>
+
+          <form id="custChangePassForm" style="display:none;margin-bottom:16px;background:#fafaf9;padding:16px;border-radius:12px;border:1px solid var(--border-color);">
+            <div class="cust-form-group">
+              <label>Mật khẩu hiện tại *</label>
+              <input type="password" id="changePassCurrent" required>
+            </div>
+            <div class="cust-form-group">
+              <label>Mật khẩu mới *</label>
+              <input type="password" id="changePassNew" required minlength="6">
+            </div>
+            <div class="cust-form-group">
+              <label>Xác nhận mật khẩu mới *</label>
+              <input type="password" id="changePassConfirm" required minlength="6">
+            </div>
+            <p id="changePassError" style="color:var(--danger);font-size:12.5px;font-weight:700;margin-bottom:10px;"></p>
+            <button class="cart-checkout-btn" type="submit" style="padding:10px;">Lưu mật khẩu mới</button>
+          </form>
+
+          <button type="button" class="add-cart" id="custLogoutBtn" style="border-color:var(--danger);color:var(--danger);background:#ffffff;">
+            Đăng xuất tài khoản
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- TOAST -->
   <div class="customer-toast" id="customerToast"></div>
-  <script src="/js/customer.js?v=20260921-2"></script>
+
+  <script src="/js/customer.js?v=20260922-3"></script>
 </body>
 </html>

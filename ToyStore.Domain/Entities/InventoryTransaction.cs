@@ -29,7 +29,6 @@ namespace ToyStoreManagement.Domain.Entities
         public string Note { get; set; }
 
         // Navigation
-        [ForeignKey(nameof(VariantId))]
         public virtual ProductVariant ProductVariant { get; set; }
     }
 }

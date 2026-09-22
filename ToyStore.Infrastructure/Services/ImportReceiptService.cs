@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Text;
@@ -38,9 +38,50 @@ namespace ToyStoreManagement.Infrastructure.Services
 
         public async Task<IEnumerable<ImportReceiptDto>> GetAllAsync()
         {
-            var receipts = await _repository.GetAllWithDetailsAsync();
+            var receipts = (await _repository.GetAllWithDetailsAsync()).ToList();
+            if (receipts.Count == 0)
+                return Enumerable.Empty<ImportReceiptDto>();
 
-            return await Task.WhenAll(receipts.Select(MapToDtoAsync));
+            var receiptIds = receipts.Select(r => r.ImportReceiptId).ToList();
+
+            var allReceived = await _context.InventoryTransactions
+                .Where(x => x.ReferenceType == "ImportReceipt"
+                    && x.ReferenceId.HasValue
+                    && receiptIds.Contains(x.ReferenceId.Value))
+                .GroupBy(x => new { ReceiptId = x.ReferenceId.Value, x.VariantId })
+                .Select(x => new { x.Key.ReceiptId, x.Key.VariantId, Quantity = x.Sum(y => y.Quantity) })
+                .ToListAsync();
+
+            var receivedLookup = allReceived.ToDictionary(
+                x => (x.ReceiptId, x.VariantId),
+                x => x.Quantity
+            );
+
+            return receipts.Select(receipt => new ImportReceiptDto
+            {
+                ImportReceiptId = receipt.ImportReceiptId,
+                SupplierId = receipt.SupplierId,
+                SupplierName = receipt.Supplier?.Name,
+                EmployeeId = receipt.EmployeeId,
+                ReceiptCode = receipt.ReceiptCode,
+                ImportDate = receipt.ImportDate,
+                TotalAmount = receipt.TotalAmount,
+                Status = receipt.Status,
+                Note = receipt.Note,
+                CreatedAt = receipt.CreatedAt,
+                ImportReceiptDetails = receipt.ImportReceiptDetails.Select(x => new ImportReceiptDetailDto
+                {
+                    ImportReceiptDetailId = x.ImportReceiptDetailId,
+                    ImportReceiptId = x.ImportReceiptId,
+                    VariantId = x.VariantId,
+                    SKU = x.ProductVariant?.SKU,
+                    ProductName = x.ProductVariant?.Product?.Name,
+                    Quantity = x.Quantity,
+                    ReceivedQuantity = receivedLookup.GetValueOrDefault((receipt.ImportReceiptId, x.VariantId)),
+                    UnitCost = x.UnitCost,
+                    TotalAmount = x.TotalAmount
+                }).ToList()
+            }).ToList();
         }
 
         public async Task<ImportReceiptDto?> GetByIdAsync(int id)
@@ -317,6 +358,53 @@ namespace ToyStoreManagement.Infrastructure.Services
                 await transaction.RollbackAsync();
                 throw;
             }
+        }
+
+        public async Task<ImportReceiptDto?> ApproveAsync(int id)
+        {
+            var receipt = await _context.ImportReceipts
+                .Include(x => x.ImportReceiptDetails)
+                    .ThenInclude(x => x.ProductVariant)
+                .FirstOrDefaultAsync(x => x.ImportReceiptId == id);
+
+            if (receipt == null)
+                return null;
+
+            if (receipt.Status == 3)
+                throw new Exception("Phiếu đặt hàng này đã được duyệt và nhập kho hoàn tất.");
+
+            if (receipt.Status == 4)
+                throw new Exception("Không thể duyệt phiếu đặt hàng đã bị hủy.");
+
+            var receivedByVariant = await _context.InventoryTransactions
+                .Where(x => x.ReferenceType == "ImportReceipt" && x.ReferenceId == receipt.ImportReceiptId)
+                .GroupBy(x => x.VariantId)
+                .Select(x => new { VariantId = x.Key, Quantity = x.Sum(y => y.Quantity) })
+                .ToDictionaryAsync(x => x.VariantId, x => x.Quantity);
+
+            var detailsToReceive = new List<ReceiveImportReceiptDetailDto>();
+            foreach (var detail in receipt.ImportReceiptDetails)
+            {
+                var alreadyReceived = receivedByVariant.GetValueOrDefault(detail.VariantId);
+                var remaining = detail.Quantity - alreadyReceived;
+                if (remaining > 0)
+                {
+                    detailsToReceive.Add(new ReceiveImportReceiptDetailDto
+                    {
+                        ImportReceiptDetailId = detail.ImportReceiptDetailId,
+                        Quantity = remaining
+                    });
+                }
+            }
+
+            if (detailsToReceive.Count == 0)
+            {
+                receipt.Status = 3;
+                await _unitOfWork.SaveChangesAsync();
+                return await GetByIdAsync(id);
+            }
+
+            return await ReceiveAsync(id, new ReceiveImportReceiptDto { Details = detailsToReceive });
         }
 
         public async Task<bool> CancelAsync(int id)

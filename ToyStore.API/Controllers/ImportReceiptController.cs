@@ -1,4 +1,4 @@
-﻿using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using ToyStoreManagement.Application.DTOs.Import;
 using ToyStoreManagement.Application.Interfaces.Services;
@@ -110,6 +110,24 @@ namespace ToyStoreManagement.API.Controllers
             try
             {
                 var receipt = await _service.ReceiveAsync(id, dto);
+                if (receipt == null)
+                    return NotFound(new { message = "Không tìm thấy phiếu nhập." });
+
+                return Ok(receipt);
+            }
+            catch (Exception ex)
+            {
+                return BadRequest(new { message = ex.Message });
+            }
+        }
+
+        [HttpPost("{id}/approve")]
+        [Authorize(Policy = "AdminOrManager")]
+        public async Task<IActionResult> Approve(int id)
+        {
+            try
+            {
+                var receipt = await _service.ApproveAsync(id);
                 if (receipt == null)
                     return NotFound(new { message = "Không tìm thấy phiếu nhập." });
 
