@@ -76,6 +76,14 @@ namespace ToyStoreManagement.Infrastructure.Services
             if (dto.OrderDetails == null || !dto.OrderDetails.Any())
                 throw new Exception("Đơn hàng phải có ít nhất một sản phẩm.");
 
+            if (dto.Shipping == null
+                || string.IsNullOrWhiteSpace(dto.Shipping.ReceiverName)
+                || string.IsNullOrWhiteSpace(dto.Shipping.ReceiverPhone)
+                || string.IsNullOrWhiteSpace(dto.Shipping.Address))
+            {
+                throw new Exception("Vui lòng nhập đầy đủ họ tên, số điện thoại và địa chỉ nhận hàng.");
+            }
+
             await using var transaction = await _context.Database
                 .BeginTransactionAsync(System.Data.IsolationLevel.Serializable);
 
@@ -93,13 +101,26 @@ namespace ToyStoreManagement.Infrastructure.Services
                     throw new Exception(
                         $"Không tìm thấy biến thể sản phẩm ID {detail.VariantId}.");
 
+                if (variant.Price <= 0)
+                {
+                    throw new Exception(
+                        $"Sản phẩm (SKU: {variant.SKU}) chưa được cập nhật giá bán.");
+                }
+
                 var inventory = await _context.Inventories
                     .FirstOrDefaultAsync(i => i.VariantId == detail.VariantId);
 
-                if (inventory != null && inventory.Quantity < detail.Quantity)
+                if (inventory == null)
                 {
                     throw new Exception(
-                        $"Sản phẩm (SKU: {variant.SKU}) không đủ số lượng tồn kho. Hiện chỉ còn {inventory.Quantity} sản phẩm.");
+                        $"Sản phẩm (SKU: {variant.SKU}) chưa có hàng trong kho.");
+                }
+
+                var availableQuantity = Math.Max(0, inventory.Quantity - inventory.ReservedQuantity);
+                if (availableQuantity < detail.Quantity)
+                {
+                    throw new Exception(
+                        $"Sản phẩm (SKU: {variant.SKU}) không đủ số lượng tồn kho. Hiện chỉ còn {availableQuantity} sản phẩm.");
                 }
             }
 
@@ -153,6 +174,7 @@ namespace ToyStoreManagement.Infrastructure.Services
             }
 
             order.Subtotal = subtotal;
+            order.ShippingFee = subtotal >= 500000 ? 0 : 30000;
 
             order.TotalAmount =
                 order.Subtotal
@@ -161,6 +183,19 @@ namespace ToyStoreManagement.Infrastructure.Services
 
             await _orderRepository.AddAsync(order);
             await _unitOfWork.SaveChangesAsync();
+
+            // Lưu riêng thông tin nhận hàng để quản lý đơn có thể hiển thị đúng
+            // dữ liệu, thay vì phải tách chuỗi ghi chú do khách hàng gửi lên.
+            _context.Shippings.Add(new Shipping
+            {
+                OrderId = order.OrderId,
+                ReceiverName = dto.Shipping.ReceiverName.Trim(),
+                ReceiverPhone = dto.Shipping.ReceiverPhone.Trim(),
+                Address = dto.Shipping.Address.Trim(),
+                ShippingMethod = dto.Shipping.ShippingMethod,
+                ShippingFee = order.ShippingFee,
+                Status = 0
+            });
 
             foreach (var productId in affectedProductIds)
             {
@@ -194,30 +229,17 @@ namespace ToyStoreManagement.Infrastructure.Services
                 });
             }
 
-            // Tự động tích lũy điểm thưởng cho khách hàng (1 điểm cho mỗi 10.000đ chi tiêu)
-            if (order.CustomerId.HasValue && order.CustomerId.Value > 0)
+            // Tạo bản ghi thanh toán ở trạng thái chờ. Chỉ khi đơn Hoàn tất
+            // thì bản ghi này mới chuyển sang Đã thanh toán và khách mới nhận điểm.
+            _context.Payments.Add(new Payment
             {
-                var customer = await _context.Customers.FindAsync(order.CustomerId.Value);
-                if (customer != null)
-                {
-                    int earnedPoints = (int)(order.TotalAmount / 10000);
-                    if (earnedPoints > 0)
-                    {
-                        customer.LoyaltyPoint += earnedPoints;
-                        customer.UpdatedAt = DateTime.UtcNow;
-
-                        _context.LoyaltyTransactions.Add(new LoyaltyTransaction
-                        {
-                            CustomerId = customer.CustomerId,
-                            OrderId = order.OrderId,
-                            Points = earnedPoints,
-                            TransactionType = 1, // 1: Tích điểm
-                            Description = $"Tích {earnedPoints} điểm thưởng từ đơn hàng #{order.OrderCode}",
-                            CreatedAt = DateTime.UtcNow
-                        });
-                    }
-                }
-            }
+                OrderId = order.OrderId,
+                PaymentMethod = dto.PaymentMethod,
+                TransactionCode = $"PENDING-{order.OrderCode}",
+                Amount = order.TotalAmount,
+                Status = 0,
+                CreatedAt = DateTime.UtcNow
+            });
 
             await _unitOfWork.SaveChangesAsync();
 
@@ -265,6 +287,63 @@ namespace ToyStoreManagement.Infrastructure.Services
                 + order.ShippingFee;
 
             order.UpdatedAt = DateTime.UtcNow;
+
+            // Hoàn tất đơn: xác nhận thanh toán và cộng điểm đúng một lần.
+            if (dto.Status == 4 && oldStatus != 4)
+            {
+                var payment = order.Payment
+                    ?? await _paymentRepository.GetByOrderIdAsync(order.OrderId);
+
+                if (payment == null)
+                {
+                    _context.Payments.Add(new Payment
+                    {
+                        OrderId = order.OrderId,
+                        PaymentMethod = 0,
+                        TransactionCode = $"PAID-{order.OrderCode}",
+                        Amount = order.TotalAmount,
+                        Status = 1,
+                        PaidAt = DateTime.UtcNow,
+                        CreatedAt = DateTime.UtcNow
+                    });
+                }
+                else
+                {
+                    payment.Amount = order.TotalAmount;
+                    payment.Status = 1;
+                    payment.PaidAt = DateTime.UtcNow;
+                }
+
+                if (order.CustomerId.HasValue && order.CustomerId.Value > 0)
+                {
+                    var alreadyEarnedPoints = await _context.LoyaltyTransactions
+                        .AnyAsync(item => item.OrderId == order.OrderId
+                            && item.TransactionType == 1);
+
+                    if (!alreadyEarnedPoints)
+                    {
+                        var customer = await _context.Customers
+                            .FindAsync(order.CustomerId.Value);
+                        var earnedPoints = (int)(order.TotalAmount / 10000m);
+
+                        if (customer != null && earnedPoints > 0)
+                        {
+                            customer.LoyaltyPoint += earnedPoints;
+                            customer.UpdatedAt = DateTime.UtcNow;
+
+                            _context.LoyaltyTransactions.Add(new LoyaltyTransaction
+                            {
+                                CustomerId = customer.CustomerId,
+                                OrderId = order.OrderId,
+                                Points = earnedPoints,
+                                TransactionType = 1,
+                                Description = $"Tích {earnedPoints} điểm thưởng từ đơn hàng hoàn tất #{order.OrderCode}",
+                                CreatedAt = DateTime.UtcNow
+                            });
+                        }
+                    }
+                }
+            }
 
             // Hoàn tồn kho nếu đơn bị Hủy (5) và trước đó chưa hủy
             if (dto.Status == 5 && oldStatus != 5)
@@ -471,7 +550,11 @@ namespace ToyStoreManagement.Infrastructure.Services
                 DiscountAmount = order.DiscountAmount,
                 ShippingFee = order.ShippingFee,
                 TotalAmount = order.TotalAmount,
+                PaymentStatus = order.Payment?.Status,
                 Note = order.Note,
+                CustomerName = order.Customer?.FullName,
+                CustomerEmail = order.Customer?.Email,
+                PhoneNumber = order.Customer?.Phone ?? order.Shipping?.ReceiverPhone,
                 CreatedAt = order.CreatedAt,
                 UpdatedAt = order.UpdatedAt,
 

@@ -26,6 +26,7 @@ namespace ToyStoreManagement.Application.DTOs.Promotion
 
         public bool CanCombine { get; set; }
 
-        public int Status { get; set; }
+        // Mặc định chương trình mới được kích hoạt.
+        public int Status { get; set; } = 1;
     }
 }

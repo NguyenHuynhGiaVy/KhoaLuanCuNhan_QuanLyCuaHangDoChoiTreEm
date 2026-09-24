@@ -84,20 +84,114 @@ namespace ToyStoreManagement.Infrastructure.Repositories
             };
         }
 
-        public async Task<RevenueChartDto> GetRevenueChartAsync(string period)
+        public async Task<RevenueChartDto> GetRevenueChartAsync(
+            string period,
+            DateTime? from = null,
+            DateTime? to = null,
+            string groupBy = "day")
         {
             var now = DateTime.UtcNow;
             var result = new RevenueChartDto();
 
-            if (period == "day")
+            if (string.Equals(period, "custom", StringComparison.OrdinalIgnoreCase))
             {
-                // Last 7 days
-                for (int i = 6; i >= 0; i--)
+                if (!from.HasValue || !to.HasValue)
+                {
+                    throw new ArgumentException("Vui lòng chọn đầy đủ ngày bắt đầu và ngày kết thúc.");
+                }
+
+                var startDate = from.Value.Date;
+                var endDate = to.Value.Date;
+                if (endDate < startDate)
+                {
+                    throw new ArgumentException("Ngày kết thúc phải lớn hơn hoặc bằng ngày bắt đầu.");
+                }
+
+                groupBy = (groupBy ?? "day").Trim().ToLowerInvariant();
+                if (groupBy is not ("day" or "month" or "year"))
+                {
+                    throw new ArgumentException("Mốc thời gian không hợp lệ.");
+                }
+
+                var daySpan = (endDate - startDate).TotalDays;
+                if (groupBy == "day" && daySpan > 366)
+                {
+                    throw new ArgumentException("Khoảng theo ngày tối đa là 366 ngày. Hãy chọn mốc theo tháng hoặc năm.");
+                }
+
+                if (groupBy == "month" && daySpan > 3650)
+                {
+                    throw new ArgumentException("Khoảng theo tháng tối đa là 10 năm. Hãy chọn mốc theo năm.");
+                }
+
+                if (groupBy == "year" && endDate.Year - startDate.Year > 30)
+                {
+                    throw new ArgumentException("Khoảng theo năm tối đa là 31 năm.");
+                }
+
+                var endExclusive = endDate.AddDays(1);
+                var completedOrders = await _context.Orders
+                    .Where(x => x.Status == 4 && x.OrderDate >= startDate && x.OrderDate < endExclusive)
+                    .Select(x => new { x.OrderDate, x.TotalAmount })
+                    .ToListAsync();
+
+                if (groupBy == "day")
+                {
+                    var revenueByDay = completedOrders
+                        .GroupBy(x => x.OrderDate.Date)
+                        .ToDictionary(x => x.Key, x => x.Sum(order => order.TotalAmount));
+
+                    for (var date = startDate; date <= endDate; date = date.AddDays(1))
+                    {
+                        result.Labels.Add(date.ToString("dd/MM/yyyy"));
+                        result.Data.Add(revenueByDay.GetValueOrDefault(date));
+                    }
+                }
+                else if (groupBy == "month")
+                {
+                    var revenueByMonth = completedOrders
+                        .GroupBy(x => new { x.OrderDate.Year, x.OrderDate.Month })
+                        .ToDictionary(x => (x.Key.Year, x.Key.Month), x => x.Sum(order => order.TotalAmount));
+                    var month = new DateTime(startDate.Year, startDate.Month, 1);
+                    var lastMonth = new DateTime(endDate.Year, endDate.Month, 1);
+
+                    while (month <= lastMonth)
+                    {
+                        result.Labels.Add(month.ToString("MM/yyyy"));
+                        result.Data.Add(revenueByMonth.GetValueOrDefault((month.Year, month.Month)));
+                        month = month.AddMonths(1);
+                    }
+                }
+                else
+                {
+                    var revenueByYear = completedOrders
+                        .GroupBy(x => x.OrderDate.Year)
+                        .ToDictionary(x => x.Key, x => x.Sum(order => order.TotalAmount));
+
+                    for (var year = startDate.Year; year <= endDate.Year; year++)
+                    {
+                        result.Labels.Add(year.ToString());
+                        result.Data.Add(revenueByYear.GetValueOrDefault(year));
+                    }
+                }
+
+                return result;
+            }
+
+            if (period == "day" || period == "day30")
+            {
+                var dayCount = period == "day30" ? 30 : 7;
+                var firstDate = now.Date.AddDays(-(dayCount - 1));
+                var revenuesByDate = await _context.Orders
+                    .Where(x => x.Status == 4 && x.OrderDate >= firstDate)
+                    .GroupBy(x => x.OrderDate.Date)
+                    .Select(x => new { Date = x.Key, Revenue = x.Sum(order => order.TotalAmount) })
+                    .ToDictionaryAsync(x => x.Date, x => x.Revenue);
+
+                for (int i = dayCount - 1; i >= 0; i--)
                 {
                     var date = now.Date.AddDays(-i);
-                    var revenue = await _context.Orders
-                        .Where(x => x.Status == 4 && x.OrderDate.Date == date)
-                        .SumAsync(x => (decimal?)x.TotalAmount) ?? 0;
+                    var revenue = revenuesByDate.GetValueOrDefault(date);
 
                     result.Labels.Add(date.ToString("dd/MM"));
                     result.Data.Add(revenue);

@@ -23,6 +23,7 @@ namespace ToyStoreManagement.Infrastructure.Repositories
         {
             return await _dbSet
                 .Include(x => x.User)
+                .Include(x => x.Orders)
                 .OrderByDescending(x => x.CreatedAt)
                 .ToListAsync();
         }
@@ -31,6 +32,7 @@ namespace ToyStoreManagement.Infrastructure.Repositories
         {
             return await _dbSet
                 .Include(x => x.User)
+                .Include(x => x.Orders)
                 .FirstOrDefaultAsync(x => x.CustomerId == customerId);
         }
 
@@ -38,6 +40,7 @@ namespace ToyStoreManagement.Infrastructure.Repositories
         {
             return await _dbSet
                 .Include(x => x.User)
+                .Include(x => x.Orders)
                 .FirstOrDefaultAsync(x => x.UserId == userId);
         }
     }

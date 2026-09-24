@@ -22,6 +22,8 @@ namespace ToyStoreManagement.Application.DTOs.Promotion
 
         public decimal? MinimumOrderValue { get; set; }
 
+        public int RequiredPoints { get; set; }
+
         public int UsageLimit { get; set; }
 
         public int UsedCount { get; set; }

@@ -96,6 +96,10 @@ namespace ToyStoreManagement.Infrastructure.Services
                 throw new Exception(
                     "Giá trị đơn hàng tối thiểu không được âm.");
 
+            if (dto.RequiredPoints < 0)
+                throw new Exception(
+                    "Số điểm đổi voucher không được âm.");
+
             if (dto.UsageLimit < 0)
                 throw new Exception(
                     "Giới hạn sử dụng không được âm.");
@@ -120,13 +124,14 @@ namespace ToyStoreManagement.Infrastructure.Services
                 DiscountValue = dto.DiscountValue,
                 MaximumDiscount = dto.MaximumDiscount,
                 MinimumOrderValue = dto.MinimumOrderValue,
+                RequiredPoints = dto.RequiredPoints,
                 UsageLimit = dto.UsageLimit,
                 UsedCount = 0,
                 UsageLimitPerCustomer =
                     dto.UsageLimitPerCustomer,
                 StartDate = dto.StartDate,
                 EndDate = dto.EndDate,
-                Status = dto.Status,
+                Status = dto.Status == 0 ? 0 : 1,
                 CreatedAt = DateTime.UtcNow
             };
 
@@ -174,6 +179,10 @@ namespace ToyStoreManagement.Infrastructure.Services
                 throw new Exception(
                     "Giá trị đơn hàng tối thiểu không được âm.");
 
+            if (dto.RequiredPoints < 0)
+                throw new Exception(
+                    "Số điểm đổi voucher không được âm.");
+
             if (dto.UsageLimit < voucher.UsedCount)
                 throw new Exception(
                     "UsageLimit không được nhỏ hơn số lượt đã sử dụng.");
@@ -188,6 +197,7 @@ namespace ToyStoreManagement.Infrastructure.Services
             voucher.DiscountValue = dto.DiscountValue;
             voucher.MaximumDiscount = dto.MaximumDiscount;
             voucher.MinimumOrderValue = dto.MinimumOrderValue;
+            voucher.RequiredPoints = dto.RequiredPoints;
             voucher.UsageLimit = dto.UsageLimit;
             voucher.UsageLimitPerCustomer =
                 dto.UsageLimitPerCustomer;
@@ -357,6 +367,7 @@ namespace ToyStoreManagement.Infrastructure.Services
                 DiscountValue = voucher.DiscountValue,
                 MaximumDiscount = voucher.MaximumDiscount,
                 MinimumOrderValue = voucher.MinimumOrderValue,
+                RequiredPoints = voucher.RequiredPoints,
                 UsageLimit = voucher.UsageLimit,
                 UsedCount = voucher.UsedCount,
                 UsageLimitPerCustomer =

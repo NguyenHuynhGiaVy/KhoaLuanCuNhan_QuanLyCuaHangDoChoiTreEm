@@ -33,6 +33,9 @@ namespace ToyStoreManagement.Infrastructure.Configurations
             builder.Property(x => x.MinimumOrderValue)
                 .HasColumnType("decimal(18,2)");
 
+            builder.Property(x => x.RequiredPoints)
+                .HasDefaultValue(0);
+
             builder.HasIndex(x => x.Code)
                 .IsUnique();
         }

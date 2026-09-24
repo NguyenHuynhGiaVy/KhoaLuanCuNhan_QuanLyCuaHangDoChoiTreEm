@@ -13,7 +13,11 @@ namespace ToyStoreManagement.Application.Interfaces.Repositories
 
         Task<RevenueStatisticsDto> GetRevenueStatisticsAsync();
 
-        Task<RevenueChartDto> GetRevenueChartAsync(string period);
+        Task<RevenueChartDto> GetRevenueChartAsync(
+            string period,
+            DateTime? from = null,
+            DateTime? to = null,
+            string groupBy = "day");
 
         Task<OrderStatisticsDto> GetOrderStatisticsAsync();
 

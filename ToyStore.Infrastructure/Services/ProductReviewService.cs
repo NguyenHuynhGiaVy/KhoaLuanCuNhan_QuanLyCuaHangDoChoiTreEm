@@ -17,7 +17,7 @@ namespace ToyStoreManagement.Infrastructure.Services
         private readonly IGenericRepository<Product> _productRepository;
         private readonly IGenericRepository<ProductVariant> _variantRepository;
         private readonly IGenericRepository<Customer> _customerRepository;
-        private readonly IGenericRepository<Order> _orderRepository;
+        private readonly IOrderRepository _orderRepository;
         private readonly IUnitOfWork _unitOfWork;
 
         public ProductReviewService(
@@ -25,7 +25,7 @@ namespace ToyStoreManagement.Infrastructure.Services
             IGenericRepository<Product> productRepository,
             IGenericRepository<ProductVariant> variantRepository,
             IGenericRepository<Customer> customerRepository,
-            IGenericRepository<Order> orderRepository,
+            IOrderRepository orderRepository,
             IUnitOfWork unitOfWork)
         {
             _productReviewRepository = productReviewRepository;
@@ -102,9 +102,18 @@ namespace ToyStoreManagement.Infrastructure.Services
             if (customer == null)
                 throw new Exception("Khách hàng không tồn tại.");
 
-            var order = await _orderRepository.GetByIdAsync(dto.OrderId);
+            var order = await _orderRepository.GetByIdWithDetailsAsync(dto.OrderId);
             if (order == null)
                 throw new Exception("Đơn hàng không tồn tại.");
+
+            if (order.CustomerId != dto.CustomerId)
+                throw new Exception("Đơn hàng không thuộc tài khoản khách hàng hiện tại.");
+
+            if (order.Status != 4)
+                throw new Exception("Chỉ có thể đánh giá sau khi đơn hàng đã hoàn thành.");
+
+            if (!order.OrderDetails.Any(detail => detail.VariantId == dto.VariantId))
+                throw new Exception("Biến thể này không có trong đơn hàng đã chọn.");
 
             var existingReview = await _productReviewRepository
                 .FirstOrDefaultAsync(x =>
@@ -123,7 +132,8 @@ namespace ToyStoreManagement.Infrastructure.Services
                 OrderId = dto.OrderId,
                 Rating = dto.Rating,
                 Comment = dto.Comment,
-                IsApproved = false,
+                // Chỉ cho đánh giá từ đơn hoàn thành nên có thể hiển thị ngay trên trang sản phẩm.
+                IsApproved = true,
                 CreatedAt = DateTime.UtcNow
             };
 

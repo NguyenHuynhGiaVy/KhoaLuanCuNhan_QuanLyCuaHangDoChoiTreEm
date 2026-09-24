@@ -10,6 +10,9 @@ namespace ToyStoreManagement.Domain.Entities
 
         public int? OrderId { get; set; }
 
+        // Có giá trị khi khách hàng dùng điểm để đổi voucher.
+        public int? VoucherId { get; set; }
+
         public int Points { get; set; }
 
         public int TransactionType { get; set; }

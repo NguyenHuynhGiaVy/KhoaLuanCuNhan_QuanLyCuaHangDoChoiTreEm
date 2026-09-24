@@ -1,6 +1,7 @@
 ﻿using Microsoft.AspNetCore.Mvc;
 
 using Microsoft.AspNetCore.Authorization;
+using System.Security.Claims;
 using ToyStoreManagement.Application.DTOs.CustomerCare;
 using ToyStoreManagement.Application.Interfaces.Services;
 
@@ -12,11 +13,14 @@ namespace ToyStoreManagement.API.Controllers
     public class ProductReviewController : ControllerBase
     {
         private readonly IProductReviewService _productReviewService;
+        private readonly ICustomerService _customerService;
 
         public ProductReviewController(
-            IProductReviewService productReviewService)
+            IProductReviewService productReviewService,
+            ICustomerService customerService)
         {
             _productReviewService = productReviewService;
+            _customerService = customerService;
         }
 
         [HttpGet]
@@ -38,6 +42,7 @@ namespace ToyStoreManagement.API.Controllers
         }
 
         [HttpGet("by-product/{productId}")]
+        [AllowAnonymous]
         public async Task<IActionResult> GetByProductId(int productId)
         {
             return Ok(
@@ -65,6 +70,16 @@ namespace ToyStoreManagement.API.Controllers
         {
             try
             {
+                var userId = GetCurrentUserId();
+                if (userId == null)
+                    return Unauthorized(new { message = "Vui lòng đăng nhập để gửi đánh giá." });
+
+                var customer = await _customerService.GetByUserIdAsync(userId);
+                if (customer == null)
+                    return BadRequest(new { message = "Vui lòng hoàn thiện hồ sơ khách hàng trước khi gửi đánh giá." });
+
+                // Không tin CustomerId từ trình duyệt: luôn dùng hồ sơ của tài khoản hiện tại.
+                dto.CustomerId = customer.CustomerId;
                 var result =
                     await _productReviewService.CreateAsync(dto);
 
@@ -121,6 +136,12 @@ namespace ToyStoreManagement.API.Controllers
             {
                 return BadRequest(ex.Message);
             }
+        }
+
+        private string? GetCurrentUserId()
+        {
+            return User.FindFirstValue(ClaimTypes.NameIdentifier)
+                ?? User.FindFirstValue("sub");
         }
     }
 }

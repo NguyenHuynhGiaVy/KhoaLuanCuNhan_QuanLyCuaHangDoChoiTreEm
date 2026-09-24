@@ -14,6 +14,8 @@ namespace ToyStoreManagement.Application.DTOs.Customer
 
         public int? OrderId { get; set; }
 
+        public int? VoucherId { get; set; }
+
         public int Points { get; set; }
 
         public int TransactionType { get; set; }

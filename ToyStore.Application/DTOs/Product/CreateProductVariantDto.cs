@@ -14,13 +14,11 @@ namespace ToyStoreManagement.Application.DTOs.Product
         [Required(ErrorMessage = "SKU không được để trống")]
         public string SKU { get; set; } = string.Empty;
 
-        [Required(ErrorMessage = "Giá bán không được để trống")]
         [Range(0, double.MaxValue, ErrorMessage = "Giá bán không được là số âm")]
-        public decimal Price { get; set; }
+        public decimal? Price { get; set; }
 
-        [Required(ErrorMessage = "Giá vốn không được để trống")]
         [Range(0, double.MaxValue, ErrorMessage = "Giá vốn không được là số âm")]
-        public decimal CostPrice { get; set; }
+        public decimal? CostPrice { get; set; }
 
         public decimal? Weight { get; set; }
 

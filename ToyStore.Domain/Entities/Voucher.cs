@@ -24,6 +24,10 @@ namespace ToyStoreManagement.Domain.Entities
 
         public decimal? MinimumOrderValue { get; set; }
 
+        // Số điểm khách hàng cần để đổi voucher. Giá trị 0 nghĩa là voucher
+        // thông thường, không xuất hiện trong danh mục đổi điểm.
+        public int RequiredPoints { get; set; }
+
         public int UsageLimit { get; set; }
 
         public int UsedCount { get; set; }

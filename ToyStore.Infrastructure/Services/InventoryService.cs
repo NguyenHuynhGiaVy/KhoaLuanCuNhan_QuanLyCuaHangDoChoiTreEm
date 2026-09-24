@@ -156,7 +156,10 @@ namespace ToyStoreManagement.Infrastructure.Services
                 .Where(x => x.ProductVariant.ProductId == product.ProductId)
                 .SumAsync(x => (int?)x.Quantity) ?? 0;
 
-            product.Status = totalQuantity > 0 ? 1 : 0;
+            // Trạng thái 2 là hàng thanh lý/ngừng nhập mới do Admin thiết lập.
+            // Không tự động ghi đè trạng thái này khi tồn kho biến động.
+            if (product.Status != 2)
+                product.Status = totalQuantity > 0 ? 1 : 0;
 
             product.UpdatedAt = DateTime.UtcNow;
             await _unitOfWork.SaveChangesAsync();

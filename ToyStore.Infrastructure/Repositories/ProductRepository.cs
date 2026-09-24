@@ -34,6 +34,8 @@ namespace ToyStoreManagement.Infrastructure.Repositories
                 .Include(p => p.Supplier)
                 .Include(p => p.ProductVariants)
                     .ThenInclude(v => v.VariantAttributes)
+                .Include(p => p.ProductVariants)
+                    .ThenInclude(v => v.Inventory)
                 .ToListAsync();
         }
 
@@ -46,6 +48,8 @@ namespace ToyStoreManagement.Infrastructure.Repositories
                 .Include(p => p.Supplier)
                 .Include(p => p.ProductVariants)
                     .ThenInclude(v => v.VariantAttributes)
+                .Include(p => p.ProductVariants)
+                    .ThenInclude(v => v.Inventory)
                 .FirstOrDefaultAsync(
                     p => p.ProductId == productId);
         }

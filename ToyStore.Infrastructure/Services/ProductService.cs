@@ -76,6 +76,39 @@ namespace ToyStoreManagement.Infrastructure.Services
         public async Task<ProductDto> CreateAsync(
             CreateProductDto dto)
         {
+            if (dto.BasePrice.HasValue)
+                throw new InvalidOperationException(
+                    "Chỉ có thể nhập giá bán sau khi sản phẩm đã được nhập kho.");
+
+            if (dto.Variants == null || dto.Variants.Count == 0)
+                throw new InvalidOperationException(
+                    "Sản phẩm cần có ít nhất một biến thể để lập phiếu nhập kho.");
+
+            if (dto.Variants.Any(variant => variant.Price.HasValue))
+                throw new InvalidOperationException(
+                    "Biến thể chỉ được nhập giá bán sau khi đã có tồn kho.");
+
+            var requestedSkus = dto.Variants
+                .Select(variant => variant.SKU?.Trim() ?? string.Empty)
+                .ToList();
+
+            if (requestedSkus.Any(string.IsNullOrWhiteSpace))
+                throw new InvalidOperationException("SKU không được để trống.");
+
+            if (requestedSkus.GroupBy(sku => sku, StringComparer.OrdinalIgnoreCase)
+                .Any(group => group.Count() > 1))
+            {
+                throw new InvalidOperationException(
+                    "SKU của các biến thể trong cùng sản phẩm không được trùng nhau.");
+            }
+
+            if (await _context.ProductVariants.AnyAsync(variant =>
+                requestedSkus.Contains(variant.SKU)))
+            {
+                throw new InvalidOperationException(
+                    "Có SKU biến thể đã tồn tại trong hệ thống.");
+            }
+
             var product = new Product
             {
                 CategoryId = dto.CategoryId,
@@ -128,11 +161,11 @@ namespace ToyStoreManagement.Infrastructure.Services
                     var variant = new ProductVariant
                     {
                         ProductId = product.ProductId,
-                        SKU = variantDto.SKU,
+                        SKU = variantDto.SKU.Trim(),
                         Color = GetAttributeValue(variantDto.Attributes, "Màu sắc", "Color"),
                         Size = GetAttributeValue(variantDto.Attributes, "Kích thước", "Size"),
-                        Price = variantDto.Price,
-                        CostPrice = variantDto.CostPrice,
+                        Price = variantDto.Price ?? 0,
+                        CostPrice = variantDto.CostPrice ?? 0,
                         Weight = variantDto.Weight,
                         ImageUrl = variantDto.ImageUrl,
                         Status = variantDto.Status,
@@ -188,7 +221,17 @@ namespace ToyStoreManagement.Infrastructure.Services
 
             product.IsFeatured = dto.IsFeatured;
 
-            product.BasePrice = dto.BasePrice;
+            product.Status = dto.Status;
+
+            if (dto.BasePrice.HasValue)
+            {
+                var hasInventory = await HasProductAvailableInventoryAsync(productId);
+                if (!hasInventory)
+                    throw new InvalidOperationException(
+                        "Chỉ có thể nhập giá bán sau khi sản phẩm đã có tồn kho từ phiếu nhập NCC.");
+
+                product.BasePrice = dto.BasePrice;
+            }
 
             product.IsNew = dto.IsNew;
 
@@ -200,8 +243,6 @@ namespace ToyStoreManagement.Infrastructure.Services
 
             await _unitOfWork
                 .SaveChangesAsync();
-
-            await SyncProductStatusAsync(product.ProductId);
 
             return true;
         }
@@ -216,7 +257,8 @@ namespace ToyStoreManagement.Infrastructure.Services
             if (product == null)
                 return;
 
-            product.Status = totalQuantity > 0 ? 1 : 0;
+            if (product.Status != 2)
+                product.Status = totalQuantity > 0 ? 1 : 0;
             product.UpdatedAt = DateTime.UtcNow;
             await _unitOfWork.SaveChangesAsync();
         }
@@ -338,6 +380,10 @@ namespace ToyStoreManagement.Infrastructure.Services
                     "SKU đã tồn tại.");
             }
 
+            if (dto.Price.HasValue)
+                throw new InvalidOperationException(
+                    "Biến thể mới chỉ được nhập giá bán sau khi đã có tồn kho từ phiếu nhập NCC.");
+
             var variant = new ProductVariant
             {
                 ProductId = productId,
@@ -348,9 +394,9 @@ namespace ToyStoreManagement.Infrastructure.Services
 
                 Size = GetAttributeValue(dto.Attributes, "Kích thước", "Size"),
 
-                Price = dto.Price,
+                Price = dto.Price ?? 0,
 
-                CostPrice = dto.CostPrice,
+                CostPrice = dto.CostPrice ?? 0,
 
                 Weight = dto.Weight,
 
@@ -413,9 +459,18 @@ namespace ToyStoreManagement.Infrastructure.Services
 
             variant.Size = GetAttributeValue(dto.Attributes, "Kích thước", "Size");
 
-            variant.Price = dto.Price;
+            if (dto.Price.HasValue)
+            {
+                var hasInventory = await HasVariantAvailableInventoryAsync(variantId);
+                if (!hasInventory)
+                    throw new InvalidOperationException(
+                        "Chỉ có thể nhập giá bán cho biến thể khi biến thể đã có tồn kho từ phiếu nhập NCC.");
 
-            variant.CostPrice = dto.CostPrice;
+                variant.Price = dto.Price.Value;
+            }
+
+            if (dto.CostPrice.HasValue)
+                variant.CostPrice = dto.CostPrice.Value;
 
             variant.Weight = dto.Weight;
 
@@ -568,6 +623,10 @@ namespace ToyStoreManagement.Infrastructure.Services
 
                 Status = variant.Status,
 
+                AvailableQuantity = variant.Inventory == null
+                    ? null
+                    : Math.Max(0, variant.Inventory.Quantity - variant.Inventory.ReservedQuantity),
+
                 CreatedAt = variant.CreatedAt,
 
                 UpdatedAt = variant.UpdatedAt
@@ -582,6 +641,20 @@ namespace ToyStoreManagement.Infrastructure.Services
                 .FirstOrDefault(attribute => names.Any(name =>
                     attribute.AttributeName.Equals(name, StringComparison.OrdinalIgnoreCase)))
                 ?.AttributeValue ?? string.Empty;
+        }
+
+        private Task<bool> HasProductAvailableInventoryAsync(int productId)
+        {
+            return _context.Inventories.AnyAsync(inventory =>
+                inventory.ProductVariant.ProductId == productId &&
+                inventory.Quantity - inventory.ReservedQuantity > 0);
+        }
+
+        private Task<bool> HasVariantAvailableInventoryAsync(int variantId)
+        {
+            return _context.Inventories.AnyAsync(inventory =>
+                inventory.VariantId == variantId &&
+                inventory.Quantity - inventory.ReservedQuantity > 0);
         }
     }
 }

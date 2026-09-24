@@ -16,6 +16,10 @@ namespace ToyStoreManagement.Application.DTOs.Import
 
         public int EmployeeId { get; set; }
 
+        public string? OrderedByUserId { get; set; }
+
+        public string? OrderedByName { get; set; }
+
         public string ReceiptCode { get; set; }
 
         public DateTime ImportDate { get; set; }

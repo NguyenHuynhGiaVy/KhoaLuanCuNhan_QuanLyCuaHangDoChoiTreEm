@@ -21,10 +21,18 @@ namespace ToyStoreManagement.Infrastructure.Configurations
             builder.Property(x => x.TotalAmount)
                 .HasColumnType("decimal(18,2)");
 
+            builder.Property(x => x.OrderedByUserId)
+                .HasMaxLength(450);
+
             builder.HasOne(x => x.Supplier)
                 .WithMany(x => x.ImportReceipts)
                 .HasForeignKey(x => x.SupplierId)
                 .OnDelete(DeleteBehavior.Restrict);
+
+            builder.HasOne(x => x.OrderedByUser)
+                .WithMany()
+                .HasForeignKey(x => x.OrderedByUserId)
+                .OnDelete(DeleteBehavior.SetNull);
         }
     }
 }

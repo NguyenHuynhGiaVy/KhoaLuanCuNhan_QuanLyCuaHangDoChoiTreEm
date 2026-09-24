@@ -45,7 +45,7 @@ namespace ToyStoreManagement.Infrastructure.Repositories
                 .Include(x => x.ProductVariant)
                 .Include(x => x.Customer)
                 .Include(x => x.Order)
-                .Where(x => x.ProductId == productId)
+                .Where(x => x.ProductId == productId && x.IsApproved)
                 .OrderByDescending(x => x.CreatedAt)
                 .ToListAsync();
         }

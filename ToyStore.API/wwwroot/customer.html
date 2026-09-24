@@ -8,8 +8,8 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:ital,wght@0,400;0,500;0,600;0,700;0,800;1,400;1,600&family=Space+Grotesk:wght@500;600;700;800&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="/css/customer.css?v=20260922-3">
-  <link rel="stylesheet" href="/css/home.css?v=20260922-3">
+  <link rel="stylesheet" href="/css/customer.css?v=20260923-5">
+  <link rel="stylesheet" href="/css/home.css?v=20260923-4">
   <style>
     .home-products { max-width: 1280px; margin: 0 auto; padding: 40px 24px 70px; }
     .home-products-head { display: flex; align-items: flex-end; justify-content: space-between; margin-bottom: 28px; }
@@ -34,10 +34,10 @@
         <span>ToyStore<span class="logo-dot">.</span></span>
       </a>
       <nav class="store-nav" aria-label="Menu cửa hàng">
+        <a href="/customer.html" class="active">Trang chủ</a>
         <a href="/products.html">Sản phẩm</a>
         <a href="#categories">Danh mục</a>
-        <a href="#loyaltyClub">Tích điểm thưởng</a>
-        <a href="#about">Về ToyStore</a>
+        <a href="/rewards.html">Tích điểm thưởng</a>
         <a href="#contact">Liên hệ</a>
       </nav>
       <div class="header-actions">
@@ -52,10 +52,10 @@
       </div>
     </div>
     <div class="mobile-nav" id="mobileNav">
+      <a href="/customer.html" class="active">Trang chủ</a>
       <a href="/products.html">Sản phẩm</a>
       <a href="#categories">Danh mục</a>
-      <a href="#loyaltyClub">Tích điểm thưởng</a>
-      <a href="#about">Về ToyStore</a>
+      <a href="/rewards.html">Tích điểm thưởng</a>
       <a href="#contact">Liên hệ</a>
     </div>
   </header>
@@ -69,13 +69,24 @@
         <p class="hero-text">Những món đồ chơi giáo dục và sáng tạo cao cấp được chọn lọc kỹ càng, an toàn tuyệt đối cho bé khám phá thế giới.</p>
         <a class="hero-button" href="/products.html">Khám phá bộ sưu tập <span>→</span></a>
       </div>
-      <div class="hero-scene">
-        <div class="sun"></div>
-        <div class="scene-label">NEW ARRIVALS 2026</div>
-        <div class="toy-block block-one">✦</div>
-        <div class="toy-block block-two">●</div>
-        <div class="toy-block block-three">▲</div>
-        <div class="hero-tape">TOYSTORE PREMIUM</div>
+      <div class="hero-carousel" id="homeCarousel" aria-roledescription="carousel" aria-label="Không gian ToyStore">
+        <article class="hero-slide active">
+          <img src="https://images.unsplash.com/photo-1560961911-ba7ef651a56c?auto=format&fit=crop&w=1200&q=85" alt="Không gian đồ chơi đầy màu sắc">
+          <div class="hero-slide-copy"><span>ĐỒ CHƠI ĐƯỢC CHỌN LỌC</span><strong>An toàn cho bé,<br>an tâm cho nhà.</strong></div>
+        </article>
+        <article class="hero-slide">
+          <img src="https://images.unsplash.com/photo-1596464716127-f2a82984de30?auto=format&fit=crop&w=1200&q=85" alt="Bé vui chơi cùng đồ chơi sáng tạo">
+          <div class="hero-slide-copy"><span>HỌC QUA VUI CHƠI</span><strong>Mỗi ngày một<br>khám phá mới.</strong></div>
+        </article>
+        <article class="hero-slide">
+          <img src="https://images.unsplash.com/photo-1545558014-8692077e9b5c?auto=format&fit=crop&w=1200&q=85" alt="Đồ chơi giáo dục cho trẻ em">
+          <div class="hero-slide-copy"><span>TOYSTORE CLUB</span><strong>Niềm vui nhỏ,<br>kỷ niệm lớn.</strong></div>
+        </article>
+        <div class="hero-carousel-nav" aria-label="Chọn ảnh banner">
+          <button class="hero-carousel-dot active" type="button" data-home-slide="0" aria-label="Banner 1"></button>
+          <button class="hero-carousel-dot" type="button" data-home-slide="1" aria-label="Banner 2"></button>
+          <button class="hero-carousel-dot" type="button" data-home-slide="2" aria-label="Banner 3"></button>
+        </div>
       </div>
     </section>
 
@@ -86,6 +97,23 @@
           <span class="category-icon">◈</span>
           <b>Đang tải danh mục...</b>
           <small>Kết nối API xem danh mục</small>
+        </div>
+      </div>
+    </section>
+
+    <section class="store-story" aria-labelledby="storeStoryTitle">
+      <div class="store-story-photo">
+        <img src="https://images.unsplash.com/photo-1599443015574-be5fe8a05783?auto=format&fit=crop&w=1200&q=85" alt="Những món đồ chơi được sắp xếp tại ToyStore" loading="lazy">
+        <span>TOYSTORE · TỪ 2026</span>
+      </div>
+      <div class="store-story-copy">
+        <p class="eyebrow">CÂU CHUYỆN CỬA HÀNG</p>
+        <h2 id="storeStoryTitle">Chúng mình chọn đồ chơi<br><span>như chọn quà cho con.</span></h2>
+        <p>ToyStore là không gian dành cho những giờ chơi vui, an toàn và đầy cảm hứng. Mỗi sản phẩm được chọn theo độ tuổi, sở thích và khả năng phát triển của bé.</p>
+        <div class="store-story-stats">
+          <div><strong>100%</strong><span>Hàng chính hãng</span></div>
+          <div><strong>7 ngày</strong><span>Đổi trả dễ dàng</span></div>
+          <div><strong>1 điểm</strong><span>Mỗi 10.000đ</span></div>
         </div>
       </div>
     </section>
@@ -101,6 +129,20 @@
       </div>
       <div class="home-products-grid" id="homeProductGrid">
         <p>Đang tải sản phẩm...</p>
+      </div>
+    </section>
+
+    <section class="home-recommendations" aria-labelledby="recommendationsTitle">
+      <div class="home-products-head">
+        <div>
+          <p class="eyebrow">DÀNH RIÊNG CHO BẠN</p>
+          <h2 id="recommendationsTitle">Gợi ý sản phẩm</h2>
+          <p class="recommendations-subtitle" id="recommendationsSubtitle">Đăng nhập để nhận gợi ý dựa trên các sản phẩm bạn đã xem và mua.</p>
+        </div>
+        <a class="hero-button recommendation-link" href="/products.html">Xem thêm <span>→</span></a>
+      </div>
+      <div class="home-products-grid" id="personalizedRecommendationGrid">
+        <p>Đang chuẩn bị gợi ý cho bạn...</p>
       </div>
     </section>
 
@@ -157,7 +199,7 @@
         <h4>Khám phá</h4>
         <a href="/products.html">Tất cả sản phẩm</a>
         <a href="#categories">Danh mục đồ chơi</a>
-        <a href="#loyaltyClub">Chính sách tích điểm</a>
+        <a href="/rewards.html">Chính sách tích điểm</a>
         <a href="#about">Câu chuyện thương hiệu</a>
       </div>
       <div>
@@ -266,7 +308,7 @@
           <strong id="checkoutFinalTotal">0đ</strong>
         </div>
         <button class="cart-checkout-btn" type="submit" form="checkoutDrawerForm" id="confirmOrderBtn">
-          Xác nhận đặt hàng ngay <span>✓</span>
+          Xem chi tiết đơn hàng <span>→</span>
         </button>
       </div>
     </div>
@@ -381,6 +423,6 @@
   <!-- TOAST -->
   <div class="customer-toast" id="customerToast"></div>
 
-  <script src="/js/customer.js?v=20260922-3"></script>
+  <script src="/js/customer.js?v=20260923-10"></script>
 </body>
 </html>

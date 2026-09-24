@@ -48,11 +48,15 @@ namespace ToyStoreManagement.API.Controllers
 
         // GET: api/Dashboard/revenue-chart
         [HttpGet("revenue-chart")]
-        public async Task<IActionResult> GetRevenueChart([FromQuery] string period = "day")
+        public async Task<IActionResult> GetRevenueChart(
+            [FromQuery] string period = "day",
+            [FromQuery] DateTime? from = null,
+            [FromQuery] DateTime? to = null,
+            [FromQuery] string groupBy = "day")
         {
             try
             {
-                var result = await _dashboardService.GetRevenueChartAsync(period);
+                var result = await _dashboardService.GetRevenueChartAsync(period, from, to, groupBy);
                 return Ok(result);
             }
             catch (Exception ex)

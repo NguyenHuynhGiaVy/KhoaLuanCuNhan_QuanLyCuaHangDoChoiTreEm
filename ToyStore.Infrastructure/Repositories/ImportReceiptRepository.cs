@@ -24,6 +24,7 @@ namespace ToyStoreManagement.Infrastructure.Repositories
         {
             return await _dbSet
                 .Include(x => x.Supplier)
+                .Include(x => x.OrderedByUser)
                 .Include(x => x.ImportReceiptDetails)
                     .ThenInclude(x => x.ProductVariant)
                         .ThenInclude(x => x.Product)
@@ -35,6 +36,7 @@ namespace ToyStoreManagement.Infrastructure.Repositories
         {
             return await _dbSet
                 .Include(x => x.Supplier)
+                .Include(x => x.OrderedByUser)
                 .Include(x => x.ImportReceiptDetails)
                     .ThenInclude(x => x.ProductVariant)
                         .ThenInclude(x => x.Product)

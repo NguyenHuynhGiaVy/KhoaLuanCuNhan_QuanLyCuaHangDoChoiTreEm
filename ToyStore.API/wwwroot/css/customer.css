@@ -669,6 +669,14 @@ a {
   .footer-main { grid-template-columns: 1fr 1fr; }
 }
 @media (max-width: 540px) {
+  .header-inner { height: 64px; padding: 0 16px; }
+  .store-logo { gap: 7px; font-size: 21px; }
+  .logo-mark { width: 32px; height: 32px; border-radius: 10px; font-size: 15px; }
+  .header-actions { gap: 6px; }
+  .customer-api-status, .search-trigger { display: none; }
+  .header-icon { width: 36px; height: 36px; }
+  .cart-button { gap: 5px; padding: 7px 10px; }
+  .cart-button i { min-width: 20px; height: 20px; }
   .footer-main { grid-template-columns: 1fr; }
   .footer-bottom { flex-direction: column; gap: 10px; text-align: center; }
 }

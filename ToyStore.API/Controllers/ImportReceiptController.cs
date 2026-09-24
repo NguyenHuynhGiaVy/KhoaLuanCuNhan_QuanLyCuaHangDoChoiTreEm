@@ -1,5 +1,6 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using System.Security.Claims;
 using ToyStoreManagement.Application.DTOs.Import;
 using ToyStoreManagement.Application.Interfaces.Services;
 
@@ -53,7 +54,15 @@ namespace ToyStoreManagement.API.Controllers
 
             try
             {
-                var receipt = await _service.CreateAsync(dto);
+                var orderedByUserId = User.FindFirstValue(ClaimTypes.NameIdentifier)
+                    ?? User.FindFirstValue("sub");
+
+                if (string.IsNullOrWhiteSpace(orderedByUserId))
+                    return Unauthorized(new { message = "Không xác định được tài khoản đang đăng nhập." });
+
+                // Không nhận người đặt từ trình duyệt; luôn dùng tài khoản
+                // được xác thực bởi access token hiện tại.
+                var receipt = await _service.CreateAsync(dto, orderedByUserId);
 
                 return CreatedAtAction(
                     nameof(GetById),

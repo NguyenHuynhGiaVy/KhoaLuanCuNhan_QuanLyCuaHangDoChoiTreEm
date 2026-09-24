@@ -81,7 +81,7 @@ namespace ToyStoreManagement.API.Controllers
             catch (Exception ex)
             {
                 var msg = ex.InnerException != null ? ex.InnerException.Message : ex.Message;
-                return BadRequest(msg);
+                return BadRequest(new { message = msg });
             }
         }
 

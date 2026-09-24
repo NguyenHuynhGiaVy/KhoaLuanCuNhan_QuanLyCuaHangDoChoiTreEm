@@ -13,9 +13,9 @@ namespace ToyStoreManagement.Application.DTOs.Product
         public List<CreateProductVariantAttributeDto> Attributes { get; set; }
             = new List<CreateProductVariantAttributeDto>();
 
-        public decimal Price { get; set; }
+        public decimal? Price { get; set; }
 
-        public decimal CostPrice { get; set; }
+        public decimal? CostPrice { get; set; }
 
         public decimal? Weight { get; set; }
 

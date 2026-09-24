@@ -16,7 +16,8 @@ namespace ToyStoreManagement.Application.Interfaces.Services
         Task<ImportReceiptDto?> GetByIdAsync(int id);
 
         Task<ImportReceiptDto> CreateAsync(
-            CreateImportReceiptDto dto);
+            CreateImportReceiptDto dto,
+            string orderedByUserId);
 
         Task<ImportReceiptDto?> UpdateAsync(
             int id,

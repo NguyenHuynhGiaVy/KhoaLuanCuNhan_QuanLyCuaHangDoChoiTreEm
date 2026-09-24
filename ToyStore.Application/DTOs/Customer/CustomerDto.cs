@@ -26,6 +26,11 @@ namespace ToyStoreManagement.Application.DTOs.Customer
 
         public int LoyaltyPoint { get; set; }
 
+        // Chỉ tính các đơn đã hoàn tất để phản ánh đúng giá trị mua sắm thực tế.
+        public decimal TotalSpent { get; set; }
+
+        public int TotalOrders { get; set; }
+
         public int Status { get; set; }
 
         public DateTime CreatedAt { get; set; }

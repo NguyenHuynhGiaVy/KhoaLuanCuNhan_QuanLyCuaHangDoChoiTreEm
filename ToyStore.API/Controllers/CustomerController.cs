@@ -3,6 +3,8 @@
 using Microsoft.AspNetCore.Authorization;
 
 using System;
+using System.IdentityModel.Tokens.Jwt;
+using System.Security.Claims;
 using System.Threading.Tasks;
 using ToyStoreManagement.Application.DTOs.Customer;
 using ToyStoreManagement.Application.Interfaces.Services;
@@ -54,6 +56,84 @@ namespace ToyStoreManagement.API.Controllers
                     "Không tìm thấy khách hàng theo UserId.");
 
             return Ok(result);
+        }
+
+        // GET: api/Customer/profile
+        [HttpGet("profile")]
+        [Authorize(Policy = "CustomerAccess")]
+        public async Task<IActionResult> GetMyProfile()
+        {
+            var userId = GetCurrentUserId();
+            if (userId == null)
+                return Unauthorized(new { message = "Không xác định được tài khoản đang đăng nhập." });
+
+            var result = await _customerService.GetByUserIdAsync(userId);
+            if (result == null)
+                return NotFound(new { message = "Bạn chưa tạo hồ sơ khách hàng." });
+
+            return Ok(result);
+        }
+
+        // PUT: api/Customer/profile
+        [HttpPut("profile")]
+        [Authorize(Policy = "CustomerAccess")]
+        public async Task<IActionResult> SaveMyProfile(
+            [FromBody] SaveCustomerProfileDto dto)
+        {
+            var userId = GetCurrentUserId();
+            if (userId == null)
+                return Unauthorized(new { message = "Không xác định được tài khoản đang đăng nhập." });
+
+            if (string.IsNullOrWhiteSpace(dto.FullName)
+                || string.IsNullOrWhiteSpace(dto.Phone)
+                || string.IsNullOrWhiteSpace(dto.Address))
+            {
+                return BadRequest(new { message = "Vui lòng nhập họ tên, số điện thoại và địa chỉ." });
+            }
+
+            var existing = await _customerService.GetByUserIdAsync(userId);
+            var email = User.FindFirstValue(ClaimTypes.Email)
+                ?? User.FindFirstValue(JwtRegisteredClaimNames.Email)
+                ?? existing?.Email
+                ?? string.Empty;
+
+            try
+            {
+                if (existing == null)
+                {
+                    var created = await _customerService.CreateAsync(new CreateCustomerDto
+                    {
+                        FullName = dto.FullName.Trim(),
+                        Phone = dto.Phone.Trim(),
+                        Email = email,
+                        UserId = userId,
+                        DateOfBirth = dto.DateOfBirth,
+                        Gender = dto.Gender,
+                        Address = dto.Address.Trim(),
+                        LoyaltyPoint = 0,
+                        Status = 1
+                    });
+
+                    return Ok(created);
+                }
+
+                var updated = await _customerService.UpdateAsync(existing.CustomerId, new UpdateCustomerDto
+                {
+                    FullName = dto.FullName.Trim(),
+                    Phone = dto.Phone.Trim(),
+                    Email = email,
+                    DateOfBirth = dto.DateOfBirth,
+                    Gender = dto.Gender,
+                    Address = dto.Address.Trim(),
+                    Status = existing.Status
+                });
+
+                return Ok(updated);
+            }
+            catch (Exception ex)
+            {
+                return BadRequest(new { message = ex.Message });
+            }
         }
 
         // POST: api/Customer
@@ -122,6 +202,12 @@ namespace ToyStoreManagement.API.Controllers
             {
                 return BadRequest(ex.Message);
             }
+        }
+
+        private string? GetCurrentUserId()
+        {
+            return User.FindFirstValue(ClaimTypes.NameIdentifier)
+                ?? User.FindFirstValue("sub");
         }
     }
 }

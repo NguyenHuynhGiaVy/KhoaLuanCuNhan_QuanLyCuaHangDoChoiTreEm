@@ -63,6 +63,8 @@ namespace ToyStoreManagement.Infrastructure.Services
                 SupplierId = receipt.SupplierId,
                 SupplierName = receipt.Supplier?.Name,
                 EmployeeId = receipt.EmployeeId,
+                OrderedByUserId = receipt.OrderedByUserId,
+                OrderedByName = receipt.OrderedByUser?.FullName,
                 ReceiptCode = receipt.ReceiptCode,
                 ImportDate = receipt.ImportDate,
                 TotalAmount = receipt.TotalAmount,
@@ -95,8 +97,15 @@ namespace ToyStoreManagement.Infrastructure.Services
         }
 
         public async Task<ImportReceiptDto> CreateAsync(
-            CreateImportReceiptDto dto)
+            CreateImportReceiptDto dto,
+            string orderedByUserId)
         {
+            if (string.IsNullOrWhiteSpace(orderedByUserId)
+                || !await _context.Users.AnyAsync(user => user.Id == orderedByUserId && user.IsActive))
+            {
+                throw new UnauthorizedAccessException("Không xác định được tài khoản đang đặt hàng.");
+            }
+
             var supplier =
                 await _supplierRepository.GetByIdAsync(dto.SupplierId);
 
@@ -119,6 +128,7 @@ namespace ToyStoreManagement.Infrastructure.Services
             {
                 SupplierId = dto.SupplierId,
                 EmployeeId = dto.EmployeeId,
+                OrderedByUserId = orderedByUserId,
                 ReceiptCode = dto.ReceiptCode,
                 ImportDate = dto.ImportDate,
                 Status = dto.Status,
@@ -201,7 +211,6 @@ namespace ToyStoreManagement.Infrastructure.Services
                 throw new Exception("Supplier đang không hoạt động.");
 
             receipt.SupplierId = dto.SupplierId;
-            receipt.EmployeeId = dto.EmployeeId;
             receipt.ReceiptCode = dto.ReceiptCode;
             receipt.ImportDate = dto.ImportDate;
             receipt.Status = 1;
@@ -305,6 +314,8 @@ namespace ToyStoreManagement.Infrastructure.Services
 
                     inventory.Quantity += received.Quantity;
                     inventory.UpdatedAt = DateTime.UtcNow;
+                    detail.ProductVariant.CostPrice = detail.UnitCost;
+                    detail.ProductVariant.UpdatedAt = DateTime.UtcNow;
                     affectedProductIds.Add(detail.ProductVariant.ProductId);
 
                     _context.InventoryTransactions.Add(new InventoryTransaction
@@ -343,7 +354,9 @@ namespace ToyStoreManagement.Infrastructure.Services
                         .Where(x => x.ProductVariant.ProductId == productId)
                         .SumAsync(x => (int?)x.Quantity) ?? 0;
 
-                    product.Status = totalQuantity > 0 ? 1 : 0;
+                    // Giữ trạng thái thanh lý/ngừng nhập mới do Admin đã chọn.
+                    if (product.Status != 2)
+                        product.Status = totalQuantity > 0 ? 1 : 0;
 
                     product.UpdatedAt = DateTime.UtcNow;
                 }
@@ -455,6 +468,8 @@ namespace ToyStoreManagement.Infrastructure.Services
                 SupplierId = receipt.SupplierId,
                 SupplierName = receipt.Supplier?.Name,
                 EmployeeId = receipt.EmployeeId,
+                OrderedByUserId = receipt.OrderedByUserId,
+                OrderedByName = receipt.OrderedByUser?.FullName,
                 ReceiptCode = receipt.ReceiptCode,
                 ImportDate = receipt.ImportDate,
                 TotalAmount = receipt.TotalAmount,
@@ -499,9 +514,6 @@ namespace ToyStoreManagement.Infrastructure.Services
 
         private static void ValidateReceiptDetails(CreateImportReceiptDto dto)
         {
-            if (dto.EmployeeId <= 0)
-                throw new Exception("EmployeeId phải lớn hơn 0.");
-
             if (string.IsNullOrWhiteSpace(dto.ReceiptCode))
                 throw new Exception("ReceiptCode không được để trống.");
 

@@ -30,7 +30,6 @@ namespace ToyStoreManagement.Application.DTOs.Product
 
         public bool IsFeatured { get; set; }
 
-        [Required(ErrorMessage = "Giá bán không được để trống")]
         [Range(0, double.MaxValue, ErrorMessage = "Giá bán không được là số âm")]
         public decimal? BasePrice { get; set; }
 

@@ -3,6 +3,7 @@ using System;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Metadata;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using ToyStoreManagement.Infrastructure.Data;
 
@@ -11,9 +12,11 @@ using ToyStoreManagement.Infrastructure.Data;
 namespace ToyStore.Infrastructure.Migrations
 {
     [DbContext(typeof(ApplicationDbContext))]
-    partial class ApplicationDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260922143836_AddImportReceiptOrderedByUser")]
+    partial class AddImportReceiptOrderedByUser
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -358,9 +361,6 @@ namespace ToyStore.Infrastructure.Migrations
                     b.Property<int?>("OrderId")
                         .HasColumnType("int");
 
-                    b.Property<int?>("VoucherId")
-                        .HasColumnType("int");
-
                     b.Property<DateTime?>("RespondedAt")
                         .HasColumnType("datetime2");
 
@@ -380,10 +380,6 @@ namespace ToyStore.Infrastructure.Migrations
                     b.HasKey("CustomerFeedbackId");
 
                     b.HasIndex("CustomerId");
-
-                    b.HasIndex("CustomerId", "VoucherId")
-                        .IsUnique()
-                        .HasFilter("[VoucherId] IS NOT NULL AND [TransactionType] = 2");
 
                     b.HasIndex("OrderId");
 
@@ -1004,11 +1000,6 @@ namespace ToyStore.Infrastructure.Migrations
 
                     b.Property<decimal?>("MinimumOrderValue")
                         .HasColumnType("decimal(18,2)");
-
-                    b.Property<int>("RequiredPoints")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("int")
-                        .HasDefaultValue(0);
 
                     b.Property<int?>("MinimumQuantity")
                         .HasColumnType("int");

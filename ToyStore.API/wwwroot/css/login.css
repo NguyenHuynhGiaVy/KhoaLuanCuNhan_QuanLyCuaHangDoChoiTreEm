@@ -108,6 +108,17 @@
   margin-bottom: 24px;
 }
 
+.admin-access-note {
+  color: var(--slate-600);
+  font-size: 14px;
+  line-height: 1.65;
+  margin: -6px 0 24px;
+}
+
+.admin-access-link {
+  text-decoration: none;
+}
+
 .login-card label {
   display: block;
   font-weight: 600;

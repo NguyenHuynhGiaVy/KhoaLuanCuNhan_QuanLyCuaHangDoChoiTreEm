@@ -28,9 +28,13 @@ namespace ToyStoreManagement.Infrastructure.Services
             return await _dashboardRepository.GetRevenueStatisticsAsync();
         }
 
-        public async Task<RevenueChartDto> GetRevenueChartAsync(string period)
+        public async Task<RevenueChartDto> GetRevenueChartAsync(
+            string period,
+            DateTime? from = null,
+            DateTime? to = null,
+            string groupBy = "day")
         {
-            return await _dashboardRepository.GetRevenueChartAsync(period);
+            return await _dashboardRepository.GetRevenueChartAsync(period, from, to, groupBy);
         }
 
         public async Task<OrderStatisticsDto> GetOrderStatisticsAsync()

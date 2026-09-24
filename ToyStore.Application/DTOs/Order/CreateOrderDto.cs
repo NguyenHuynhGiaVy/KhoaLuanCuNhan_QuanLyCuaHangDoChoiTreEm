@@ -10,6 +10,11 @@ namespace ToyStoreManagement.Application.DTOs.Order
     {
         public int? CustomerId { get; set; }
         public string Note { get; set; }
+        // 0: COD, 1: Chuyển khoản. Thanh toán được đánh dấu hoàn tất
+        // khi đơn chuyển sang trạng thái Hoàn tất.
+        public int PaymentMethod { get; set; }
+        // Thông tin nhận hàng được lưu trong bảng Shipping, không ghép vào ghi chú.
+        public CreateShippingDto Shipping { get; set; }
 
         public List<CreateOrderDetailDto> OrderDetails { get; set; }
     }

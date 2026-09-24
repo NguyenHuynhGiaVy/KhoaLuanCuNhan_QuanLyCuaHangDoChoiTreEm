@@ -17,7 +17,11 @@ namespace ToyStoreManagement.Application.DTOs.Order
         public decimal DiscountAmount { get; set; }
         public decimal ShippingFee { get; set; }
         public decimal TotalAmount { get; set; }
+        public int? PaymentStatus { get; set; }
         public string Note { get; set; }
+        public string CustomerName { get; set; }
+        public string CustomerEmail { get; set; }
+        public string PhoneNumber { get; set; }
         public DateTime CreatedAt { get; set; }
         public DateTime? UpdatedAt { get; set; }
 

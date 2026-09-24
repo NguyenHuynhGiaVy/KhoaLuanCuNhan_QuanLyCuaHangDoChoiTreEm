@@ -89,7 +89,7 @@ namespace ToyStoreManagement.Infrastructure.Services
                 EndDate = dto.EndDate,
                 Priority = dto.Priority,
                 CanCombine = dto.CanCombine,
-                Status = dto.Status,
+                Status = dto.Status == 0 ? 0 : 1,
                 CreatedAt = DateTime.UtcNow
             };
 

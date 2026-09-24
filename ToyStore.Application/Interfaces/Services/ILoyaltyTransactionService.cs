@@ -13,5 +13,11 @@ namespace ToyStoreManagement.Application.Interfaces.Services
 
         Task<IEnumerable<LoyaltyTransactionDto>>
             GetByCustomerIdAsync(int customerId);
+
+        Task<LoyaltySummaryDto?> GetSummaryByUserIdAsync(string userId);
+
+        Task<RedeemVoucherDto> RedeemVoucherAsync(
+            string userId,
+            int voucherId);
     }
 }

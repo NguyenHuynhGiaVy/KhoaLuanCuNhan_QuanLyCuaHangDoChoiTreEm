@@ -25,6 +25,10 @@ namespace ToyStoreManagement.Infrastructure.Configurations
                 .OnDelete(DeleteBehavior.Restrict);
 
             builder.HasIndex(x => x.CustomerId);
+
+            builder.HasIndex(x => new { x.CustomerId, x.VoucherId })
+                .IsUnique()
+                .HasFilter("[VoucherId] IS NOT NULL AND [TransactionType] = 2");
         }
     }
 }

@@ -31,6 +31,9 @@ namespace ToyStoreManagement.Application.DTOs.Product
 
         public int Status { get; set; }
 
+        // Null khi biến thể chưa được tạo bản ghi tồn kho.
+        public int? AvailableQuantity { get; set; }
+
         public DateTime CreatedAt { get; set; }
 
         public DateTime? UpdatedAt { get; set; }

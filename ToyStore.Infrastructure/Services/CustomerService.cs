@@ -147,6 +147,11 @@ namespace ToyStoreManagement.Infrastructure.Services
                 Gender = customer.Gender,
                 Address = customer.Address,
                 LoyaltyPoint = customer.LoyaltyPoint,
+                TotalSpent = customer.Orders?
+                    .Where(order => order.Status == 4)
+                    .Sum(order => order.TotalAmount) ?? 0,
+                TotalOrders = customer.Orders?
+                    .Count(order => order.Status == 4) ?? 0,
                 Status = customer.Status,
                 CreatedAt = customer.CreatedAt,
                 UpdatedAt = customer.UpdatedAt

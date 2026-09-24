@@ -21,6 +21,8 @@ namespace ToyStoreManagement.Application.DTOs.Promotion
 
         public decimal? MinimumOrderValue { get; set; }
 
+        public int RequiredPoints { get; set; }
+
         public int UsageLimit { get; set; }
 
         public int? UsageLimitPerCustomer { get; set; }
@@ -29,6 +31,7 @@ namespace ToyStoreManagement.Application.DTOs.Promotion
 
         public DateTime EndDate { get; set; }
 
-        public int Status { get; set; }
+        // Mặc định voucher mới ở trạng thái khả dụng.
+        public int Status { get; set; } = 1;
     }
 }

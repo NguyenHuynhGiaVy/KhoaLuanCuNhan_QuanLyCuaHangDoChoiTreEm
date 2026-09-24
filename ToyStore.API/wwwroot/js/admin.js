@@ -13,6 +13,14 @@ let currentView = 'dashboard';
 let cache = {};
 let ref = { categories: [], brands: [], suppliers: [], variants: [] };
 let revenueChart = null;
+let dashboardRefreshTimer = null;
+let revenueChartPeriod = 'day30';
+let revenueChartCustom = {
+  groupBy: 'day',
+  from: revenueDateInputValue(new Date(Date.now() - (29 * 86400000))),
+  to: revenueDateInputValue(new Date())
+};
+let productVariantRowIndex = 0;
 
 // ── MODULE DEFINITIONS ──────────────────────────────────────
 const MODULES = {
@@ -22,6 +30,9 @@ const MODULES = {
     endpoint: 'Product',
     columns: ['Ảnh', 'Tên sản phẩm', 'Danh mục', 'Thương hiệu', 'Giá bán', 'Trạng thái'],
     canAdd: true, canEdit: true, canDelete: true
+  },
+  liquidation: {
+    title: 'Thanh lý hàng', kicker: 'HÀNG HÓA & KHO'
   },
   categories: {
     title: 'Danh mục', kicker: 'HÀNG HÓA & KHO',
@@ -56,7 +67,7 @@ const MODULES = {
   imports: {
     title: 'Phiếu đặt hàng NCC', kicker: 'VẬN HÀNH & NHẬP HÀNG',
     endpoint: 'ImportReceipt',
-    columns: ['Mã phiếu', 'Nhà cung cấp', 'Ngày đặt', 'Tổng tiền', 'Trạng thái'],
+    columns: ['Mã phiếu', 'Nhà cung cấp', 'Người đặt', 'Ngày đặt', 'Tổng tiền', 'Trạng thái'],
     canAdd: true, canEdit: true, canDelete: true
   },
   promotions: {
@@ -68,7 +79,7 @@ const MODULES = {
   vouchers: {
     title: 'Voucher', kicker: 'MARKETING',
     endpoint: 'Voucher',
-    columns: ['Mã voucher', 'Tên voucher', 'Giá trị giảm', 'Đơn tối thiểu', 'Hạn dùng', 'Trạng thái'],
+    columns: ['Mã voucher', 'Tên voucher', 'Giá trị giảm', 'Điểm đổi', 'Đơn tối thiểu', 'Hạn dùng', 'Trạng thái'],
     canAdd: true, canEdit: true, canDelete: true
   },
   customers: {
@@ -76,6 +87,9 @@ const MODULES = {
     endpoint: 'Customer',
     columns: ['Họ và tên', 'Email', 'Số điện thoại', 'Hạng TV', 'Tổng chi tiêu', 'Đơn hàng'],
     canAdd: false, canEdit: true, canDelete: false
+  },
+  customerCare: {
+    title: 'Chăm sóc khách hàng', kicker: 'KHÁCH HÀNG'
   },
   users: {
     title: 'Phân quyền người dùng', kicker: 'HỆ THỐNG',
@@ -98,6 +112,9 @@ const esc = v => String(v ?? '').replace(/[&<>'"]/g, c => ({ '&': '&amp;', '<': 
 const money = v => v == null ? '—' : Number(v).toLocaleString('vi-VN') + ' đ';
 const fmtDate = s => s ? new Date(s).toLocaleDateString('vi-VN') : '—';
 const fmtDateTime = s => s ? new Date(s).toLocaleString('vi-VN') : '—';
+const productVariantsOf = product => product?.productVariants || product?.variants || [];
+const hasAvailableStock = product => productVariantsOf(product)
+  .some(variant => Number(variant.availableQuantity || 0) > 0);
 
 function pill(text, type = 'neutral') {
   return `<span class="pill ${type}">${esc(text)}</span>`;
@@ -116,6 +133,7 @@ function toast(msg, type = 'success') {
 async function api(path, opt = {}) {
   const res = await fetch(`/api/${path}`, {
     ...opt,
+    cache: 'no-store',
     headers: {
       'Content-Type': 'application/json',
       Authorization: `Bearer ${token}`,
@@ -125,7 +143,7 @@ async function api(path, opt = {}) {
   if (res.status === 401) {
     localStorage.removeItem('toyStoreToken');
     localStorage.removeItem('toyStoreUser');
-    location.reload();
+    location.replace('/customer.html');
     return null;
   }
   if (!res.ok) {
@@ -175,6 +193,7 @@ async function loadRef() {
 function navigate() {
   const hash = location.hash.slice(1) || 'dashboard';
   currentView = hash;
+  if (hash !== 'dashboard') stopDashboardRealtime();
   
   document.querySelectorAll('.nav-item').forEach(a => {
     a.classList.toggle('active', a.dataset.view === hash);
@@ -185,6 +204,10 @@ function navigate() {
 
   if (hash === 'dashboard') {
     renderDashboard();
+  } else if (hash === 'liquidation') {
+    renderLiquidation();
+  } else if (hash === 'customer-care') {
+    renderCustomerCare();
   } else {
     renderList(hash);
   }
@@ -193,8 +216,130 @@ function navigate() {
 window.addEventListener('hashchange', navigate);
 
 // ── 1. DASHBOARD VIEW ───────────────────────────────────────
-async function renderDashboard() {
-  app.innerHTML = `
+function revenueDateInputValue(date) {
+  const localDate = new Date(date.getTime() - (date.getTimezoneOffset() * 60000));
+  return localDate.toISOString().slice(0, 10);
+}
+
+function revenueMonthInputValue(date) {
+  return revenueDateInputValue(date).slice(0, 7);
+}
+
+function setRevenueCustomDefaults(groupBy) {
+  const today = new Date();
+  revenueChartCustom.groupBy = groupBy;
+
+  if (groupBy === 'month') {
+    const firstMonth = new Date(today.getFullYear(), today.getMonth() - 11, 1);
+    revenueChartCustom.from = revenueMonthInputValue(firstMonth);
+    revenueChartCustom.to = revenueMonthInputValue(today);
+    return;
+  }
+
+  if (groupBy === 'year') {
+    revenueChartCustom.from = String(today.getFullYear() - 4);
+    revenueChartCustom.to = String(today.getFullYear());
+    return;
+  }
+
+  revenueChartCustom.from = revenueDateInputValue(new Date(today.getTime() - (29 * 86400000)));
+  revenueChartCustom.to = revenueDateInputValue(today);
+}
+
+function revenueCustomControlsHtml() {
+  if (revenueChartPeriod !== 'custom') return '';
+
+  const inputType = revenueChartCustom.groupBy === 'day'
+    ? 'date'
+    : revenueChartCustom.groupBy === 'month'
+      ? 'month'
+      : 'number';
+  const rangeAttributes = revenueChartCustom.groupBy === 'year'
+    ? `min="2000" max="${new Date().getFullYear()}" step="1"`
+    : '';
+  const labels = revenueChartCustom.groupBy === 'day'
+    ? ['Từ ngày', 'Đến ngày']
+    : revenueChartCustom.groupBy === 'month'
+      ? ['Từ tháng', 'Đến tháng']
+      : ['Từ năm', 'Đến năm'];
+
+  return `
+    <div style="display:flex;align-items:center;flex-wrap:wrap;gap:8px;width:100%;justify-content:flex-end;">
+      <select class="input-control" style="width:132px;" onchange="changeRevenueCustomGroup(this.value)" aria-label="Nhóm doanh thu theo">
+        <option value="day" ${revenueChartCustom.groupBy === 'day' ? 'selected' : ''}>Theo ngày</option>
+        <option value="month" ${revenueChartCustom.groupBy === 'month' ? 'selected' : ''}>Theo tháng</option>
+        <option value="year" ${revenueChartCustom.groupBy === 'year' ? 'selected' : ''}>Theo năm</option>
+      </select>
+      <label style="font-size:13px;color:var(--slate-600);">${labels[0]}</label>
+      <input id="revenueRangeFrom" class="input-control" style="width:142px;" type="${inputType}" ${rangeAttributes} value="${esc(revenueChartCustom.from)}" onchange="updateRevenueCustomRange('from', this.value)">
+      <label style="font-size:13px;color:var(--slate-600);">${labels[1]}</label>
+      <input id="revenueRangeTo" class="input-control" style="width:142px;" type="${inputType}" ${rangeAttributes} value="${esc(revenueChartCustom.to)}" onchange="updateRevenueCustomRange('to', this.value)">
+      <button class="secondary-btn" style="white-space:nowrap;" onclick="applyRevenueCustomRange()">Áp dụng</button>
+    </div>`;
+}
+
+function revenueCustomApiRange() {
+  const { groupBy, from, to } = revenueChartCustom;
+  if (groupBy === 'month') {
+    const [year, month] = to.split('-').map(Number);
+    const lastDay = new Date(year, month, 0).getDate();
+    return { from: `${from}-01`, to: `${to}-${String(lastDay).padStart(2, '0')}` };
+  }
+
+  if (groupBy === 'year') {
+    return { from: `${from}-01-01`, to: `${to}-12-31` };
+  }
+
+  return { from, to };
+}
+
+function revenueChartRequestUrl() {
+  const parameters = new URLSearchParams({ period: revenueChartPeriod });
+  if (revenueChartPeriod === 'custom') {
+    const range = revenueCustomApiRange();
+    parameters.set('from', range.from);
+    parameters.set('to', range.to);
+    parameters.set('groupBy', revenueChartCustom.groupBy);
+  }
+  return `Dashboard/revenue-chart?${parameters.toString()}`;
+}
+
+function revenueChartTitle() {
+  if (revenueChartPeriod === 'month') return 'Biểu đồ doanh thu 12 tháng trong năm';
+  if (revenueChartPeriod !== 'custom') {
+    return `Biểu đồ doanh thu ${revenueChartPeriod === 'day' ? 7 : 30} ngày gần nhất`;
+  }
+
+  const unit = revenueChartCustom.groupBy === 'day'
+    ? 'ngày'
+    : revenueChartCustom.groupBy === 'month'
+      ? 'tháng'
+      : 'năm';
+  return `Biểu đồ doanh thu từ ${unit} ${revenueChartCustom.from} đến ${revenueChartCustom.to}`;
+}
+
+function revenueYAxisScale(values) {
+  const highestValue = values.reduce((highest, value) => Math.max(highest, Number(value) || 0), 0);
+  if (highestValue <= 0) return { max: 100000, stepSize: 10000 };
+
+  const roughStep = highestValue / 12;
+  const magnitude = Math.pow(10, Math.floor(Math.log10(roughStep)));
+  const normalized = roughStep / magnitude;
+  const multiplier = [1, 1.25, 1.5, 2, 2.5, 5, 10].find(value => normalized <= value) || 10;
+  const stepSize = multiplier * magnitude;
+
+  return {
+    max: Math.ceil(highestValue / stepSize) * stepSize,
+    stepSize
+  };
+}
+
+async function renderDashboard(refreshOnly = false) {
+  if (!refreshOnly && revenueChart) {
+    revenueChart.destroy();
+    revenueChart = null;
+  }
+  if (!refreshOnly) app.innerHTML = `
     <div class="stats-grid">
       <div class="stat-card">
         <div class="stat-icon-wrap rev">💰</div>
@@ -226,12 +371,21 @@ async function renderDashboard() {
       <div class="panel" style="margin-bottom:0;">
         <div class="panel-header">
           <div class="panel-title-area">
-            <h2>Biểu đồ doanh thu 7 ngày gần nhất</h2>
-            <p>Theo dõi xu hướng bán hàng của cửa hàng</p>
+            <h2 id="revenueChartTitle">Biểu đồ doanh thu 30 ngày gần nhất</h2>
+            <p>Theo dõi doanh thu đơn hoàn tất, tự cập nhật mỗi 10 giây <span id="dashboardLastUpdated"></span></p>
+          </div>
+          <div style="display:flex;align-items:center;justify-content:flex-end;flex-wrap:wrap;gap:8px;flex:1;">
+            <select id="revenueChartPeriod" class="input-control" style="width:196px;" onchange="changeRevenueChartPeriod(this.value)">
+              <option value="day" ${revenueChartPeriod === 'day' ? 'selected' : ''}>7 ngày gần nhất</option>
+              <option value="day30" ${revenueChartPeriod === 'day30' ? 'selected' : ''}>30 ngày gần nhất</option>
+              <option value="month" ${revenueChartPeriod === 'month' ? 'selected' : ''}>12 tháng trong năm</option>
+              <option value="custom" ${revenueChartPeriod === 'custom' ? 'selected' : ''}>Tùy chọn khoảng thời gian</option>
+            </select>
+            ${revenueCustomControlsHtml()}
           </div>
         </div>
         <div style="padding:24px;">
-          <canvas id="revenueChartCanvas" height="110"></canvas>
+          <canvas id="revenueChartCanvas" height="150"></canvas>
         </div>
       </div>
 
@@ -280,10 +434,13 @@ async function renderDashboard() {
   `;
 
   try {
-    const [summary, orders] = await Promise.all([
+    const [summary, orders, chartData] = await Promise.all([
       api('Dashboard/summary').catch(() => null),
-      api('Order').catch(() => [])
+      api('Order').catch(() => []),
+      api(revenueChartRequestUrl()).catch(() => ({ labels: [], data: [] }))
     ]);
+
+    if (currentView !== 'dashboard') return;
 
     if (summary) {
       document.getElementById('kpiRevenue').textContent = money(summary.totalRevenue);
@@ -292,37 +449,52 @@ async function renderDashboard() {
       document.getElementById('kpiCustomers').textContent = summary.totalCustomers || 0;
     }
 
+    const chartTitle = document.getElementById('revenueChartTitle');
+    if (chartTitle) {
+      chartTitle.textContent = revenueChartTitle();
+    }
+
     // Render Chart
     const ctx = document.getElementById('revenueChartCanvas')?.getContext('2d');
     if (ctx) {
       if (revenueChart) revenueChart.destroy();
-      const labels = ['T2', 'T3', 'T4', 'T5', 'T6', 'T7', 'CN'];
-      const dataValues = [4500000, 7200000, 5800000, 8900000, 12500000, 18200000, 15400000];
+      const labels = chartData?.labels || [];
+      const dataValues = chartData?.data || [];
+      const yAxisScale = revenueYAxisScale(dataValues);
       revenueChart = new Chart(ctx, {
-        type: 'line',
+        type: 'bar',
         data: {
           labels,
           datasets: [{
             label: 'Doanh thu (VNĐ)',
             data: dataValues,
-            borderColor: '#4f46e5',
-            backgroundColor: 'rgba(79, 70, 229, 0.08)',
-            fill: true,
-            tension: 0.35,
-            borderWidth: 3,
-            pointBackgroundColor: '#4f46e5',
-            pointRadius: 4
+            backgroundColor: '#4f46e5',
+            hoverBackgroundColor: '#3730a3',
+            borderRadius: 7,
+            borderSkipped: false,
+            maxBarThickness: labels.length > 15 ? 22 : 46
           }]
         },
         options: {
           responsive: true,
+          maintainAspectRatio: false,
           plugins: { legend: { display: false } },
           scales: {
             y: {
-              ticks: { callback: v => (v / 1000000).toFixed(1) + ' tr' },
+              beginAtZero: true,
+              max: yAxisScale.max,
+              ticks: {
+                stepSize: yAxisScale.stepSize,
+                maxTicksLimit: 13,
+                autoSkip: false,
+                callback: v => Number(v).toLocaleString('vi-VN') + ' đ'
+              },
               grid: { color: '#f1f5f9' }
             },
-            x: { grid: { display: false } }
+            x: {
+              grid: { display: false },
+              ticks: { autoSkip: true, maxTicksLimit: labels.length > 15 ? 10 : 12 }
+            }
           }
         }
       });
@@ -338,7 +510,7 @@ async function renderDashboard() {
         dashBody.innerHTML = recent.map(o => `
           <tr>
             <td><strong>#${esc(o.orderCode || o.orderId)}</strong></td>
-            <td>${esc(o.customerName || o.shippingAddress?.fullName || 'Khách vãng lai')}</td>
+            <td>${esc(o.customerName || o.shipping?.receiverName || 'Khách vãng lai')}</td>
             <td>${fmtDate(o.orderDate || o.createdAt)}</td>
             <td><strong style="color:var(--primary);">${money(o.finalAmount || o.totalAmount)}</strong></td>
             <td>${pill(ORDER_STATUS_LABELS[o.status] || 'Đang xử lý', o.status === 4 ? 'success' : (o.status === 5 ? 'danger' : 'warning'))}</td>
@@ -349,10 +521,324 @@ async function renderDashboard() {
         `).join('');
       }
     }
+    const stamp = document.getElementById('dashboardLastUpdated');
+    if (stamp) stamp.textContent = `· Cập nhật lúc ${new Date().toLocaleTimeString('vi-VN')}`;
+    startDashboardRealtime();
   } catch (err) {
     console.error(err);
   }
 }
+
+function stopDashboardRealtime() {
+  if (dashboardRefreshTimer) {
+    clearInterval(dashboardRefreshTimer);
+    dashboardRefreshTimer = null;
+  }
+}
+
+function startDashboardRealtime() {
+  if (dashboardRefreshTimer) return;
+  dashboardRefreshTimer = setInterval(() => {
+    if (currentView === 'dashboard' && document.visibilityState === 'visible') {
+      renderDashboard(true);
+    }
+  }, 10000);
+}
+
+window.changeRevenueChartPeriod = function(period) {
+  revenueChartPeriod = ['day', 'day30', 'month', 'custom'].includes(period) ? period : 'day30';
+  renderDashboard();
+};
+
+window.changeRevenueCustomGroup = function(groupBy) {
+  setRevenueCustomDefaults(['day', 'month', 'year'].includes(groupBy) ? groupBy : 'day');
+  renderDashboard();
+};
+
+window.updateRevenueCustomRange = function(bound, value) {
+  if (bound === 'from' || bound === 'to') revenueChartCustom[bound] = value;
+};
+
+window.applyRevenueCustomRange = function() {
+  const { groupBy, from, to } = revenueChartCustom;
+  if (!from || !to) {
+    toast('Vui lòng chọn đầy đủ khoảng thời gian.', 'error');
+    return;
+  }
+  if (from > to) {
+    toast('Mốc kết thúc phải lớn hơn hoặc bằng mốc bắt đầu.', 'error');
+    return;
+  }
+
+  if (groupBy === 'day') {
+    const totalDays = (new Date(`${to}T00:00:00`) - new Date(`${from}T00:00:00`)) / 86400000;
+    if (totalDays > 366) {
+      toast('Khoảng theo ngày tối đa 366 ngày. Hãy chọn mốc theo tháng hoặc năm.', 'error');
+      return;
+    }
+  }
+  if (groupBy === 'month') {
+    const [fromYear, fromMonth] = from.split('-').map(Number);
+    const [toYear, toMonth] = to.split('-').map(Number);
+    if ((toYear - fromYear) * 12 + toMonth - fromMonth > 119) {
+      toast('Khoảng theo tháng tối đa 10 năm. Hãy chọn mốc theo năm.', 'error');
+      return;
+    }
+  }
+  if (groupBy === 'year' && Number(to) - Number(from) > 30) {
+    toast('Khoảng theo năm tối đa 31 năm.', 'error');
+    return;
+  }
+
+  renderDashboard();
+};
+
+// ── 1B. LIQUIDATION MANAGEMENT ──────────────────────────────
+const LIQUIDATION_STALE_DAYS = 90;
+
+function dayAge(dateValue) {
+  const value = new Date(dateValue);
+  if (Number.isNaN(value.getTime())) return 0;
+  return Math.max(0, Math.floor((Date.now() - value.getTime()) / 86400000));
+}
+
+function dateInputValue(dateValue) {
+  const date = new Date(dateValue);
+  const local = new Date(date.getTime() - date.getTimezoneOffset() * 60000);
+  return local.toISOString().slice(0, 10);
+}
+
+async function renderLiquidation() {
+  app.innerHTML = `<div class="panel"><div style="padding:42px;text-align:center;color:var(--slate-500);">Đang phân tích hàng cần thanh lý...</div></div>`;
+
+  try {
+    const [products, inventories, promotions] = await Promise.all([
+      api('Product'),
+      api('Inventory'),
+      api('Promotion').catch(() => [])
+    ]);
+    if (currentView !== 'liquidation') return;
+
+    const now = new Date();
+    const promotedVariantIds = new Set((promotions || [])
+      .filter(promotion => Number(promotion.status) === 1
+        && new Date(promotion.startDate) <= now
+        && new Date(promotion.endDate) >= now)
+      .flatMap(promotion => (promotion.promotionProducts || [])
+        .map(item => String(item.variantId))));
+
+    const candidates = (inventories || []).map(inventory => {
+      const product = (products || []).find(item => productVariantsOf(item)
+        .some(variant => Number(variant.variantId || variant.id) === Number(inventory.variantId)));
+      const variant = product ? productVariantsOf(product)
+        .find(item => Number(item.variantId || item.id) === Number(inventory.variantId)) : null;
+      if (!product || !variant) return null;
+
+      const availableQuantity = Math.max(0, Number(inventory.availableQuantity ??
+        (Number(inventory.quantity || 0) - Number(inventory.reservedQuantity || 0))));
+      const stockAge = dayAge(inventory.updatedAt);
+      const isLiquidationStatus = Number(product.status) === 2;
+      const isLongStock = stockAge >= LIQUIDATION_STALE_DAYS;
+      if (availableQuantity <= 0 || (!isLiquidationStatus && !isLongStock)) return null;
+
+      return {
+        productId: product.productId,
+        variantId: Number(variant.variantId || variant.id),
+        productName: product.name,
+        sku: variant.sku || inventory.sku || '—',
+        availableQuantity,
+        stockAge,
+        lastMovementAt: inventory.updatedAt,
+        price: Number(variant.price || 0),
+        isLiquidationStatus,
+        isLongStock,
+        activeDeal: promotedVariantIds.has(String(variant.variantId || variant.id)),
+        suggestedDiscount: isLiquidationStatus || stockAge >= 180 ? 40 : 25
+      };
+    }).filter(Boolean).sort((left, right) =>
+      Number(right.isLiquidationStatus) - Number(left.isLiquidationStatus)
+      || right.stockAge - left.stockAge);
+
+    cache.liquidation = candidates;
+    const totalUnits = candidates.reduce((sum, item) => sum + item.availableQuantity, 0);
+    const totalValue = candidates.reduce((sum, item) => sum + item.availableQuantity * item.price, 0);
+
+    app.innerHTML = `
+      <div class="stats-grid" style="margin-bottom:24px;">
+        <div class="stat-card"><div class="stat-icon-wrap prd">♻</div><div class="stat-label">Mặt hàng cần thanh lý</div><div class="stat-value">${candidates.length}</div><div class="stat-sub">Ngừng nhập mới hoặc tồn kho từ ${LIQUIDATION_STALE_DAYS} ngày</div></div>
+        <div class="stat-card"><div class="stat-icon-wrap ord">📦</div><div class="stat-label">Số lượng cần xử lý</div><div class="stat-value">${totalUnits.toLocaleString('vi-VN')}</div><div class="stat-sub">Sản phẩm còn có thể bán</div></div>
+        <div class="stat-card"><div class="stat-icon-wrap rev">💰</div><div class="stat-label">Giá trị theo giá bán</div><div class="stat-value" style="font-size:20px;">${money(totalValue)}</div><div class="stat-sub">Trước khi áp dụng ưu đãi thanh lý</div></div>
+      </div>
+      <div class="panel">
+        <div class="panel-header">
+          <div class="panel-title-area">
+            <h2>Đề xuất thanh lý hàng</h2>
+            <p>Hệ thống gợi ý từ hàng ngừng nhập mới hoặc không có biến động kho trong ít nhất ${LIQUIDATION_STALE_DAYS} ngày.</p>
+          </div>
+          <button class="secondary-btn" onclick="location.hash='#promotions'">Quản lý tất cả khuyến mãi →</button>
+        </div>
+        <div class="table-wrap">
+          <table class="data-table">
+            <thead><tr><th>Sản phẩm / SKU</th><th>Lý do</th><th>Tồn có thể bán</th><th>Lần biến động gần nhất</th><th>Giá bán</th><th>Đề xuất</th><th></th></tr></thead>
+            <tbody>
+              ${candidates.length ? candidates.map(item => `
+                <tr>
+                  <td><strong>${esc(item.productName)}</strong><br><small style="color:var(--slate-500);">SKU: ${esc(item.sku)}</small></td>
+                  <td>${item.isLiquidationStatus ? pill('Ngừng nhập mới', 'danger') : pill(`Tồn kho lâu ${item.stockAge} ngày`, 'warning')}</td>
+                  <td><strong style="color:var(--danger);">${item.availableQuantity}</strong></td>
+                  <td>${fmtDate(item.lastMovementAt)}<br><small style="color:var(--slate-500);">${item.stockAge} ngày trước</small></td>
+                  <td>${item.price > 0 ? money(item.price) : '<span style="color:var(--danger);">Chưa có giá bán</span>'}</td>
+                  <td>Giảm ${item.suggestedDiscount}%</td>
+                  <td style="text-align:right;">${item.activeDeal
+                    ? '<button class="secondary-btn" style="padding:8px 11px;" onclick="location.hash=\'#promotions\'">Ưu đãi đang chạy</button>'
+                    : `<button class="primary-btn" style="padding:8px 11px;" onclick="showLiquidationCampaign(${item.variantId})">Tạo ưu đãi</button>`}</td>
+                </tr>`).join('') : `<tr><td colspan="7" style="text-align:center;padding:40px;color:var(--slate-500);">Chưa có hàng cần thanh lý. Sản phẩm được gợi ý khi ở trạng thái “Thanh lý / ngừng nhập mới” hoặc tồn kho không biến động từ ${LIQUIDATION_STALE_DAYS} ngày.</td></tr>`}
+            </tbody>
+          </table>
+        </div>
+      </div>`;
+  } catch (err) {
+    app.innerHTML = `<div class="panel"><div style="padding:42px;text-align:center;color:var(--danger);">Không thể tải danh sách thanh lý: ${esc(err.message)}</div></div>`;
+  }
+}
+
+window.showLiquidationCampaign = function(variantId) {
+  const item = (cache.liquidation || []).find(candidate => candidate.variantId === Number(variantId));
+  if (!item) return;
+  if (item.price <= 0) {
+    toast('Vui lòng cập nhật giá bán cho biến thể trước khi tạo ưu đãi thanh lý.', 'error');
+    return;
+  }
+  const suggestedEndDate = dateInputValue(Date.now() + 30 * 86400000);
+  app.innerHTML = `
+    <div class="form-view-panel">
+      <div class="form-view-header"><div class="form-header-title"><button class="back-link-btn" onclick="renderLiquidation()">← Quay lại danh sách thanh lý</button><div><h2>Tạo ưu đãi thanh lý</h2><p>${esc(item.productName)} · SKU ${esc(item.sku)} · Còn ${item.availableQuantity} sản phẩm</p></div></div></div>
+      <form id="liquidationCampaignForm" autocomplete="off" onsubmit="submitLiquidationCampaign(event, ${item.variantId})">
+        <div class="form-body"><div class="form-grid-2">
+          <div class="form-group full"><label>Tên ưu đãi</label><input id="liquidationCampaignName" class="input-control" required value="Thanh lý ${esc(item.productName)} - ${esc(item.sku)}"></div>
+          <div class="form-group"><label>Mức giảm (%) *</label><input id="liquidationDiscount" type="number" class="input-control" required min="1" max="90" value="${item.suggestedDiscount}"></div>
+          <div class="form-group"><label>Kết thúc vào *</label><input id="liquidationEndDate" type="date" class="input-control" required min="${dateInputValue(Date.now() + 86400000)}" value="${suggestedEndDate}"></div>
+          <div class="form-group full"><label>Ghi chú</label><textarea id="liquidationNote" class="input-control" rows="3">Ưu đãi thanh lý cho hàng ${item.isLiquidationStatus ? 'ngừng nhập mới' : `tồn kho lâu ${item.stockAge} ngày`}.</textarea></div>
+        </div></div>
+        <div class="form-footer-actions"><button type="button" class="ghost-btn" onclick="renderLiquidation()">Hủy bỏ</button><button type="submit" class="primary-btn">Tạo ưu đãi thanh lý</button></div>
+      </form>
+    </div>`;
+};
+
+window.submitLiquidationCampaign = async function(event, variantId) {
+  event.preventDefault();
+  const item = (cache.liquidation || []).find(candidate => candidate.variantId === Number(variantId));
+  const name = document.getElementById('liquidationCampaignName')?.value.trim();
+  const discountValue = Number(document.getElementById('liquidationDiscount')?.value);
+  const endDateValue = document.getElementById('liquidationEndDate')?.value;
+  const description = document.getElementById('liquidationNote')?.value.trim() || '';
+  if (!item || !name || discountValue <= 0 || discountValue > 90 || !endDateValue) {
+    toast('Vui lòng nhập đầy đủ thông tin ưu đãi hợp lệ.', 'error');
+    return;
+  }
+
+  try {
+    const promotion = await api('Promotion', {
+      method: 'POST',
+      body: JSON.stringify({
+        name,
+        description,
+        promotionType: 0,
+        discountValue,
+        maximumDiscount: null,
+        startDate: new Date().toISOString(),
+        endDate: new Date(`${endDateValue}T23:59:59`).toISOString(),
+        priority: 100,
+        canCombine: false,
+        status: 1
+      })
+    });
+    await api(`Promotion/${promotion.promotionId}/products`, {
+      method: 'POST',
+      body: JSON.stringify({ promotionId: promotion.promotionId, variantId: item.variantId })
+    });
+    toast('Đã tạo ưu đãi thanh lý và gắn đúng biến thể sản phẩm.', 'success');
+    renderLiquidation();
+  } catch (err) {
+    toast(`Không thể tạo ưu đãi thanh lý: ${err.message}`, 'error');
+  }
+};
+
+// ── 1C. CUSTOMER CARE ──────────────────────────────────────
+const CUSTOMER_CARE_STATUSES = {
+  0: { label: 'Mới tiếp nhận', pill: 'warning' },
+  1: { label: 'Đang xử lý', pill: 'info' },
+  2: { label: 'Đã phản hồi', pill: 'success' },
+  3: { label: 'Đã đóng', pill: 'neutral' }
+};
+const CUSTOMER_CARE_TYPES = ['Tư vấn chung', 'Khiếu nại', 'Đổi trả / bảo hành', 'Khác'];
+
+function customerCareStatus(status) {
+  return CUSTOMER_CARE_STATUSES[Number(status)] || { label: 'Chưa xác định', pill: 'neutral' };
+}
+
+async function renderCustomerCare() {
+  app.innerHTML = `<div class="panel"><div style="padding:42px;text-align:center;color:var(--slate-500);">Đang tải yêu cầu chăm sóc khách hàng...</div></div>`;
+  try {
+    const feedbacks = await api('CustomerFeedback');
+    if (currentView !== 'customer-care') return;
+    const list = (feedbacks || []).sort((left, right) =>
+      Number(left.status >= 2) - Number(right.status >= 2)
+      || new Date(right.createdAt) - new Date(left.createdAt));
+    cache.customerCare = list;
+    const newCount = list.filter(item => Number(item.status) === 0).length;
+    const processingCount = list.filter(item => Number(item.status) === 1).length;
+    const resolvedCount = list.filter(item => Number(item.status) >= 2).length;
+
+    app.innerHTML = `
+      <div class="stats-grid" style="margin-bottom:24px;">
+        <div class="stat-card"><div class="stat-icon-wrap cst">💬</div><div class="stat-label">Yêu cầu mới</div><div class="stat-value">${newCount}</div><div class="stat-sub">Cần tiếp nhận phản hồi</div></div>
+        <div class="stat-card"><div class="stat-icon-wrap ord">⌛</div><div class="stat-label">Đang xử lý</div><div class="stat-value">${processingCount}</div><div class="stat-sub">Yêu cầu chưa hoàn tất</div></div>
+        <div class="stat-card"><div class="stat-icon-wrap rev">✓</div><div class="stat-label">Đã hoàn tất</div><div class="stat-value">${resolvedCount}</div><div class="stat-sub">Đã phản hồi hoặc đóng yêu cầu</div></div>
+      </div>
+      <div class="panel">
+        <div class="panel-header"><div class="panel-title-area"><h2>Hộp thư chăm sóc khách hàng</h2><p>Tiếp nhận, trả lời và theo dõi yêu cầu của khách hàng.</p></div></div>
+        <div class="table-wrap"><table class="data-table"><thead><tr><th>Khách hàng</th><th>Nội dung yêu cầu</th><th>Loại</th><th>Đơn liên quan</th><th>Gửi lúc</th><th>Trạng thái</th><th></th></tr></thead>
+          <tbody>${list.length ? list.map(item => {
+            const state = customerCareStatus(item.status);
+            return `<tr><td><strong>${esc(item.customerName || 'Khách hàng')}</strong></td><td><strong>${esc(item.subject)}</strong><br><small style="color:var(--slate-500);">${esc(item.content)}</small></td><td>${esc(CUSTOMER_CARE_TYPES[Number(item.feedbackType)] || CUSTOMER_CARE_TYPES[3])}</td><td>${item.orderCode ? `<strong>#${esc(item.orderCode)}</strong>` : '—'}</td><td>${fmtDateTime(item.createdAt)}</td><td>${pill(state.label, state.pill)}</td><td style="text-align:right;"><button class="icon-action-btn view" title="Xử lý yêu cầu" onclick="showCustomerCareReply(${item.customerFeedbackId})">💬</button></td></tr>`;
+          }).join('') : '<tr><td colspan="7" style="text-align:center;padding:40px;color:var(--slate-500);">Chưa có yêu cầu chăm sóc khách hàng.</td></tr>'}</tbody>
+        </table></div>
+      </div>`;
+  } catch (err) {
+    app.innerHTML = `<div class="panel"><div style="padding:42px;text-align:center;color:var(--danger);">Không thể tải yêu cầu chăm sóc khách hàng: ${esc(err.message)}</div></div>`;
+  }
+}
+
+window.showCustomerCareReply = function(feedbackId) {
+  const item = (cache.customerCare || []).find(feedback => Number(feedback.customerFeedbackId) === Number(feedbackId));
+  if (!item) return;
+  app.innerHTML = `
+    <div class="form-view-panel">
+      <div class="form-view-header"><div class="form-header-title"><button class="back-link-btn" onclick="renderCustomerCare()">← Quay lại chăm sóc khách hàng</button><div><h2>${esc(item.subject)}</h2><p>${esc(item.customerName || 'Khách hàng')} · ${item.orderCode ? `Đơn #${esc(item.orderCode)}` : 'Không gắn đơn hàng'}</p></div></div></div>
+      <form id="customerCareReplyForm" onsubmit="submitCustomerCareReply(event, ${item.customerFeedbackId})">
+        <div class="form-body"><div class="form-section-card"><h3>Nội dung khách gửi</h3><p style="white-space:pre-wrap;line-height:1.65;">${esc(item.content)}</p></div><div class="form-grid-2" style="margin-top:20px;"><div class="form-group"><label>Trạng thái</label><select id="customerCareStatus" class="input-control">${Object.entries(CUSTOMER_CARE_STATUSES).map(([value, state]) => `<option value="${value}" ${Number(item.status) === Number(value) ? 'selected' : ''}>${state.label}</option>`).join('')}</select></div><div class="form-group full"><label>Phản hồi đến khách hàng</label><textarea id="customerCareResponse" class="input-control" rows="6" placeholder="Nhập nội dung phản hồi...">${esc(item.response)}</textarea><small style="color:var(--slate-500);">Cần nhập phản hồi khi chuyển sang “Đã phản hồi” hoặc “Đã đóng”.</small></div></div></div>
+        <div class="form-footer-actions"><button type="button" class="ghost-btn" onclick="renderCustomerCare()">Quay lại</button><button type="submit" class="primary-btn">Lưu xử lý</button></div>
+      </form>
+    </div>`;
+};
+
+window.submitCustomerCareReply = async function(event, feedbackId) {
+  event.preventDefault();
+  const status = Number(document.getElementById('customerCareStatus')?.value);
+  const response = document.getElementById('customerCareResponse')?.value.trim() || '';
+  if (status >= 2 && !response) {
+    toast('Vui lòng nhập phản hồi trước khi hoàn tất yêu cầu.', 'error');
+    return;
+  }
+  try {
+    await api(`CustomerFeedback/${feedbackId}`, { method: 'PUT', body: JSON.stringify({ status, response }) });
+    toast('Đã cập nhật yêu cầu chăm sóc khách hàng.', 'success');
+    renderCustomerCare();
+  } catch (err) {
+    toast(`Không thể cập nhật yêu cầu: ${err.message}`, 'error');
+  }
+};
 
 // ── 2. GENERIC LIST VIEW ────────────────────────────────────
 async function renderList(key) {
@@ -439,14 +925,17 @@ function filterTableData(key) {
 function getRowCells(key, r) {
   switch (key) {
     case 'products':
-      const img = r.thumbnailUrl || (r.variants && r.variants[0]?.imageUrl) || 'https://placehold.co/80x80/e2e8f0/475569?text=Toy';
+      const img = r.imageUrl || r.thumbnailUrl || productVariantsOf(r)[0]?.imageUrl || 'https://placehold.co/80x80/e2e8f0/475569?text=Toy';
       return [
         `<img src="${esc(img)}" style="width:42px;height:42px;object-fit:cover;border-radius:8px;border:1px solid var(--slate-200);">`,
         `<strong>${esc(r.name)}</strong><br><small style="color:var(--slate-400);">Mã: ${esc(r.productId)}</small>`,
         esc(r.categoryName || '—'),
         esc(r.brandName || '—'),
-        `<strong style="color:var(--primary);">${money(r.basePrice || (r.variants && r.variants[0]?.price))}</strong>`,
-        pill(r.status === 1 ? 'Đang kinh doanh' : 'Tạm ngưng', r.status === 1 ? 'success' : 'warning')
+        `<strong style="color:var(--primary);">${money(r.basePrice ?? productVariantsOf(r)[0]?.price)}</strong>`,
+        pill(
+          r.status === 2 ? 'Thanh lý' : (r.status === 1 ? 'Đang kinh doanh' : 'Tạm ngưng'),
+          r.status === 2 ? 'danger' : (r.status === 1 ? 'success' : 'warning')
+        )
       ];
 
     case 'categories':
@@ -471,8 +960,8 @@ function getRowCells(key, r) {
     case 'orders':
       return [
         `<strong>#${esc(r.orderCode || r.orderId)}</strong>`,
-        esc(r.customerName || r.shippingAddress?.fullName || 'Khách vãng lai'),
-        esc(r.phoneNumber || r.shippingAddress?.phone || '—'),
+        esc(r.customerName || r.shipping?.receiverName || 'Khách vãng lai'),
+        esc(r.phoneNumber || r.shipping?.receiverPhone || '—'),
         fmtDate(r.orderDate || r.createdAt),
         `<strong style="color:var(--primary);">${money(r.finalAmount || r.totalAmount)}</strong>`,
         pill(r.paymentStatus === 1 ? 'Đã thanh toán' : 'Chưa thanh toán', r.paymentStatus === 1 ? 'success' : 'neutral'),
@@ -493,28 +982,32 @@ function getRowCells(key, r) {
       return [
         `<strong>${esc(r.receiptCode || `PO-#${r.importReceiptId}`)}</strong>`,
         `<strong>${esc(r.supplierName || 'Nhà cung cấp')}</strong>`,
+        esc(r.orderedByName || 'Chưa xác định'),
         fmtDate(r.importDate || r.createdAt),
         `<strong style="color:var(--primary);">${money(r.totalAmount)}</strong>`,
         pill(st.label, st.pill)
       ];
 
     case 'promotions':
+      const promotionActive = r.status === undefined ? r.isActive === true : r.status === 1;
       return [
         `<strong>${esc(r.name)}</strong><br><small style="color:var(--slate-400);">${esc(r.description || '')}</small>`,
-        r.discountType === 0 ? 'Phần trăm (%)' : 'Số tiền cố định (đ)',
-        `<strong>${r.discountType === 0 ? `${r.discountValue}%` : money(r.discountValue)}</strong>`,
+        r.promotionType === 0 ? 'Phần trăm (%)' : 'Số tiền cố định (đ)',
+        `<strong>${r.promotionType === 0 ? `${r.discountValue}%` : money(r.discountValue)}</strong>`,
         `${fmtDate(r.startDate)} - ${fmtDate(r.endDate)}`,
-        pill(r.isActive ? 'Đang chạy' : 'Kết thúc', r.isActive ? 'success' : 'neutral')
+        pill(promotionActive ? 'Đang chạy' : 'Tạm ngưng', promotionActive ? 'success' : 'neutral')
       ];
 
     case 'vouchers':
+      const voucherActive = r.status === undefined ? r.isActive === true : r.status === 1;
       return [
         `<code style="background:var(--primary-light);color:var(--primary);padding:4px 8px;border-radius:6px;font-weight:700;">${esc(r.code)}</code>`,
         `<strong>${esc(r.name || r.code)}</strong>`,
         `<strong>${r.discountType === 0 ? `${r.discountValue}%` : money(r.discountValue)}</strong>`,
-        money(r.minOrderAmount || 0),
+        r.requiredPoints > 0 ? `<strong style="color:var(--secondary);">${Number(r.requiredPoints).toLocaleString('vi-VN')} điểm</strong>` : 'Voucher thường',
+        money(r.minimumOrderValue ?? r.minOrderAmount ?? 0),
         fmtDate(r.endDate || r.expiryDate),
-        pill(r.isActive ? 'Khả dụng' : 'Khóa', r.isActive ? 'success' : 'danger')
+        pill(voucherActive ? 'Khả dụng' : 'Khóa', voucherActive ? 'success' : 'danger')
       ];
 
     case 'customers':
@@ -579,6 +1072,7 @@ function showForm(key, index = null) {
   const m = MODULES[key];
   const isEdit = index !== null;
   const record = isEdit ? cache[key][index] : null;
+  if (key === 'products') productVariantRowIndex = 0;
 
   app.innerHTML = `
     <div class="form-view-panel">
@@ -605,10 +1099,179 @@ function showForm(key, index = null) {
   `;
 }
 
+function renderVariantAttributeRow(attribute = {}) {
+  return `
+    <div class="variant-attribute-row" style="display:grid;grid-template-columns:1fr 1fr auto;gap:8px;margin-top:8px;">
+      <input type="text" class="input-control variant-attribute-name" value="${esc(attribute.attributeName)}" placeholder="Tên thuộc tính, ví dụ: Màu sắc">
+      <input type="text" class="input-control variant-attribute-value" value="${esc(attribute.attributeValue)}" placeholder="Giá trị, ví dụ: Đỏ">
+      <button type="button" class="icon-action-btn del" title="Bỏ thuộc tính" onclick="removeVariantAttributeRow(this)">✕</button>
+    </div>`;
+}
+
+function renderProductVariantEditor(variant = {}) {
+  const rowKey = `variant_${productVariantRowIndex++}`;
+  const variantId = variant.variantId || variant.id || '';
+  const isExisting = Boolean(variantId);
+  const canSetPrice = isExisting && Number(variant.availableQuantity || 0) > 0;
+  const attributes = Array.isArray(variant.attributes) && variant.attributes.length > 0
+    ? variant.attributes
+    : [{}];
+  const priceHint = canSetPrice
+    ? `Tồn kho có thể bán: ${variant.availableQuantity}`
+    : 'Chưa có tồn kho. Duyệt phiếu nhập NCC cho biến thể này để nhập giá bán.';
+
+  return `
+    <section class="product-variant-editor" data-variant-id="${esc(variantId)}" style="border:1px solid var(--slate-200);border-radius:12px;padding:16px;margin-top:14px;background:var(--slate-50);">
+      <div style="display:flex;justify-content:space-between;gap:12px;align-items:flex-start;margin-bottom:12px;">
+        <div>
+          <strong>${isExisting ? `Biến thể SKU: ${esc(variant.sku)}` : 'Biến thể mới'}</strong>
+          <div style="font-size:12px;color:var(--slate-500);margin-top:3px;">${isExisting ? 'Cập nhật thông tin biến thể hiện có.' : 'Biến thể mới sẽ nhận giá bán sau khi đã nhập kho.'}</div>
+        </div>
+        ${isExisting ? '' : `<button type="button" class="ghost-btn" style="padding:7px 10px;color:var(--danger);" onclick="removeProductVariantRow(this)">Bỏ biến thể</button>`}
+      </div>
+      <div class="form-grid-2">
+        <div class="form-group">
+          <label>SKU *</label>
+          <input type="text" class="input-control variant-sku" value="${esc(variant.sku)}" required placeholder="Ví dụ: LEGO-CITY-RED">
+        </div>
+        <div class="form-group">
+          <label>Trạng thái biến thể</label>
+          <select class="input-control variant-status">
+            <option value="1" ${(variant.status ?? 1) === 1 ? 'selected' : ''}>Đang kinh doanh</option>
+            <option value="0" ${variant.status === 0 ? 'selected' : ''}>Tạm ngưng</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label>Giá bán biến thể (VNĐ)</label>
+          <input type="number" min="0" step="1000" class="input-control variant-price" value="${variant.price ?? ''}" ${canSetPrice ? '' : 'disabled'} title="${esc(priceHint)}" placeholder="Nhập sau khi có tồn kho">
+          <small style="display:block;margin-top:5px;color:${canSetPrice ? 'var(--success)' : 'var(--slate-500)'};">${esc(priceHint)}</small>
+        </div>
+        <div class="form-group">
+          <label>Giá vốn tham khảo (VNĐ)</label>
+          <input type="number" min="0" step="1000" class="input-control variant-cost-price" value="${variant.costPrice ?? ''}" placeholder="Có thể cập nhật khi lập phiếu nhập">
+        </div>
+        <div class="form-group">
+          <label>Khối lượng (gram)</label>
+          <input type="number" min="0" step="1" class="input-control variant-weight" value="${variant.weight ?? ''}" placeholder="Không bắt buộc">
+        </div>
+        <div class="form-group">
+          <label>URL hình ảnh riêng của biến thể</label>
+          <input type="url" class="input-control variant-image-url" value="${esc(variant.imageUrl)}" placeholder="https://example.com/bien-the.jpg">
+        </div>
+      </div>
+      <div style="margin-top:12px;">
+        <div style="display:flex;justify-content:space-between;gap:12px;align-items:center;">
+          <label style="font-weight:700;">Thuộc tính biến thể</label>
+          <button type="button" class="secondary-btn" style="padding:7px 10px;" onclick="addVariantAttributeRow('${rowKey}')">+ Thêm thuộc tính</button>
+        </div>
+        <div id="variantAttributes_${rowKey}" class="variant-attributes">
+          ${attributes.map(renderVariantAttributeRow).join('')}
+        </div>
+      </div>
+    </section>`;
+}
+
+function renderProductVariantsSection(product) {
+  const variants = productVariantsOf(product);
+  const initialVariants = variants.length > 0 ? variants : [{}];
+  return `
+    <div class="form-section-card" style="margin-top:20px;">
+      <div style="display:flex;justify-content:space-between;gap:16px;align-items:flex-start;">
+        <div>
+          <h3 style="margin:0;">Biến thể sản phẩm *</h3>
+          <p style="margin:5px 0 0;color:var(--slate-500);font-size:13px;">Thêm SKU và các thuộc tính tự do cho từng phiên bản. Giá bán chỉ mở khi biến thể đã có tồn kho.</p>
+        </div>
+        <button type="button" class="secondary-btn" onclick="addProductVariantRow()">+ Thêm biến thể</button>
+      </div>
+      <div id="productVariantsEditor">
+        ${initialVariants.map(renderProductVariantEditor).join('')}
+      </div>
+    </div>`;
+}
+
+window.addProductVariantRow = function() {
+  const editor = document.getElementById('productVariantsEditor');
+  if (!editor) return;
+  const temp = document.createElement('div');
+  temp.innerHTML = renderProductVariantEditor({});
+  editor.appendChild(temp.firstElementChild);
+};
+
+window.removeProductVariantRow = function(button) {
+  const row = button.closest('.product-variant-editor');
+  if (row) row.remove();
+};
+
+window.addVariantAttributeRow = function(rowKey) {
+  const attributes = document.getElementById(`variantAttributes_${rowKey}`);
+  if (!attributes) return;
+  const temp = document.createElement('div');
+  temp.innerHTML = renderVariantAttributeRow({});
+  attributes.appendChild(temp.firstElementChild);
+};
+
+window.removeVariantAttributeRow = function(button) {
+  const row = button.closest('.variant-attribute-row');
+  if (row) row.remove();
+};
+
+function collectProductVariants() {
+  const variants = [];
+  const seenSkus = new Set();
+  const rows = document.querySelectorAll('.product-variant-editor');
+  if (rows.length === 0) throw new Error('Vui lòng giữ lại ít nhất một biến thể sản phẩm.');
+
+  rows.forEach(row => {
+    const sku = row.querySelector('.variant-sku')?.value.trim();
+    if (!sku) throw new Error('SKU của biến thể không được để trống.');
+    const normalizedSku = sku.toUpperCase();
+    if (seenSkus.has(normalizedSku)) throw new Error(`SKU '${sku}' đang bị trùng trong sản phẩm này.`);
+    seenSkus.add(normalizedSku);
+
+    const attributes = [];
+    row.querySelectorAll('.variant-attribute-row').forEach((attributeRow, displayOrder) => {
+      const attributeName = attributeRow.querySelector('.variant-attribute-name')?.value.trim() || '';
+      const attributeValue = attributeRow.querySelector('.variant-attribute-value')?.value.trim() || '';
+      if (attributeName || attributeValue) {
+        if (!attributeName || !attributeValue) {
+          throw new Error('Mỗi thuộc tính biến thể cần đủ tên và giá trị.');
+        }
+        attributes.push({ attributeName, attributeValue, displayOrder });
+      }
+    });
+
+    const priceInput = row.querySelector('.variant-price');
+    const costPriceInput = row.querySelector('.variant-cost-price');
+    const weightInput = row.querySelector('.variant-weight');
+    const price = !priceInput.disabled && priceInput.value !== '' ? Number(priceInput.value) : null;
+    const costPrice = costPriceInput.value !== '' ? Number(costPriceInput.value) : null;
+    const weight = weightInput.value !== '' ? Number(weightInput.value) : null;
+    if ((price !== null && price < 0) || (costPrice !== null && costPrice < 0) || (weight !== null && weight < 0)) {
+      throw new Error('Giá và khối lượng không được là số âm.');
+    }
+
+    variants.push({
+      variantId: Number(row.dataset.variantId) || null,
+      sku,
+      attributes,
+      price,
+      costPrice,
+      weight,
+      imageUrl: row.querySelector('.variant-image-url')?.value.trim() || null,
+      status: Number(row.querySelector('.variant-status')?.value || 1)
+    });
+  });
+  return variants;
+}
+
 function renderFormFields(key, r) {
   const v = r || {};
   switch (key) {
-    case 'products':
+    case 'products': {
+      const canSetBasePrice = hasAvailableStock(v);
+      const basePriceHint = canSetBasePrice
+        ? 'Sản phẩm đã có tồn kho: có thể cập nhật giá bán cơ sở.'
+        : 'Chưa có tồn kho. Duyệt phiếu nhập NCC trước khi nhập giá bán cơ sở.';
       return `
         <div class="form-grid-2">
           <div class="form-group full">
@@ -636,13 +1299,15 @@ function renderFormFields(key, r) {
             </div>
           </div>
           <div class="form-group">
-            <label>Giá bán cơ sở (VNĐ) *</label>
-            <input name="basePrice" type="number" min="0" step="1000" class="input-control" value="${v.basePrice || ''}" required placeholder="500000">
+            <label>Giá bán cơ sở (VNĐ)</label>
+            <input name="basePrice" type="number" min="0" step="1000" class="input-control" value="${v.basePrice ?? ''}" ${canSetBasePrice ? '' : 'disabled'} title="${esc(basePriceHint)}" placeholder="Nhập sau khi có tồn kho">
+            <small style="display:block;margin-top:5px;color:${canSetBasePrice ? 'var(--success)' : 'var(--slate-500)'};">${esc(basePriceHint)}</small>
           </div>
           <div class="form-group">
             <label>Trạng thái kinh doanh</label>
             <select name="status" class="input-control">
               <option value="1" ${v.status === 1 || v.status === undefined ? 'selected' : ''}>Đang kinh doanh</option>
+              <option value="2" ${v.status === 2 ? 'selected' : ''}>Thanh lý / ngừng nhập mới</option>
               <option value="0" ${v.status === 0 ? 'selected' : ''}>Tạm ngưng</option>
             </select>
           </div>
@@ -662,11 +1327,17 @@ function renderFormFields(key, r) {
             </select>
           </div>
           <div class="form-group full">
-            <label>Mô tả chi tiết sản phẩm</label>
-            <textarea name="description" class="input-control" rows="4" placeholder="Nhập mô tả sản phẩm, chất liệu, tính năng...">${esc(v.description)}</textarea>
+            <label>Mô tả chi tiết sản phẩm *</label>
+            <textarea name="description" class="input-control" rows="4" required placeholder="Nhập mô tả sản phẩm, chất liệu, tính năng...">${esc(v.description)}</textarea>
+          </div>
+          <div class="form-group full">
+            <label>URL hình ảnh sản phẩm</label>
+            <input name="imageUrl" type="url" class="input-control" value="${esc(v.imageUrl)}" placeholder="https://example.com/hinh-san-pham.jpg">
           </div>
         </div>
+        ${renderProductVariantsSection(v)}
       `;
+    }
 
     case 'categories':
     case 'brands':
@@ -735,9 +1406,9 @@ function renderFormFields(key, r) {
           </div>
           <div class="form-group">
             <label>Loại giảm giá *</label>
-            <select name="discountType" class="input-control">
-              <option value="0" ${v.discountType === 0 ? 'selected' : ''}>Phần trăm (%)</option>
-              <option value="1" ${v.discountType === 1 ? 'selected' : ''}>Số tiền cố định (đ)</option>
+            <select name="promotionType" class="input-control">
+              <option value="0" ${v.promotionType === 0 ? 'selected' : ''}>Phần trăm (%)</option>
+              <option value="1" ${v.promotionType === 1 ? 'selected' : ''}>Số tiền cố định (đ)</option>
             </select>
           </div>
           <div class="form-group">
@@ -758,9 +1429,9 @@ function renderFormFields(key, r) {
           </div>
           <div class="form-group">
             <label>Trạng thái</label>
-            <select name="isActive" class="input-control">
-              <option value="true" ${v.isActive !== false ? 'selected' : ''}>Đang kích hoạt</option>
-              <option value="false" ${v.isActive === false ? 'selected' : ''}>Tạm ngưng</option>
+            <select name="status" class="input-control">
+              <option value="1" ${v.status === undefined || v.status === 1 ? 'selected' : ''}>Đang kích hoạt</option>
+              <option value="0" ${v.status === 0 ? 'selected' : ''}>Tạm ngưng</option>
             </select>
           </div>
           <div class="form-group full">
@@ -794,21 +1465,26 @@ function renderFormFields(key, r) {
           </div>
           <div class="form-group">
             <label>Đơn hàng tối thiểu (đ)</label>
-            <input name="minOrderAmount" type="number" min="0" class="input-control" value="${v.minOrderAmount || 0}">
+            <input name="minOrderAmount" type="number" min="0" class="input-control" value="${v.minimumOrderValue ?? v.minOrderAmount ?? 0}">
+          </div>
+          <div class="form-group">
+            <label>Điểm cần đổi</label>
+            <input name="requiredPoints" type="number" min="0" class="input-control" value="${v.requiredPoints || 0}" placeholder="Ví dụ: 100">
+            <small style="color:var(--slate-400);">Nhập 0 nếu là voucher thường, không đổi bằng điểm.</small>
           </div>
           <div class="form-group">
             <label>Số lượt dùng tối đa</label>
-            <input name="maxUsage" type="number" min="1" class="input-control" value="${v.maxUsage || 100}">
+            <input name="maxUsage" type="number" min="1" class="input-control" value="${v.usageLimit ?? v.maxUsage ?? 100}">
           </div>
           <div class="form-group">
             <label>Hạn sử dụng *</label>
-            <input name="expiryDate" type="date" class="input-control" value="${v.expiryDate ? v.expiryDate.split('T')[0] : new Date(Date.now() + 30*86400000).toISOString().split('T')[0]}" required>
+            <input name="expiryDate" type="date" class="input-control" value="${(v.endDate || v.expiryDate) ? (v.endDate || v.expiryDate).split('T')[0] : new Date(Date.now() + 30*86400000).toISOString().split('T')[0]}" required>
           </div>
           <div class="form-group">
             <label>Trạng thái</label>
             <select name="isActive" class="input-control">
-              <option value="true" ${v.isActive !== false ? 'selected' : ''}>Khả dụng</option>
-              <option value="false" ${v.isActive === false ? 'selected' : ''}>Khóa</option>
+              <option value="true" ${v.status === undefined ? v.isActive !== false ? 'selected' : '' : v.status === 1 ? 'selected' : ''}>Khả dụng</option>
+              <option value="false" ${v.status === undefined ? v.isActive === false ? 'selected' : '' : v.status !== 1 ? 'selected' : ''}>Khóa</option>
             </select>
           </div>
         </div>
@@ -825,6 +1501,7 @@ function renderPurchaseOrderForm(v) {
   const randomCode = 'PO-' + new Date().getFullYear() + String(new Date().getMonth()+1).padStart(2,'0') + String(new Date().getDate()).padStart(2,'0') + '-' + Math.floor(1000 + Math.random() * 9000);
   const code = v.receiptCode || randomCode;
   const existingDetails = v.importReceiptDetails || [];
+  const orderedByName = v.orderedByName || currentUser?.fullName || currentUser?.userName || 'Tài khoản đang đăng nhập';
 
   return `
     <div class="form-grid-2" style="margin-bottom:24px;">
@@ -842,6 +1519,10 @@ function renderPurchaseOrderForm(v) {
       <div class="form-group">
         <label>Ngày đặt hàng *</label>
         <input name="importDate" type="date" class="input-control" value="${v.importDate ? v.importDate.split('T')[0] : today}" required>
+      </div>
+      <div class="form-group">
+        <label>Người đặt</label>
+        <input class="input-control" value="${esc(orderedByName)}" readonly aria-label="Người đặt hàng">
       </div>
       <div class="form-group">
         <label>Ghi chú đặt hàng</label>
@@ -886,8 +1567,8 @@ function renderPurchaseOrderItemRow(item = {}, idx = null) {
   const rIdx = idx !== null ? idx : poRowIndex++;
   const variantOptions = (ref.products || []).map(p => {
     return `<optgroup label="${esc(p.name)}">
-      ${(p.variants || [{ variantId: p.productId, sku: p.sku || 'DEFAULT', price: p.basePrice }]).map(vr => {
-        const vId = vr.variantId || vr.id || p.productId;
+      ${productVariantsOf(p).map(vr => {
+        const vId = vr.variantId || vr.id;
         const isSel = item.variantId == vId;
         return `<option value="${vId}" ${isSel ? 'selected' : ''}>${esc(p.name)} - SKU: ${esc(vr.sku || 'N/A')}</option>`;
       }).join('')}
@@ -997,7 +1678,6 @@ async function handleFormSubmit(e, key, index) {
 
     payload = {
       supplierId: supplierId,
-      employeeId: currentUser?.employeeId || 1,
       receiptCode: payload.receiptCode,
       importDate: new Date(payload.importDate).toISOString(),
       note: payload.note || '',
@@ -1005,30 +1685,47 @@ async function handleFormSubmit(e, key, index) {
       details: details
     };
   } else if (key === 'products') {
-    payload.categoryId = Number(payload.categoryId);
-    payload.brandId = Number(payload.brandId);
-    payload.basePrice = Number(payload.basePrice);
-    payload.status = Number(payload.status);
-    payload.gender = Number(payload.gender);
-    payload.ageFrom = payload.ageFrom ? Number(payload.ageFrom) : null;
-    payload.ageTo = payload.ageTo ? Number(payload.ageTo) : null;
-    payload.isNew = true;
+    try {
+      const basePriceInput = form.querySelector('[name="basePrice"]');
+      payload.categoryId = Number(payload.categoryId);
+      payload.brandId = Number(payload.brandId);
+      payload.basePrice = !basePriceInput.disabled && basePriceInput.value !== ''
+        ? Number(basePriceInput.value)
+        : null;
+      payload.status = Number(payload.status);
+      payload.gender = Number(payload.gender);
+      payload.ageFrom = payload.ageFrom ? Number(payload.ageFrom) : null;
+      payload.ageTo = payload.ageTo ? Number(payload.ageTo) : null;
+      payload.isNew = record?.isNew ?? true;
+      payload.variants = collectProductVariants();
+    } catch (err) {
+      toast(err.message, 'error');
+      return;
+    }
   } else if (key === 'categories' || key === 'brands' || key === 'suppliers') {
     payload.isActive = payload.isActive === 'true';
   } else if (key === 'promotions') {
-    payload.discountType = Number(payload.discountType);
+    payload.promotionType = Number(payload.promotionType);
     payload.discountValue = Number(payload.discountValue);
     payload.minOrderAmount = Number(payload.minOrderAmount || 0);
-    payload.isActive = payload.isActive === 'true';
+    payload.status = Number(payload.status);
     payload.startDate = new Date(payload.startDate).toISOString();
     payload.endDate = new Date(payload.endDate).toISOString();
   } else if (key === 'vouchers') {
     payload.discountType = Number(payload.discountType);
     payload.discountValue = Number(payload.discountValue);
-    payload.minOrderAmount = Number(payload.minOrderAmount || 0);
-    payload.maxUsage = Number(payload.maxUsage || 100);
-    payload.isActive = payload.isActive === 'true';
-    payload.expiryDate = new Date(payload.expiryDate).toISOString();
+    payload.minimumOrderValue = Number(payload.minOrderAmount || 0);
+    payload.requiredPoints = Number(payload.requiredPoints || 0);
+    payload.usageLimit = Number(payload.maxUsage || 100);
+    payload.status = payload.isActive === 'true' ? 1 : 0;
+    payload.startDate = isEdit && record?.startDate
+      ? new Date(record.startDate).toISOString()
+      : new Date().toISOString();
+    payload.endDate = new Date(payload.expiryDate).toISOString();
+    delete payload.minOrderAmount;
+    delete payload.maxUsage;
+    delete payload.isActive;
+    delete payload.expiryDate;
   }
 
   try {
@@ -1036,10 +1733,25 @@ async function handleFormSubmit(e, key, index) {
     const url = isEdit ? `${m.endpoint}/${id}` : m.endpoint;
     const method = isEdit ? 'PUT' : 'POST';
 
-    await api(url, {
-      method,
-      body: JSON.stringify(payload)
-    });
+    if (key === 'products' && isEdit) {
+      const variants = payload.variants;
+      delete payload.variants;
+      await api(url, { method, body: JSON.stringify(payload) });
+
+      for (const variant of variants) {
+        const variantId = variant.variantId;
+        delete variant.variantId;
+        await api(
+          variantId ? `Product/variants/${variantId}` : `Product/${id}/variants`,
+          { method: variantId ? 'PUT' : 'POST', body: JSON.stringify(variant) }
+        );
+      }
+    } else {
+      await api(url, {
+        method,
+        body: JSON.stringify(payload)
+      });
+    }
 
     toast(isEdit ? 'Cập nhật thành công!' : 'Tạo mới thành công!', 'success');
     await loadRef();
@@ -1069,7 +1781,7 @@ async function showImportDetail(id) {
             <button class="back-link-btn" onclick="renderList('imports')">← Quay lại danh sách phiếu</button>
             <div>
               <h2>Chi tiết Phiếu Đặt Hàng #${esc(receipt.receiptCode || receipt.importReceiptId)}</h2>
-              <p>Ngày tạo: ${fmtDate(receipt.importDate || receipt.createdAt)} &bull; Trạng thái: ${pill(st.label, st.pill)}</p>
+              <p>Người đặt: ${esc(receipt.orderedByName || 'Chưa xác định')} &bull; Ngày tạo: ${fmtDate(receipt.importDate || receipt.createdAt)} &bull; Trạng thái: ${pill(st.label, st.pill)}</p>
             </div>
           </div>
           <div class="form-actions" style="margin:0;padding:0;border:none;">
@@ -1226,14 +1938,16 @@ async function showOrderDetail(id) {
           <div class="form-grid-3" style="margin-bottom:24px;">
             <div class="form-section-card" style="margin:0;">
               <h4>Thông tin khách hàng</h4>
-              <p><strong>Họ tên:</strong> ${esc(order.customerName || order.shippingAddress?.fullName || 'Khách vãng lai')}</p>
-              <p><strong>SĐT:</strong> ${esc(order.phoneNumber || order.shippingAddress?.phone || '—')}</p>
+              <p><strong>Họ tên:</strong> ${esc(order.customerName || order.shipping?.receiverName || 'Khách vãng lai')}</p>
+              <p><strong>SĐT:</strong> ${esc(order.phoneNumber || order.shipping?.receiverPhone || '—')}</p>
               <p><strong>Email:</strong> ${esc(order.customerEmail || '—')}</p>
             </div>
             <div class="form-section-card" style="margin:0;">
               <h4>Địa chỉ giao hàng</h4>
-              <p>${esc(order.shippingAddress?.addressLine || order.shippingAddress || 'Nhận tại cửa hàng')}</p>
-              <p><strong>Ghi chú:</strong> ${esc(order.note || 'Không có ghi chú.')}</p>
+              <p><strong>Người nhận:</strong> ${esc(order.shipping?.receiverName || order.customerName || '—')}</p>
+              <p><strong>SĐT nhận hàng:</strong> ${esc(order.shipping?.receiverPhone || order.phoneNumber || '—')}</p>
+              <p>${esc(order.shipping?.address || 'Chưa có địa chỉ giao hàng')}</p>
+              <p><strong>Ghi chú đơn hàng:</strong> ${esc(order.note || 'Không có ghi chú.')}</p>
             </div>
             <div class="form-section-card" style="margin:0;">
               <h4>Cập nhật trạng thái đơn</h4>
@@ -1290,7 +2004,7 @@ async function showOrderDetail(id) {
 window.updateOrderStatusAction = async function(id) {
   const newSt = Number(document.getElementById('orderNewStatusSelect')?.value);
   try {
-    await api(`Order/${id}/status`, {
+    await api(`Order/${id}`, {
       method: 'PUT',
       body: JSON.stringify({ status: newSt })
     });
@@ -1486,50 +2200,24 @@ window.quickAddRef = async function(type) {
 };
 
 // ── 10. AUTH & INIT ─────────────────────────────────────────
-document.getElementById('loginForm')?.addEventListener('submit', async e => {
-  e.preventDefault();
-  const btn = document.getElementById('loginSubmitBtn');
-  const errEl = document.getElementById('loginError');
-  if (errEl) errEl.textContent = '';
-  if (btn) btn.disabled = true;
-
-  try {
-    const fd = new FormData(e.target);
-    const res = await fetch('/api/Auth/login', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(Object.fromEntries(fd.entries()))
-    });
-    const data = await res.json();
-    if (res.ok && data.token) {
-      token = data.token;
-      currentUser = data;
-      localStorage.setItem('toyStoreToken', token);
-      localStorage.setItem('toyStoreUser', JSON.stringify(data));
-      location.reload();
-    } else {
-      if (errEl) errEl.textContent = data.message || 'Đăng nhập không thành công.';
-    }
-  } catch (err) {
-    if (errEl) errEl.textContent = 'Không thể kết nối đến máy chủ.';
-  } finally {
-    if (btn) btn.disabled = false;
-  }
-});
-
 document.getElementById('logoutButton')?.addEventListener('click', () => {
   localStorage.removeItem('toyStoreToken');
   localStorage.removeItem('toyStoreUser');
-  location.reload();
+  location.replace('/customer.html');
 });
 
 document.getElementById('menuToggle')?.addEventListener('click', () => {
   document.getElementById('sidebar')?.classList.toggle('open');
 });
 
-// INITIALIZE APP
-if (token) {
-  document.getElementById('loginScreen')?.classList.remove('show');
+// Chỉ tài khoản thuộc khu vực quản trị mới được mở trang Admin.
+const adminPortalRoles = ['admin', 'manager', 'staff'];
+const canAccessAdminPortal = user => adminPortalRoles.includes(String(user?.role || '').trim().toLowerCase());
+
+// Không đăng nhập hoặc không có quyền quản trị thì trở về trang khách hàng.
+if (!token || !canAccessAdminPortal(currentUser)) {
+  location.replace('/customer.html');
+} else {
   document.querySelector('.app-shell')?.classList.add('show');
   if (currentUser) {
     const uName = document.getElementById('currentUserName');
@@ -1541,7 +2229,4 @@ if (token) {
   }
   checkApiStatus();
   loadRef().then(navigate);
-} else {
-  document.getElementById('loginScreen')?.classList.add('show');
-  document.querySelector('.app-shell')?.classList.remove('show');
 }
