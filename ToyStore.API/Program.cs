@@ -18,6 +18,7 @@ using ToyStoreManagement.Application.Interfaces.Repositories;
 using ToyStoreManagement.Application.Interfaces.Services;
 using ToyStoreManagement.Infrastructure.Repositories;
 using ToyStoreManagement.Infrastructure.Services;
+using ToyStoreManagement.API.Hubs;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -81,6 +82,8 @@ builder.Services.AddScoped<IReturnRequestDetailRepository, ReturnRequestDetailRe
 builder.Services.AddScoped<IProductReviewService, ProductReviewService>();
 builder.Services.AddScoped<ICustomerFeedbackService, CustomerFeedbackService>();
 builder.Services.AddScoped<IReturnRequestService, ReturnRequestService>();
+builder.Services.AddScoped<ILiquidationService, LiquidationService>();
+builder.Services.AddScoped<ISupportChatService, SupportChatService>();
 
 builder.Services.AddScoped<IDashboardRepository, DashboardRepository>();
 builder.Services.AddScoped<IDashboardService, DashboardService>();
@@ -95,6 +98,7 @@ builder.Services
         options.JsonSerializerOptions.PropertyNamingPolicy =
             System.Text.Json.JsonNamingPolicy.CamelCase;
     });
+builder.Services.AddSignalR();
 
 builder.Services.AddCors(options =>
 {
@@ -188,6 +192,19 @@ builder.Services
 
             ClockSkew = TimeSpan.Zero
         };
+        options.Events = new JwtBearerEvents
+        {
+            OnMessageReceived = context =>
+            {
+                var accessToken = context.Request.Query["access_token"];
+                if (!string.IsNullOrEmpty(accessToken)
+                    && context.HttpContext.Request.Path.StartsWithSegments("/hubs/support-chat"))
+                {
+                    context.Token = accessToken;
+                }
+                return Task.CompletedTask;
+            }
+        };
     });
 
 builder.Services.ConfigureApplicationCookie(options =>
@@ -279,5 +296,6 @@ app.UseAuthentication();
 app.UseAuthorization();
 
 app.MapControllers();
+app.MapHub<SupportChatHub>("/hubs/support-chat");
 
 app.Run();

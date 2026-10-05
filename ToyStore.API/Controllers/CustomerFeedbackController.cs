@@ -3,6 +3,9 @@
 using Microsoft.AspNetCore.Authorization;
 using ToyStoreManagement.Application.DTOs.CustomerCare;
 using ToyStoreManagement.Application.Interfaces.Services;
+using System.Security.Claims;
+using Microsoft.EntityFrameworkCore;
+using ToyStoreManagement.Infrastructure.Data;
 
 namespace ToyStoreManagement.API.Controllers
 {
@@ -12,11 +15,14 @@ namespace ToyStoreManagement.API.Controllers
     public class CustomerFeedbackController : ControllerBase
     {
         private readonly ICustomerFeedbackService _feedbackService;
+        private readonly ApplicationDbContext _context;
 
         public CustomerFeedbackController(
-            ICustomerFeedbackService feedbackService)
+            ICustomerFeedbackService feedbackService,
+            ApplicationDbContext context)
         {
             _feedbackService = feedbackService;
+            _context = context;
         }
 
         [HttpGet]
@@ -36,6 +42,8 @@ namespace ToyStoreManagement.API.Controllers
 
             if (result == null)
                 return NotFound();
+            if (!IsStaff && await GetCurrentCustomerId() != result.CustomerId)
+                return Forbid();
 
             return Ok(result);
         }
@@ -44,6 +52,8 @@ namespace ToyStoreManagement.API.Controllers
         public async Task<IActionResult> GetByCustomerId(
             int customerId)
         {
+            if (!IsStaff && await GetCurrentCustomerId() != customerId)
+                return Forbid();
             return Ok(
                 await _feedbackService
                     .GetByCustomerIdAsync(customerId));
@@ -53,6 +63,16 @@ namespace ToyStoreManagement.API.Controllers
         public async Task<IActionResult> GetByOrderId(
             int orderId)
         {
+            if (!IsStaff)
+            {
+                var customerId = await GetCurrentCustomerId();
+                var orderCustomerId = await _context.Orders
+                    .Where(x => x.OrderId == orderId)
+                    .Select(x => x.CustomerId)
+                    .FirstOrDefaultAsync();
+                if (!customerId.HasValue || orderCustomerId != customerId)
+                    return Forbid();
+            }
             return Ok(
                 await _feedbackService
                     .GetByOrderIdAsync(orderId));
@@ -65,6 +85,10 @@ namespace ToyStoreManagement.API.Controllers
         {
             try
             {
+                var customerId = await GetCurrentCustomerId();
+                if (!customerId.HasValue)
+                    return NotFound(new { message = "Bạn chưa tạo hồ sơ khách hàng." });
+                dto.CustomerId = customerId.Value;
                 var result =
                     await _feedbackService.CreateAsync(dto);
 
@@ -84,6 +108,11 @@ namespace ToyStoreManagement.API.Controllers
         {
             try
             {
+                var existing = await _feedbackService.GetByIdAsync(customerFeedbackId);
+                if (existing == null)
+                    return NotFound();
+                if (!IsStaff && await GetCurrentCustomerId() != existing.CustomerId)
+                    return Forbid();
                 var result =
                     await _feedbackService
                         .UpdateAsync(customerFeedbackId, dto);
@@ -99,6 +128,21 @@ namespace ToyStoreManagement.API.Controllers
             }
         }
 
+        private bool IsStaff =>
+            User.IsInRole("Admin") || User.IsInRole("Manager") || User.IsInRole("Staff");
+
+        private async Task<int?> GetCurrentCustomerId()
+        {
+            var userId = User.FindFirstValue(ClaimTypes.NameIdentifier)
+                ?? User.FindFirstValue("sub");
+            if (string.IsNullOrWhiteSpace(userId))
+                return null;
+            return await _context.Customers
+                .Where(x => x.UserId == userId)
+                .Select(x => (int?)x.CustomerId)
+                .FirstOrDefaultAsync();
+        }
+
         [HttpDelete("{customerFeedbackId}")]
         [Authorize(Policy = "CustomerAccess")]
         public async Task<IActionResult> Delete(
@@ -106,6 +150,11 @@ namespace ToyStoreManagement.API.Controllers
         {
             try
             {
+                var existing = await _feedbackService.GetByIdAsync(customerFeedbackId);
+                if (existing == null)
+                    return NotFound();
+                if (await GetCurrentCustomerId() != existing.CustomerId)
+                    return Forbid();
                 var result =
                     await _feedbackService
                         .DeleteAsync(customerFeedbackId);

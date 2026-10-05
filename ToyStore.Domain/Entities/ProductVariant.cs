@@ -14,6 +14,7 @@ namespace ToyStoreManagement.Domain.Entities
             ProductReviews = new HashSet<ProductReview>();
             ReturnRequestDetails = new HashSet<ReturnRequestDetail>();
             VariantAttributes = new HashSet<ProductVariantAttribute>();
+            LiquidationReceiptDetails = new HashSet<LiquidationReceiptDetail>();
         }
 
         public int VariantId { get; set; }
@@ -58,5 +59,7 @@ namespace ToyStoreManagement.Domain.Entities
         public virtual ICollection<ProductReview> ProductReviews { get; set; }
 
         public virtual ICollection<ReturnRequestDetail> ReturnRequestDetails { get; set; }
+
+        public virtual ICollection<LiquidationReceiptDetail> LiquidationReceiptDetails { get; set; }
     }
 }

@@ -72,7 +72,8 @@ async function loadData() {
 
         // Không hiển thị hàng đã tạm ngưng; trạng thái 2 là hàng thanh lý
         // vẫn được phép bán đến khi hết tồn.
-        products = (newProducts || []).filter(product => Number(product.status) !== 0);
+        products = (newProducts || []).filter(product =>
+            Number(product.status) !== 0 && Number(product.status) !== 3);
         categories = newCategories || [];
 
         renderCategories();

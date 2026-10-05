@@ -86,6 +86,8 @@ namespace ToyStoreManagement.Infrastructure.Services
 
                 if (order == null)
                     throw new Exception("Đơn hàng không tồn tại.");
+                if (order.CustomerId != dto.CustomerId)
+                    throw new Exception("Đơn hàng không thuộc khách hàng này.");
             }
 
             var feedback = new CustomerFeedback

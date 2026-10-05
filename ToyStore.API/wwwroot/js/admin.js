@@ -21,6 +21,10 @@ let revenueChartCustom = {
   to: revenueDateInputValue(new Date())
 };
 let productVariantRowIndex = 0;
+let supportChatConnection = null;
+let selectedSupportConversationId = null;
+let supportChatRefreshTimer = null;
+const handledSupportMessageIds = new Set();
 
 // ── MODULE DEFINITIONS ──────────────────────────────────────
 const MODULES = {
@@ -612,10 +616,11 @@ async function renderLiquidation() {
   app.innerHTML = `<div class="panel"><div style="padding:42px;text-align:center;color:var(--slate-500);">Đang phân tích hàng cần thanh lý...</div></div>`;
 
   try {
-    const [products, inventories, promotions] = await Promise.all([
+    const [products, inventories, promotions, liquidationReceipts] = await Promise.all([
       api('Product'),
       api('Inventory'),
-      api('Promotion').catch(() => [])
+      api('Promotion').catch(() => []),
+      api('Liquidation')
     ]);
     if (currentView !== 'liquidation') return;
 
@@ -689,17 +694,93 @@ async function renderLiquidation() {
                   <td>${fmtDate(item.lastMovementAt)}<br><small style="color:var(--slate-500);">${item.stockAge} ngày trước</small></td>
                   <td>${item.price > 0 ? money(item.price) : '<span style="color:var(--danger);">Chưa có giá bán</span>'}</td>
                   <td>Giảm ${item.suggestedDiscount}%</td>
-                  <td style="text-align:right;">${item.activeDeal
+                  <td style="text-align:right;white-space:nowrap;"><button class="secondary-btn" style="padding:8px 11px;margin-right:5px;" onclick="showLiquidationReceipt(${item.variantId})">Lập phiếu</button>${item.activeDeal
                     ? '<button class="secondary-btn" style="padding:8px 11px;" onclick="location.hash=\'#promotions\'">Ưu đãi đang chạy</button>'
                     : `<button class="primary-btn" style="padding:8px 11px;" onclick="showLiquidationCampaign(${item.variantId})">Tạo ưu đãi</button>`}</td>
                 </tr>`).join('') : `<tr><td colspan="7" style="text-align:center;padding:40px;color:var(--slate-500);">Chưa có hàng cần thanh lý. Sản phẩm được gợi ý khi ở trạng thái “Thanh lý / ngừng nhập mới” hoặc tồn kho không biến động từ ${LIQUIDATION_STALE_DAYS} ngày.</td></tr>`}
             </tbody>
           </table>
         </div>
+      </div>
+      <div class="panel" style="margin-top:24px;">
+        <div class="panel-header"><div class="panel-title-area"><h2>Lịch sử phiếu thanh lý</h2><p>Phiếu chỉ làm giảm tồn kho khi được xác nhận hoàn tất.</p></div></div>
+        <div class="table-wrap"><table class="data-table"><thead><tr><th>Mã phiếu</th><th>Chi tiết sản phẩm</th><th>Ngày tạo</th><th>Trạng thái</th><th></th></tr></thead><tbody>
+          ${(liquidationReceipts || []).length ? liquidationReceipts.map(receipt => `<tr>
+            <td><strong>${esc(receipt.receiptCode)}</strong></td>
+            <td>${(receipt.details || []).map(detail => `${esc(detail.productName)} · ${esc(detail.sku)} × ${detail.quantity}`).join('<br>')}</td>
+            <td>${fmtDateTime(receipt.createdAt)}</td>
+            <td>${pill(Number(receipt.status) === 1 ? 'Đã hoàn tất' : (Number(receipt.status) === 2 ? 'Đã hủy' : 'Chờ xác nhận'), Number(receipt.status) === 1 ? 'success' : (Number(receipt.status) === 2 ? 'neutral' : 'warning'))}</td>
+            <td style="text-align:right;">${Number(receipt.status) === 0 ? `<button class="primary-btn" style="padding:8px 11px;" onclick="completeLiquidationReceipt(${receipt.liquidationReceiptId})">Xác nhận xuất kho</button> <button class="ghost-btn" onclick="cancelLiquidationReceipt(${receipt.liquidationReceiptId})">Hủy</button>` : ''}</td>
+          </tr>`).join('') : '<tr><td colspan="5" style="text-align:center;padding:30px;color:var(--slate-500);">Chưa có phiếu thanh lý.</td></tr>'}
+        </tbody></table></div>
       </div>`;
   } catch (err) {
     app.innerHTML = `<div class="panel"><div style="padding:42px;text-align:center;color:var(--danger);">Không thể tải danh sách thanh lý: ${esc(err.message)}</div></div>`;
   }
+
+  window.showLiquidationReceipt = function(variantId) {
+    const candidates = cache.liquidation || [];
+    const selectedId = Number(variantId);
+    app.innerHTML = `
+      <div class="form-view-panel">
+        <div class="form-view-header"><div class="form-header-title"><button class="back-link-btn" onclick="renderLiquidation()">← Quay lại thanh lý hàng</button><div><h2>Tạo phiếu thanh lý</h2><p>Chọn sản phẩm và số lượng sẽ xuất khỏi kho.</p></div></div></div>
+        <form class="form-view-panel" onsubmit="submitLiquidationReceipt(event)">
+          <div class="form-body">
+            <div class="form-group full"><label>Ghi chú</label><textarea id="liquidationReceiptNote" class="input-control" maxlength="2000" rows="3" placeholder="Lý do thanh lý, biên bản kiểm kê..."></textarea></div>
+            <div class="table-wrap"><table class="data-table"><thead><tr><th>Chọn</th><th>Sản phẩm / SKU</th><th>Tồn khả dụng</th><th>Số lượng thanh lý</th></tr></thead><tbody>
+              ${candidates.map(item => `<tr><td><input type="checkbox" data-liquidation-select="${item.variantId}" ${item.variantId === selectedId ? 'checked' : ''}></td>
+                <td><strong>${esc(item.productName)}</strong><br><small>SKU: ${esc(item.sku)}</small></td><td>${item.availableQuantity}</td>
+                <td><input class="input-control" style="max-width:130px;" id="liquidation-quantity-${item.variantId}" type="number" min="1" max="${item.availableQuantity}" value="${item.variantId === selectedId ? 1 : ''}" placeholder="Số lượng"></td></tr>`).join('')}
+            </tbody></table></div>
+          </div>
+          <div class="form-footer-actions"><button type="button" class="ghost-btn" onclick="renderLiquidation()">Hủy bỏ</button><button type="submit" class="primary-btn">Tạo phiếu chờ xác nhận</button></div>
+        </form>
+      </div>`;
+  };
+
+  window.submitLiquidationReceipt = async function(event) {
+    event.preventDefault();
+    const details = Array.from(document.querySelectorAll('[data-liquidation-select]:checked'))
+      .map(checkbox => ({
+        variantId: Number(checkbox.dataset.liquidationSelect),
+        quantity: Number(document.getElementById(`liquidation-quantity-${checkbox.dataset.liquidationSelect}`)?.value)
+      }));
+    if (!details.length || details.some(item => !Number.isInteger(item.quantity) || item.quantity <= 0)) {
+      toast('Chọn ít nhất một SKU và nhập số lượng thanh lý hợp lệ.', 'error');
+      return;
+    }
+    try {
+      await api('Liquidation', {
+        method: 'POST',
+        body: JSON.stringify({ note: document.getElementById('liquidationReceiptNote')?.value.trim(), details })
+      });
+      toast('Đã tạo phiếu thanh lý ở trạng thái chờ xác nhận.', 'success');
+      await renderLiquidation();
+    } catch (err) {
+      toast(`Không thể tạo phiếu thanh lý: ${err.message}`, 'error');
+    }
+  };
+
+  window.completeLiquidationReceipt = async function(id) {
+    if (!confirm('Xác nhận phiếu này và trừ số lượng khỏi tồn kho?')) return;
+    try {
+      await api(`Liquidation/${id}/complete`, { method: 'POST' });
+      toast('Đã hoàn tất thanh lý và cập nhật tồn kho.', 'success');
+      await renderLiquidation();
+    } catch (err) {
+      toast(`Không thể hoàn tất phiếu: ${err.message}`, 'error');
+    }
+  };
+
+  window.cancelLiquidationReceipt = async function(id) {
+    try {
+      await api(`Liquidation/${id}/cancel`, { method: 'POST' });
+      toast('Đã hủy phiếu thanh lý.', 'success');
+      await renderLiquidation();
+    } catch (err) {
+      toast(`Không thể hủy phiếu: ${err.message}`, 'error');
+    }
+  };
 }
 
 window.showLiquidationCampaign = function(variantId) {
@@ -780,8 +861,12 @@ function customerCareStatus(status) {
 async function renderCustomerCare() {
   app.innerHTML = `<div class="panel"><div style="padding:42px;text-align:center;color:var(--slate-500);">Đang tải yêu cầu chăm sóc khách hàng...</div></div>`;
   try {
-    const feedbacks = await api('CustomerFeedback');
+    const [feedbacks, returnRequests] = await Promise.all([
+      api('CustomerFeedback'),
+      api('ReturnRequest')
+    ]);
     if (currentView !== 'customer-care') return;
+    cache.customerCareReturns = returnRequests || [];
     const list = (feedbacks || []).sort((left, right) =>
       Number(left.status >= 2) - Number(right.status >= 2)
       || new Date(right.createdAt) - new Date(left.createdAt));
@@ -804,10 +889,72 @@ async function renderCustomerCare() {
             return `<tr><td><strong>${esc(item.customerName || 'Khách hàng')}</strong></td><td><strong>${esc(item.subject)}</strong><br><small style="color:var(--slate-500);">${esc(item.content)}</small></td><td>${esc(CUSTOMER_CARE_TYPES[Number(item.feedbackType)] || CUSTOMER_CARE_TYPES[3])}</td><td>${item.orderCode ? `<strong>#${esc(item.orderCode)}</strong>` : '—'}</td><td>${fmtDateTime(item.createdAt)}</td><td>${pill(state.label, state.pill)}</td><td style="text-align:right;"><button class="icon-action-btn view" title="Xử lý yêu cầu" onclick="showCustomerCareReply(${item.customerFeedbackId})">💬</button></td></tr>`;
           }).join('') : '<tr><td colspan="7" style="text-align:center;padding:40px;color:var(--slate-500);">Chưa có yêu cầu chăm sóc khách hàng.</td></tr>'}</tbody>
         </table></div>
+      </div>
+      <div class="panel" style="margin-top:24px;">
+        <div class="panel-header"><div class="panel-title-area"><h2>Đổi trả và nhận hàng hoàn</h2><p>Chỉ thao tác nhận hàng sau khi kho đã thực sự tiếp nhận sản phẩm.</p></div></div>
+        <div class="table-wrap"><table class="data-table"><thead><tr><th>Mã yêu cầu</th><th>Khách hàng / Đơn hàng</th><th>Sản phẩm</th><th>Yêu cầu lúc</th><th>Hoàn tiền</th><th>Trạng thái</th><th></th></tr></thead><tbody>
+          ${(returnRequests || []).length ? returnRequests.map(item => {
+            const returnStates = {
+              0: { label: 'Mới yêu cầu', type: 'warning' },
+              1: { label: 'Đã duyệt · Chờ nhận hàng', type: 'info' },
+              2: { label: 'Từ chối', type: 'danger' },
+              3: { label: 'Đã nhận hàng', type: 'success' },
+              4: { label: 'Đã hủy', type: 'neutral' }
+            };
+            const state = returnStates[Number(item.status)] || { label: 'Không xác định', type: 'neutral' };
+            return `<tr><td><strong>${esc(item.returnCode)}</strong><br><small>${esc(item.description || '')}</small></td>
+              <td>${esc(item.customerName || 'Khách hàng')}<br><small>${esc(item.orderCode || '')}</small></td>
+              <td>${(item.details || []).map(detail => `${esc(detail.productName)} · ${esc(detail.sku)} × ${detail.quantity}`).join('<br>')}</td>
+              <td>${fmtDateTime(item.requestedAt)}</td><td>${money(item.refundAmount)}</td><td>${pill(state.label, state.type)}</td>
+              <td style="text-align:right;white-space:nowrap;">${Number(item.status) === 0
+                ? `<button class="primary-btn" style="padding:8px 10px;" onclick="processReturnRequest(${item.returnRequestId}, 1)">Duyệt</button> <button class="ghost-btn" onclick="processReturnRequest(${item.returnRequestId}, 2)">Từ chối</button>`
+                : Number(item.status) === 1
+                  ? `<button class="primary-btn" style="padding:8px 10px;" onclick="receiveReturnRequest(${item.returnRequestId})">Xác nhận đã nhận hàng</button>`
+                  : ''}</td></tr>`;
+          }).join('') : '<tr><td colspan="7" style="text-align:center;padding:30px;color:var(--slate-500);">Chưa có yêu cầu đổi trả.</td></tr>'}
+        </tbody></table></div>
       </div>`;
+    app.insertAdjacentHTML('beforeend', `
+      <div class="panel admin-support-chat">
+        <div class="panel-header"><div class="panel-title-area"><h2>Chat trực tuyến</h2><p>Tin nhắn realtime giữa khách hàng và quản lý.</p></div></div>
+        <div class="admin-support-chat-grid">
+          <div class="admin-support-chat-list" id="supportChatConversationList"><p>Đang tải hội thoại...</p></div>
+          <div class="admin-support-chat-detail" id="supportChatConversationDetail"><p class="admin-support-chat-empty">Chọn một hội thoại để xem tin nhắn.</p></div>
+        </div>
+      </div>`);
+    await renderSupportChatInbox();
   } catch (err) {
     app.innerHTML = `<div class="panel"><div style="padding:42px;text-align:center;color:var(--danger);">Không thể tải yêu cầu chăm sóc khách hàng: ${esc(err.message)}</div></div>`;
   }
+
+  window.processReturnRequest = async function(id, status) {
+    const item = (cache.customerCareReturns || []).find(request => Number(request.returnRequestId) === Number(id));
+    try {
+      await api(`ReturnRequest/${id}`, {
+        method: 'PUT',
+        body: JSON.stringify({
+          status,
+          refundAmount: Number(item?.refundAmount || 0),
+          staffNote: status === 1 ? 'Đã duyệt yêu cầu trả hàng.' : 'Yêu cầu trả hàng không được chấp nhận.'
+        })
+      });
+      toast(status === 1 ? 'Đã duyệt yêu cầu trả hàng.' : 'Đã từ chối yêu cầu trả hàng.', 'success');
+      renderCustomerCare();
+    } catch (err) {
+      toast(`Không thể cập nhật yêu cầu trả hàng: ${err.message}`, 'error');
+    }
+  };
+
+  window.receiveReturnRequest = async function(id) {
+    if (!confirm('Xác nhận hàng đã được nhận lại tại kho? Tồn kho sẽ được tăng sau thao tác này.')) return;
+    try {
+      await api(`ReturnRequest/${id}/receive`, { method: 'POST' });
+      toast('Đã nhận hàng trả và cập nhật tồn kho.', 'success');
+      renderCustomerCare();
+    } catch (err) {
+      toast(`Không thể nhận hàng trả: ${err.message}`, 'error');
+    }
+  };
 }
 
 window.showCustomerCareReply = function(feedbackId) {
@@ -821,6 +968,129 @@ window.showCustomerCareReply = function(feedbackId) {
         <div class="form-footer-actions"><button type="button" class="ghost-btn" onclick="renderCustomerCare()">Quay lại</button><button type="submit" class="primary-btn">Lưu xử lý</button></div>
       </form>
     </div>`;
+};
+
+async function ensureSupportChatRealtime() {
+  if (!window.signalR || supportChatConnection) return;
+  supportChatConnection = new signalR.HubConnectionBuilder()
+    .withUrl('/hubs/support-chat', { accessTokenFactory: () => token || '' })
+    .withAutomaticReconnect()
+    .build();
+  supportChatConnection.on('SupportMessageReceived', message => {
+    if (handledSupportMessageIds.has(message.supportMessageId)) return;
+    handledSupportMessageIds.add(message.supportMessageId);
+    if (handledSupportMessageIds.size > 1000)
+      handledSupportMessageIds.delete(handledSupportMessageIds.values().next().value);
+    renderSupportChatInbox().catch(err => console.warn('Could not refresh support chat inbox:', err));
+    if (Number(message.supportConversationId) === Number(selectedSupportConversationId)) {
+      openSupportConversation(selectedSupportConversationId).catch(err => console.warn('Could not refresh support chat:', err));
+    }
+  });
+  supportChatConnection.on('SupportConversationUpdated', () => {
+    renderSupportChatInbox().catch(err => console.warn('Could not refresh support chat inbox:', err));
+    if (selectedSupportConversationId) {
+      openSupportConversation(selectedSupportConversationId).catch(err => console.warn('Could not refresh support chat:', err));
+    }
+  });
+  supportChatConnection.on('SupportMessagesRead', () => {
+    if (selectedSupportConversationId) {
+      openSupportConversation(selectedSupportConversationId).catch(err => console.warn('Could not refresh read state:', err));
+    }
+  });
+  try {
+    await supportChatConnection.start();
+  } catch (err) {
+    supportChatConnection = null;
+    console.warn('Realtime chat unavailable; inbox polling remains active:', err);
+  }
+}
+
+async function renderSupportChatInbox() {
+  const listElement = document.getElementById('supportChatConversationList');
+  if (!listElement || currentView !== 'customer-care') return;
+  const conversations = await api('SupportChat');
+  if (currentView !== 'customer-care') return;
+  cache.supportChats = conversations || [];
+  listElement.innerHTML = cache.supportChats.length ? cache.supportChats.map(item => `
+    <button type="button" class="admin-support-chat-item ${Number(selectedSupportConversationId) === Number(item.supportConversationId) ? 'active' : ''}"
+      onclick="openSupportConversation(${item.supportConversationId})">
+      <span><strong>${esc(item.customerName || 'Khách hàng')}</strong><small>${fmtDateTime(item.lastMessageAt || item.createdAt)}</small></span>
+      <span class="admin-support-chat-item-meta">${item.unreadCount ? `<b>${item.unreadCount}</b>` : ''}${pill(Number(item.status) === 0 ? 'Đang mở' : 'Đã đóng', Number(item.status) === 0 ? 'success' : 'neutral')}</span>
+    </button>`).join('') : '<p class="admin-support-chat-empty">Chưa có hội thoại chat.</p>';
+  await ensureSupportChatRealtime();
+  if (supportChatRefreshTimer) clearInterval(supportChatRefreshTimer);
+  supportChatRefreshTimer = setInterval(() => {
+    if (currentView === 'customer-care') renderSupportChatInbox().catch(err => console.warn('Support chat polling failed:', err));
+  }, 15000);
+}
+
+window.openSupportConversation = async function(conversationId) {
+  selectedSupportConversationId = Number(conversationId);
+  const detailElement = document.getElementById('supportChatConversationDetail');
+  if (!detailElement) return;
+  try {
+    const conversation = await api(`SupportChat/${conversationId}`);
+    if (!conversation) return;
+    if (window.signalR && supportChatConnection?.state === signalR.HubConnectionState.Connected) {
+      await supportChatConnection.invoke('JoinConversation', Number(conversationId));
+    }
+    await api(`SupportChat/${conversationId}/read`, { method: 'POST' });
+    const messages = conversation.messages || [];
+    detailElement.innerHTML = `
+      <div class="admin-support-chat-heading">
+        <div><strong>${esc(conversation.customerName || 'Khách hàng')}</strong><small>${Number(conversation.status) === 0 ? 'Hội thoại đang mở' : 'Hội thoại đã đóng'}</small></div>
+        <div class="admin-support-chat-actions">
+          <button class="secondary-btn" onclick="acceptSupportConversation(${conversationId})">Nhận phụ trách</button>
+          <button class="secondary-btn" onclick="setSupportConversationStatus(${conversationId}, ${Number(conversation.status) === 0 ? 1 : 0})">${Number(conversation.status) === 0 ? 'Đóng hội thoại' : 'Mở lại'}</button>
+        </div>
+      </div>
+      <div class="admin-support-chat-messages" id="adminSupportChatMessages">
+        ${messages.map(message => `<article class="admin-support-chat-message ${message.senderRole === 'Customer' ? 'customer' : 'manager'}"><p>${esc(message.content)}</p><small>${esc(message.senderRole)} · ${fmtDateTime(message.sentAt)}${message.senderRole !== 'Customer' && message.readAt ? ' · Đã xem' : ''}</small></article>`).join('')}
+      </div>
+      <form class="admin-support-chat-form" onsubmit="sendSupportChatMessage(event, ${conversationId})">
+        <textarea id="adminSupportChatInput" maxlength="4000" rows="2" required ${Number(conversation.status) !== 0 ? 'disabled' : ''} placeholder="Nhập câu trả lời..."></textarea>
+        <button class="primary-btn" type="submit" ${Number(conversation.status) !== 0 ? 'disabled' : ''}>Gửi</button>
+      </form>`;
+    const messageBox = document.getElementById('adminSupportChatMessages');
+    if (messageBox) messageBox.scrollTop = messageBox.scrollHeight;
+    await renderSupportChatInbox();
+  } catch (err) {
+    detailElement.innerHTML = `<p class="admin-support-chat-empty">Không thể tải hội thoại: ${esc(err.message)}</p>`;
+  }
+};
+
+window.sendSupportChatMessage = async function(event, conversationId) {
+  event.preventDefault();
+  const input = document.getElementById('adminSupportChatInput');
+  const content = input?.value.trim();
+  if (!content) return;
+  try {
+    await api(`SupportChat/${conversationId}/messages`, { method: 'POST', body: JSON.stringify({ content }) });
+    await openSupportConversation(conversationId);
+  } catch (err) {
+    toast(`Không thể gửi tin nhắn: ${err.message}`, 'error');
+  }
+};
+
+window.acceptSupportConversation = async function(conversationId) {
+  try {
+    await api(`SupportChat/${conversationId}/accept`, { method: 'POST' });
+    await openSupportConversation(conversationId);
+  } catch (err) {
+    toast(`Không thể nhận hội thoại: ${err.message}`, 'error');
+  }
+};
+
+window.setSupportConversationStatus = async function(conversationId, status) {
+  try {
+    await api(`SupportChat/${conversationId}`, {
+      method: 'PUT',
+      body: JSON.stringify({ status, assignedManagerUserId: currentUser?.userId || null })
+    });
+    await openSupportConversation(conversationId);
+  } catch (err) {
+    toast(`Không thể cập nhật hội thoại: ${err.message}`, 'error');
+  }
 };
 
 window.submitCustomerCareReply = async function(event, feedbackId) {
@@ -933,8 +1203,8 @@ function getRowCells(key, r) {
         esc(r.brandName || '—'),
         `<strong style="color:var(--primary);">${money(r.basePrice ?? productVariantsOf(r)[0]?.price)}</strong>`,
         pill(
-          r.status === 2 ? 'Thanh lý' : (r.status === 1 ? 'Đang kinh doanh' : 'Tạm ngưng'),
-          r.status === 2 ? 'danger' : (r.status === 1 ? 'success' : 'warning')
+          r.status === 2 ? 'Thanh lý / Ngừng nhập' : (r.status === 3 ? 'Hết hàng' : (r.status === 1 ? 'Đang kinh doanh' : 'Tạm ngưng')),
+          r.status === 2 ? 'danger' : (r.status === 3 ? 'warning' : (r.status === 1 ? 'success' : 'neutral'))
         )
       ];
 
@@ -1308,6 +1578,7 @@ function renderFormFields(key, r) {
             <select name="status" class="input-control">
               <option value="1" ${v.status === 1 || v.status === undefined ? 'selected' : ''}>Đang kinh doanh</option>
               <option value="2" ${v.status === 2 ? 'selected' : ''}>Thanh lý / ngừng nhập mới</option>
+              <option value="3" ${v.status === 3 ? 'selected' : ''}>Hết hàng</option>
               <option value="0" ${v.status === 0 ? 'selected' : ''}>Tạm ngưng</option>
             </select>
           </div>

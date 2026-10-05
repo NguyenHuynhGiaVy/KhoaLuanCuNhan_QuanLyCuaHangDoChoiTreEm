@@ -23,11 +23,15 @@
 - **Giỏ hàng trực quan (Cart Drawer)**: Slide-over Drawer giỏ hàng tiện lợi, tự động lưu giỏ hàng (`localStorage`), tính toán tạm tính, ưu đãi miễn phí giao hàng (đơn từ 500.000đ).
 - **Thanh toán đơn hàng (Checkout)**: Đặt hàng nhanh chóng, nhập thông tin giao hàng, áp dụng Voucher giảm giá và chọn phương thức thanh toán (COD / Chuyển khoản).
 - **Tài khoản cá nhân**: Đăng ký, đăng nhập, đổi mật khẩu bảo mật và quản lý thông tin cá nhân.
+- **Chăm sóc khách hàng**: Gửi yêu cầu trả hàng từ đơn đã hoàn tất trong 7 ngày; theo dõi yêu cầu và lịch sử chat hỗ trợ.
+- **Chat realtime**: Khách hàng và Admin/Manager nhắn tin, xem trạng thái đã đọc và trạng thái hội thoại qua SignalR.
 
 ### ⚙️ Dành Cho Quản Trị Viên & Nhân Viên (Admin & Staff Space)
 - **Tổng quan (Dashboard)**: Thống kê doanh thu theo ngày/tháng/năm (Chart.js), theo dõi tổng đơn hàng, sản phẩm đang kinh doanh và số lượng khách hàng.
 - **Quản lý hàng hóa**: Sản phẩm, biến thể sản phẩm (SKU, giá, thuộc tính), danh mục, thương hiệu, tồn kho realtime.
 - **Quản lý vận hành**: Đơn hàng (cập nhật trạng thái đơn hàng), nhà cung cấp, phiếu nhập kho.
+- **Thanh lý tồn kho**: Tạo phiếu nhiều SKU, xác nhận/hủy phiếu; tồn kho chỉ thay đổi khi hoàn tất và lịch sử được ghi vào `InventoryTransactions`.
+- **Chăm sóc khách hàng**: Xử lý yêu cầu hỗ trợ, duyệt/từ chối trả hàng và xác nhận nhận hàng trả trước khi cộng tồn kho.
 - **Marketing**: Quản lý các chương trình khuyến mãi và mã giảm giá (Voucher).
 - **Phân quyền người dùng (Role-Based Access Control)**:
   - Phân quyền 4 cấp độ: `Admin` (Quản trị hệ thống), `Manager` (Quản lý cửa hàng), `Staff` (Nhân viên), `Customer` (Khách hàng).
@@ -85,6 +89,17 @@ Sau khi ứng dụng khởi chạy thành công (mặc định tại cổng `htt
 | 🧸 **Danh sách sản phẩm** | [http://localhost:5225/products.html](http://localhost:5225/products.html) |
 | ⚙️ **Quản trị Admin** | [http://localhost:5225/admin](http://localhost:5225/admin) hoặc [http://localhost:5225/index.html](http://localhost:5225/index.html) |
 | 📜 **Swagger API Docs** | [http://localhost:5225/swagger](http://localhost:5225/swagger) |
+
+---
+
+## ♻️ Thanh lý, trả hàng và chat hỗ trợ
+
+- `POST /api/Liquidation` tạo phiếu ở trạng thái chờ xác nhận. Gửi `note` và `details` gồm `variantId`/`quantity`; mỗi SKU chỉ xuất hiện một lần.
+- `POST /api/Liquidation/{id}/complete` xác nhận phiếu và trừ kho trong transaction; `POST /api/Liquidation/{id}/cancel` hủy phiếu chờ.
+- Khách hàng dùng `GET /api/Order/mine`, `POST /api/ReturnRequest` và `GET /api/ReturnRequest/mine`. Yêu cầu chỉ hợp lệ cho đơn đã hoàn tất trong 7 ngày; giá hoàn tiền được tính theo chi tiết đơn, không tin giá từ client.
+- Admin/Manager duyệt hoặc từ chối bằng `PUT /api/ReturnRequest/{id}` với `status` lần lượt là `1`/`2`. Chỉ khi hàng đã về kho mới gọi `POST /api/ReturnRequest/{id}/receive` (trạng thái `3`) để tăng tồn kho.
+- Customer mở chat tại storefront; Admin/Manager tiếp nhận tại **Khách hàng → Chăm sóc khách hàng**. API lưu lịch sử tại `SupportConversations`/`SupportMessages`; SignalR Hub ở `/hubs/support-chat` xác thực JWT và kiểm tra quyền vào từng hội thoại.
+- Trạng thái sản phẩm: `0` tạm ngưng, `1` đang kinh doanh, `2` thanh lý/ngừng nhập theo quản trị, `3` hết hàng tự động. Luồng tồn kho chỉ đổi giữa `1` và `3`, giữ nguyên trạng thái quản trị.
 
 ---
 

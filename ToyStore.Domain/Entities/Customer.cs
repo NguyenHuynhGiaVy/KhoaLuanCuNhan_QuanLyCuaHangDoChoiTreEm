@@ -17,6 +17,7 @@ namespace ToyStoreManagement.Domain.Entities
             CustomerFeedbacks = new HashSet<CustomerFeedback>();
 
             ReturnRequests = new HashSet<ReturnRequest>();
+            SupportConversations = new HashSet<SupportConversation>();
         }
 
         public int CustomerId { get; set; }
@@ -55,6 +56,8 @@ namespace ToyStoreManagement.Domain.Entities
         public virtual ICollection<CustomerFeedback> CustomerFeedbacks { get; set; }
 
         public virtual ICollection<ReturnRequest> ReturnRequests { get; set; }
+
+        public virtual ICollection<SupportConversation> SupportConversations { get; set; }
 
         public virtual ApplicationUser User { get; set; }
     }
