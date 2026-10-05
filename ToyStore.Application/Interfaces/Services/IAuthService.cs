@@ -26,5 +26,11 @@ namespace ToyStore.Application.Interfaces.Services
 
         Task<bool> ToggleUserStatusAsync(
             string userId);
+
+        Task<string> ForgotPasswordAsync(
+            ForgotPasswordRequestDto request);
+
+        Task<bool> ResetPasswordAsync(
+            ResetPasswordRequestDto request);
     }
 }

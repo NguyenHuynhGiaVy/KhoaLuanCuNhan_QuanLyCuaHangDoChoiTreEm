@@ -1490,8 +1490,133 @@ function renderFormFields(key, r) {
         </div>
       `;
 
+    case 'customers':
+      return renderCustomerForm(v);
+
     default:
       return `<p>Biểu mẫu chưa được định nghĩa.</p>`;
+  }
+}
+
+// ── 3B. CUSTOMER FORM & ORDERS HISTORY ───────────────────────
+function renderCustomerForm(v = {}) {
+  const customerId = v.customerId || v.id;
+  const dob = v.dateOfBirth ? v.dateOfBirth.split('T')[0] : '';
+  const points = v.loyaltyPoint ?? v.loyaltyPoints ?? 0;
+
+  if (customerId) {
+    setTimeout(() => loadCustomerOrdersForAdmin(customerId), 60);
+  }
+
+  return `
+    <div class="form-grid-2">
+      <div class="form-group">
+        <label>Họ và tên khách hàng *</label>
+        <input name="fullName" class="input-control" value="${esc(v.fullName || v.name)}" required placeholder="Nguyễn Văn A">
+      </div>
+      <div class="form-group">
+        <label>Số điện thoại *</label>
+        <input name="phone" class="input-control" value="${esc(v.phone || v.phoneNumber)}" required placeholder="0901234567">
+      </div>
+      <div class="form-group">
+        <label>Email liên hệ *</label>
+        <input name="email" type="email" class="input-control" value="${esc(v.email)}" required placeholder="email@domain.com">
+      </div>
+      <div class="form-group">
+        <label>Ngày sinh</label>
+        <input name="dateOfBirth" type="date" class="input-control" value="${dob}">
+      </div>
+      <div class="form-group">
+        <label>Giới tính</label>
+        <select name="gender" class="input-control">
+          <option value="" ${v.gender === null || v.gender === undefined ? 'selected' : ''}>Chưa chọn</option>
+          <option value="0" ${v.gender === 0 ? 'selected' : ''}>Nam</option>
+          <option value="1" ${v.gender === 1 ? 'selected' : ''}>Nữ</option>
+          <option value="2" ${v.gender === 2 ? 'selected' : ''}>Khác</option>
+        </select>
+      </div>
+      <div class="form-group">
+        <label>Điểm thưởng tích lũy</label>
+        <input class="input-control" value="${Number(points).toLocaleString('vi-VN')} điểm" readonly style="background:var(--slate-100);font-weight:700;color:var(--secondary);">
+      </div>
+      <div class="form-group full">
+        <label>Địa chỉ nhận hàng</label>
+        <input name="address" class="input-control" value="${esc(v.address || '')}" placeholder="Số nhà, đường, quận/huyện, tỉnh/thành...">
+      </div>
+      <div class="form-group">
+        <label>Trạng thái tài khoản</label>
+        <select name="status" class="input-control">
+          <option value="1" ${v.status === 1 || v.status === undefined ? 'selected' : ''}>Đang hoạt động</option>
+          <option value="0" ${v.status === 0 ? 'selected' : ''}>Khóa tài khoản</option>
+        </select>
+      </div>
+    </div>
+
+    <!-- DANH SÁCH ĐƠN HÀNG CỦA KHÁCH HÀNG -->
+    <div class="form-section-card" style="margin-top:24px;">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;">
+        <h3 style="margin:0;display:flex;align-items:center;gap:8px;">📦 Lịch sử đơn hàng của khách hàng</h3>
+        <span id="adminCustomerOrdersSummary" style="font-size:13px;font-weight:700;color:var(--slate-500);">${customerId ? 'Đang tải...' : 'Chưa có đơn hàng'}</span>
+      </div>
+      <div class="table-wrap">
+        <table class="data-table">
+          <thead>
+            <tr>
+              <th>Mã đơn hàng</th>
+              <th>Ngày đặt</th>
+              <th>Số lượng món</th>
+              <th>Tổng tiền</th>
+              <th>Trạng thái</th>
+              <th style="text-align:right;">Thao tác</th>
+            </tr>
+          </thead>
+          <tbody id="adminCustomerOrdersTbody">
+            ${customerId ? '<tr><td colspan="6" style="text-align:center;padding:24px;color:var(--slate-400);">Đang tải danh sách đơn hàng...</td></tr>' : '<tr><td colspan="6" style="text-align:center;padding:24px;color:var(--slate-400);">Khách hàng mới chưa có đơn hàng.</td></tr>'}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  `;
+}
+
+async function loadCustomerOrdersForAdmin(customerId) {
+  const tbody = document.getElementById('adminCustomerOrdersTbody');
+  const summary = document.getElementById('adminCustomerOrdersSummary');
+  if (!tbody || !customerId) return;
+
+  try {
+    const orders = await api(`Order/customer/${customerId}`);
+    if (!orders || !orders.length) {
+      tbody.innerHTML = `<tr><td colspan="6" style="text-align:center;padding:24px;color:var(--slate-400);">Khách hàng này chưa có đơn hàng nào.</td></tr>`;
+      if (summary) summary.textContent = '0 đơn hàng';
+      return;
+    }
+
+    orders.sort((a, b) => new Date(b.createdAt || 0) - new Date(a.createdAt || 0));
+
+    const totalSpent = orders.filter(o => o.status !== 5).reduce((sum, o) => sum + Number(o.totalAmount || 0), 0);
+    if (summary) summary.textContent = `${orders.length} đơn hàng · Tổng chi tiêu: ${money(totalSpent)}`;
+
+    tbody.innerHTML = orders.map(o => {
+      const itemsCount = (o.orderDetails || o.items || []).reduce((sum, it) => sum + (it.quantity || 1), 0);
+      const stLabel = ORDER_STATUS_LABELS[o.status] || 'Đang xử lý';
+      const stPill = o.status === 4 ? 'success' : (o.status === 5 ? 'danger' : 'warning');
+
+      return `
+        <tr>
+          <td><strong>#${esc(o.orderCode || o.orderId)}</strong></td>
+          <td>${fmtDate(o.orderDate || o.createdAt)}</td>
+          <td>${itemsCount} món</td>
+          <td><strong style="color:var(--primary);">${money(o.totalAmount)}</strong></td>
+          <td>${pill(stLabel, stPill)}</td>
+          <td style="text-align:right;">
+            <button type="button" class="icon-action-btn view" title="Xem chi tiết đơn hàng" onclick="showOrderDetail(${o.orderId})">👁</button>
+          </td>
+        </tr>
+      `;
+    }).join('');
+  } catch (err) {
+    tbody.innerHTML = `<tr><td colspan="6" style="text-align:center;color:var(--danger);padding:16px;">Lỗi tải đơn hàng: ${err.message}</td></tr>`;
   }
 }
 
@@ -1722,14 +1847,14 @@ async function handleFormSubmit(e, key, index) {
       ? new Date(record.startDate).toISOString()
       : new Date().toISOString();
     payload.endDate = new Date(payload.expiryDate).toISOString();
-    delete payload.minOrderAmount;
-    delete payload.maxUsage;
-    delete payload.isActive;
-    delete payload.expiryDate;
+  } else if (key === 'customers') {
+    payload.dateOfBirth = payload.dateOfBirth ? new Date(payload.dateOfBirth).toISOString() : null;
+    payload.gender = payload.gender === '' || payload.gender === null || payload.gender === undefined ? null : Number(payload.gender);
+    payload.status = Number(payload.status ?? 1);
   }
 
   try {
-    const id = record ? (record.productId || record.id || record.categoryId || record.brandId || record.supplierId || record.importReceiptId || record.promotionId || record.voucherId) : '';
+    const id = record ? (record.customerId || record.productId || record.id || record.categoryId || record.brandId || record.supplierId || record.importReceiptId || record.promotionId || record.voucherId) : '';
     const url = isEdit ? `${m.endpoint}/${id}` : m.endpoint;
     const method = isEdit ? 'PUT' : 'POST';
 

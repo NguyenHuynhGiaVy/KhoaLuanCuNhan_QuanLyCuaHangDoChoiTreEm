@@ -633,19 +633,22 @@ async function loadCustomerProfile() {
     const token = getAuthToken();
     if (!token) return null;
 
-    const response = await fetch(`${API_BASE}/api/Customer/profile`, {
-        headers: { 'Authorization': `Bearer ${token}` }
-    });
+    try {
+        const response = await fetch(`${API_BASE}/api/Customer/profile`, {
+            headers: { 'Authorization': `Bearer ${token}` }
+        });
 
-    if (response.status === 404) {
+        if (!response.ok) {
+            currentCustomerProfile = null;
+            return null;
+        }
+
+        currentCustomerProfile = await response.json();
+        return currentCustomerProfile;
+    } catch {
         currentCustomerProfile = null;
         return null;
     }
-
-    if (!response.ok) throw new Error('Không thể tải hồ sơ khách hàng.');
-
-    currentCustomerProfile = await response.json();
-    return currentCustomerProfile;
 }
 
 function populateCheckoutFromProfile(profile) {
@@ -758,11 +761,553 @@ async function handleCustomerProfileSubmit(event) {
     }
 }
 
+/* =========================================================
+   FORGOT & RESET PASSWORD
+   ========================================================= */
+
+function showForgotPassView(step = 1) {
+    const loginForm = document.getElementById('custLoginForm');
+    const regForm = document.getElementById('custRegisterForm');
+    const tabs = document.querySelector('.cust-modal-tabs');
+    const forgotContainer = document.getElementById('custForgotPassContainer');
+
+    if (loginForm) loginForm.style.display = 'none';
+    if (regForm) regForm.style.display = 'none';
+    if (tabs) tabs.style.display = 'none';
+    if (forgotContainer) {
+        forgotContainer.style.display = 'block';
+        const step1 = document.getElementById('forgotPassStep1');
+        const step2 = document.getElementById('forgotPassStep2');
+        if (step1) step1.style.display = step === 1 ? 'block' : 'none';
+        if (step2) step2.style.display = step === 2 ? 'block' : 'none';
+    }
+}
+
+function showLoginView() {
+    const loginForm = document.getElementById('custLoginForm');
+    const regForm = document.getElementById('custRegisterForm');
+    const tabs = document.querySelector('.cust-modal-tabs');
+    const forgotContainer = document.getElementById('custForgotPassContainer');
+
+    if (tabs) tabs.style.display = 'flex';
+    if (loginForm) loginForm.style.display = 'block';
+    if (regForm) regForm.style.display = 'none';
+    if (forgotContainer) forgotContainer.style.display = 'none';
+
+    document.getElementById('tabLoginBtn')?.classList.add('active');
+    document.getElementById('tabRegisterBtn')?.classList.remove('active');
+}
+
+async function handleForgotPassRequest(e) {
+    e.preventDefault();
+    const email = document.getElementById('forgotPassEmail')?.value.trim();
+    const errNode = document.getElementById('forgotPassError');
+    const btn = document.getElementById('forgotPassSubmitBtn');
+    if (errNode) errNode.textContent = '';
+
+    if (!email) {
+        if (errNode) errNode.textContent = 'Vui lòng nhập email tài khoản.';
+        return;
+    }
+
+    if (btn) { btn.disabled = true; btn.textContent = 'Đang xử lý...'; }
+
+    try {
+        const response = await fetch(`${API_BASE}/api/Auth/forgot-password`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ email })
+        });
+
+        const data = await response.json().catch(() => ({}));
+        if (!response.ok) throw new Error(data.message || 'Không thể tạo mã đặt lại mật khẩu.');
+
+        showToast('Đã tạo mã xác nhận thành công!');
+        
+        // Populate Step 2
+        const resetEmailInput = document.getElementById('resetPassEmail');
+        const resetTokenInput = document.getElementById('resetPassToken');
+        if (resetEmailInput) resetEmailInput.value = email;
+        if (resetTokenInput && data.resetToken) resetTokenInput.value = data.resetToken;
+
+        showForgotPassView(2);
+    } catch (err) {
+        if (errNode) errNode.textContent = err.message;
+    } finally {
+        if (btn) { btn.disabled = false; btn.textContent = 'Tiếp tục'; }
+    }
+}
+
+async function handleResetPassSubmit(e) {
+    e.preventDefault();
+    const email = document.getElementById('resetPassEmail')?.value.trim();
+    const token = document.getElementById('resetPassToken')?.value.trim();
+    const newPassword = document.getElementById('resetPassNewPassword')?.value;
+    const confirmPassword = document.getElementById('resetPassConfirmPassword')?.value;
+    const errNode = document.getElementById('resetPassError');
+    const btn = document.getElementById('resetPassSubmitBtn');
+    if (errNode) errNode.textContent = '';
+
+    if (newPassword !== confirmPassword) {
+        if (errNode) errNode.textContent = 'Mật khẩu xác nhận không khớp.';
+        return;
+    }
+
+    if (btn) { btn.disabled = true; btn.textContent = 'Đang đặt lại mật khẩu...'; }
+
+    try {
+        const response = await fetch(`${API_BASE}/api/Auth/reset-password`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ email, token, newPassword, confirmPassword })
+        });
+
+        const data = await response.json().catch(() => ({}));
+        if (!response.ok) throw new Error(data.message || 'Đặt lại mật khẩu thất bại.');
+
+        showToast('🎉 Đặt lại mật khẩu thành công! Vui lòng đăng nhập.');
+        showLoginView();
+        const loginEmail = document.getElementById('custLoginEmail');
+        if (loginEmail) loginEmail.value = email;
+        const loginPass = document.getElementById('custLoginPassword');
+        if (loginPass) loginPass.value = '';
+    } catch (err) {
+        if (errNode) errNode.textContent = err.message;
+    } finally {
+        if (btn) { btn.disabled = false; btn.textContent = 'Xác nhận đổi mật khẩu'; }
+    }
+}
+
+/* =========================================================
+   GLOBAL ORDER DETAIL MODAL
+   ========================================================= */
+
+function ensureOrderDetailModalInDom() {
+    if (document.getElementById('orderDetailModalBackdrop')) return;
+
+    const modalHtml = `
+    <div class="order-modal-backdrop" id="orderDetailModalBackdrop" role="dialog" aria-modal="true" aria-labelledby="orderModalTitle">
+      <div class="order-modal-dialog">
+        <div class="order-modal-header">
+          <h2 id="orderModalTitle">📦 Chi tiết đơn hàng</h2>
+          <button class="order-modal-close" id="closeOrderDetailModalBtn" aria-label="Đóng">✕</button>
+        </div>
+        <div class="order-modal-body" id="orderDetailModalContent">
+          <div style="text-align:center;padding:40px 0;"><div class="spin-loader"></div><p style="margin-top:12px;color:var(--text-muted);">Đang tải dữ liệu đơn hàng...</p></div>
+        </div>
+      </div>
+    </div>`;
+
+    document.body.insertAdjacentHTML('beforeend', modalHtml);
+
+    document.getElementById('closeOrderDetailModalBtn')?.addEventListener('click', closeOrderDetailModal);
+    document.getElementById('orderDetailModalBackdrop')?.addEventListener('click', e => {
+        if (e.target.id === 'orderDetailModalBackdrop') closeOrderDetailModal();
+    });
+}
+
+function closeOrderDetailModal() {
+    const backdrop = document.getElementById('orderDetailModalBackdrop');
+    if (backdrop) backdrop.classList.remove('show');
+}
+
+function getOrderStatusMeta(status) {
+    switch (Number(status)) {
+        case 0: return { label: 'Chờ xác nhận', badgeClass: 'pending', step: 1 };
+        case 1: return { label: 'Đã xác nhận', badgeClass: 'confirmed', step: 2 };
+        case 2: return { label: 'Đang đóng gói', badgeClass: 'processing', step: 2 };
+        case 3: return { label: 'Đang giao hàng', badgeClass: 'shipping', step: 3 };
+        case 4: return { label: 'Giao thành công', badgeClass: 'completed', step: 4 };
+        case 5: return { label: 'Đã hủy', badgeClass: 'cancelled', step: 0 };
+        default: return { label: 'Đang xử lý', badgeClass: 'pending', step: 1 };
+    }
+}
+
+window.showOrderDetailModal = async function(orderIdOrCode) {
+    ensureOrderDetailModalInDom();
+    const backdrop = document.getElementById('orderDetailModalBackdrop');
+    const content = document.getElementById('orderDetailModalContent');
+    if (!backdrop || !content) return;
+
+    backdrop.classList.add('show');
+    content.innerHTML = `<div style="text-align:center;padding:40px 0;"><p style="color:var(--text-muted);">Đang tải chi tiết đơn hàng...</p></div>`;
+
+    const token = getAuthToken();
+    try {
+        const url = typeof orderIdOrCode === 'string' && orderIdOrCode.startsWith('ORD')
+            ? `${API_BASE}/api/Order/code/${orderIdOrCode}`
+            : `${API_BASE}/api/Order/${orderIdOrCode}`;
+
+        const headers = token ? { 'Authorization': `Bearer ${token}` } : {};
+        const res = await fetch(url, { headers });
+        if (!res.ok) throw new Error('Không thể tải thông tin đơn hàng.');
+
+        const order = await res.json();
+        renderOrderDetailContent(order, content);
+    } catch (err) {
+        content.innerHTML = `
+            <div style="text-align:center;padding:30px 16px;">
+                <p style="color:var(--danger);font-weight:700;">⚠️ ${err.message}</p>
+                <button type="button" class="btn-view-order" onclick="closeOrderDetailModal()" style="margin-top:14px;">Đóng cửa sổ</button>
+            </div>`;
+    }
+};
+
+function renderOrderDetailContent(order, container) {
+    const statusMeta = getOrderStatusMeta(order.status);
+    const money = val => `${Number(val || 0).toLocaleString('vi-VN')}đ`;
+    const orderDate = order.createdAt ? new Date(order.createdAt).toLocaleString('vi-VN') : 'Mới tạo';
+    const isCancelled = Number(order.status) === 5;
+    const earnedPoints = Math.floor(Number(order.totalAmount || 0) / 10000);
+
+    const paymentText = order.payment?.paymentMethod === 1 || order.paymentMethod === 1 || order.paymentMethod === 'Banking'
+        ? 'Chuyển khoản ngân hàng'
+        : 'Thanh toán khi nhận hàng (COD)';
+    const paymentStatusText = order.payment?.status === 1 || order.status === 4
+        ? '<span class="order-badge completed">Đã thanh toán</span>'
+        : '<span class="order-badge pending">Chưa thanh toán</span>';
+
+    const shipping = order.shipping || {};
+    const trackingCode = shipping.trackingCode || `TRK-${order.orderCode || order.orderId}`;
+    const receiverName = shipping.receiverName || order.customer?.fullName || 'Khách hàng';
+    const receiverPhone = shipping.receiverPhone || order.customer?.phone || 'Chưa có SĐT';
+    const receiverAddress = shipping.address || order.customer?.address || 'Nhận tại cửa hàng';
+
+    let timelineHtml = '';
+    if (!isCancelled) {
+        timelineHtml = `
+        <div class="order-timeline">
+            <div class="timeline-step ${statusMeta.step >= 1 ? 'done' : ''} ${statusMeta.step === 1 ? 'active' : ''}">
+                <div class="timeline-dot">1</div>
+                <div class="timeline-label">Đặt hàng</div>
+            </div>
+            <div class="timeline-step ${statusMeta.step >= 2 ? 'done' : ''} ${statusMeta.step === 2 ? 'active' : ''}">
+                <div class="timeline-dot">2</div>
+                <div class="timeline-label">Xác nhận</div>
+            </div>
+            <div class="timeline-step ${statusMeta.step >= 3 ? 'done' : ''} ${statusMeta.step === 3 ? 'active' : ''}">
+                <div class="timeline-dot">3</div>
+                <div class="timeline-label">Đang giao</div>
+            </div>
+            <div class="timeline-step ${statusMeta.step >= 4 ? 'done' : ''} ${statusMeta.step === 4 ? 'active' : ''}">
+                <div class="timeline-dot">✓</div>
+                <div class="timeline-label">Hoàn tất</div>
+            </div>
+        </div>`;
+    } else {
+        timelineHtml = `
+        <div style="background:#fee2e2;border:1px solid #fca5a5;padding:12px 16px;border-radius:10px;color:#dc2626;margin-bottom:20px;font-size:13.5px;font-weight:700;">
+            ✕ Đơn hàng này đã được hủy bỏ.
+        </div>`;
+    }
+
+    const items = order.orderDetails || order.items || [];
+    const itemsRowsHtml = items.map(item => {
+        const itemImg = item.productImageUrl || item.imageUrl || 'https://placehold.co/80x80?text=Toy';
+        const itemName = item.productName || item.name || 'Sản phẩm đồ chơi';
+        const itemVariant = item.variantName || item.sku ? `<div style="font-size:11.5px;color:var(--text-muted);">${item.variantName || item.sku}</div>` : '';
+        const itemPrice = item.unitPrice ?? item.price ?? 0;
+        const itemQty = item.quantity || 1;
+        const itemTotal = item.totalPrice ?? (itemPrice * itemQty);
+
+        return `
+        <tr>
+            <td>
+                <div style="display:flex;align-items:center;">
+                    <img class="order-item-img" src="${itemImg}" alt="${itemName}">
+                    <div>
+                        <strong>${itemName}</strong>
+                        ${itemVariant}
+                    </div>
+                </div>
+            </td>
+            <td style="text-align:center;">${itemQty}</td>
+            <td style="text-align:right;">${money(itemPrice)}</td>
+            <td style="text-align:right;"><strong>${money(itemTotal)}</strong></td>
+        </tr>`;
+    }).join('');
+
+    container.innerHTML = `
+        <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:18px;">
+            <div>
+                <h3 style="font:800 20px 'Space Grotesk',sans-serif;margin-bottom:4px;">#${order.orderCode || order.orderId}</h3>
+                <p style="font-size:12.5px;color:var(--text-muted);">Ngày tạo: ${orderDate}</p>
+            </div>
+            <span class="order-badge ${statusMeta.badgeClass}" style="font-size:13px;padding:6px 14px;">${statusMeta.label}</span>
+        </div>
+
+        ${timelineHtml}
+
+        <div class="order-section-box">
+            <div class="order-section-title">📍 Thông tin giao nhận hàng</div>
+            <div class="order-info-grid">
+                <div><span style="color:var(--text-muted);display:block;font-size:12px;">Người nhận</span><strong>${receiverName}</strong></div>
+                <div><span style="color:var(--text-muted);display:block;font-size:12px;">Số điện thoại</span><strong>${receiverPhone}</strong></div>
+                <div style="grid-column:1/-1;"><span style="color:var(--text-muted);display:block;font-size:12px;">Địa chỉ nhận hàng</span><strong>${receiverAddress}</strong></div>
+                <div><span style="color:var(--text-muted);display:block;font-size:12px;">Mã vận đơn</span><strong style="color:var(--accent);">${trackingCode}</strong></div>
+                <div><span style="color:var(--text-muted);display:block;font-size:12px;">Hình thức giao</span><strong>Giao hàng tiêu chuẩn</strong></div>
+            </div>
+        </div>
+
+        <div class="order-section-box">
+            <div class="order-section-title">💳 Thông tin thanh toán</div>
+            <div class="order-info-grid">
+                <div><span style="color:var(--text-muted);display:block;font-size:12px;">Hình thức</span><strong>${paymentText}</strong></div>
+                <div><span style="color:var(--text-muted);display:block;font-size:12px;">Trạng thái</span>${paymentStatusText}</div>
+            </div>
+        </div>
+
+        <div class="order-section-box" style="padding:10px 16px;">
+            <div class="order-section-title" style="margin-top:6px;">🛍 Danh sách sản phẩm (${items.length})</div>
+            <div style="overflow-x:auto;">
+                <table class="order-items-table">
+                    <thead>
+                        <tr>
+                            <th>Sản phẩm</th>
+                            <th style="text-align:center;">SL</th>
+                            <th style="text-align:right;">Đơn giá</th>
+                            <th style="text-align:right;">Thành tiền</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        ${itemsRowsHtml || '<tr><td colspan="4" style="text-align:center;color:var(--text-muted);">Không có sản phẩm</td></tr>'}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+        <div class="order-section-box">
+            <div class="order-calc-row"><span>Tạm tính hàng hóa:</span><span>${money(order.subtotal || order.totalAmount)}</span></div>
+            <div class="order-calc-row"><span>Phí vận chuyển:</span><span>${order.shippingFee ? money(order.shippingFee) : 'Miễn phí'}</span></div>
+            ${order.discountAmount ? `<div class="order-calc-row" style="color:var(--success);"><span>Giảm giá khuyến mãi:</span><span>-${money(order.discountAmount)}</span></div>` : ''}
+            <div class="order-calc-row total">
+                <span>Tổng cộng thanh toán:</span>
+                <strong>${money(order.totalAmount)}</strong>
+            </div>
+            <div style="font-size:12px;color:#4338ca;margin-top:8px;background:#eef2ff;padding:8px 12px;border-radius:8px;">
+                🎁 Điểm thưởng tích lũy đơn hàng: <strong>+${earnedPoints} điểm</strong> ${order.status === 4 ? '(Đã cộng vào tài khoản)' : '(Cộng khi hoàn tất giao hàng)'}
+            </div>
+        </div>
+
+        <div style="display:flex;justify-content:flex-end;gap:10px;margin-top:16px;">
+            <button type="button" class="btn-view-order" onclick="window.print()" style="background:#f1f5f9;color:#334155;border-color:#cbd5e1;">🖨 In hóa đơn</button>
+            <button type="button" class="btn-view-order" onclick="closeOrderDetailModal()" style="padding:8px 18px;">Đóng</button>
+        </div>
+    `;
+}
+
+/* =========================================================
+   CUSTOMER ORDERS LIST (IN DRAWER)
+   ========================================================= */
+
+async function loadCustomerOrders() {
+    const listContainer = document.getElementById('customerOrdersList');
+    if (!listContainer) return;
+
+    listContainer.innerHTML = `<div style="text-align:center;padding:24px 0;"><p style="color:var(--text-muted);font-size:13px;">Đang tải danh sách đơn hàng...</p></div>`;
+
+    const token = getAuthToken();
+    if (!token) {
+        listContainer.innerHTML = `<div class="customer-orders-empty"><p>Vui lòng đăng nhập để xem đơn hàng.</p></div>`;
+        return;
+    }
+
+    try {
+        let profile = currentCustomerProfile;
+        if (!profile?.customerId) {
+            profile = await loadCustomerProfile();
+        }
+
+        if (!profile?.customerId) {
+            listContainer.innerHTML = `<div class="customer-orders-empty"><p>Chưa có thông tin hồ sơ khách hàng.</p></div>`;
+            return;
+        }
+
+        const res = await fetch(`${API_BASE}/api/Order/customer/${profile.customerId}`, {
+            headers: { 'Authorization': `Bearer ${token}` }
+        });
+
+        if (!res.ok) throw new Error('Không thể tải danh sách đơn hàng.');
+
+        const orders = await res.json();
+        if (!Array.isArray(orders) || !orders.length) {
+            listContainer.innerHTML = `
+                <div class="customer-orders-empty">
+                    <div style="font-size:36px;margin-bottom:8px;">📦</div>
+                    <p style="font-weight:700;margin-bottom:4px;">Bạn chưa có đơn hàng nào</p>
+                    <p style="font-size:12.5px;color:var(--text-muted);margin-bottom:14px;">Hãy khám phá các món đồ chơi hấp dẫn tại ToyStore.</p>
+                    <button class="cart-checkout-btn" onclick="location.href='/products.html'" style="padding:8px 14px;display:inline-block;width:auto;">Mua sắm ngay</button>
+                </div>`;
+            return;
+        }
+
+        // Sort latest first
+        orders.sort((a, b) => new Date(b.createdAt || 0) - new Date(a.createdAt || 0));
+
+        const money = val => `${Number(val || 0).toLocaleString('vi-VN')}đ`;
+        listContainer.innerHTML = orders.map(o => {
+            const statusMeta = getOrderStatusMeta(o.status);
+            const dateStr = o.createdAt ? new Date(o.createdAt).toLocaleDateString('vi-VN') : '';
+            const itemsCount = (o.orderDetails || []).reduce((sum, it) => sum + (it.quantity || 1), 0);
+
+            return `
+            <div class="customer-order-card">
+                <div class="customer-order-head">
+                    <div>
+                        <span class="customer-order-code">#${o.orderCode || o.orderId}</span>
+                        <div class="customer-order-date">${dateStr}</div>
+                    </div>
+                    <span class="order-badge ${statusMeta.badgeClass}">${statusMeta.label}</span>
+                </div>
+                <div class="customer-order-body">
+                    <div style="display:flex;justify-content:space-between;margin-bottom:4px;">
+                        <span>Số lượng sản phẩm:</span>
+                        <span>${itemsCount} món</span>
+                    </div>
+                    <div style="display:flex;justify-content:space-between;">
+                        <span>Tổng thanh toán:</span>
+                        <strong>${money(o.totalAmount)}</strong>
+                    </div>
+                </div>
+                <div class="customer-order-actions">
+                    <button type="button" class="btn-view-order" onclick="window.showOrderDetailModal(${o.orderId})">👁 Xem chi tiết</button>
+                </div>
+            </div>`;
+        }).join('');
+    } catch (err) {
+        listContainer.innerHTML = `<div style="color:var(--danger);font-size:13px;padding:12px;">⚠️ ${err.message}</div>`;
+    }
+}
+
+/* =========================================================
+   ACCOUNT DRAWER RENDERING & TABS
+   ========================================================= */
+
+function ensureCustomerAccountHtmlStructure() {
+    // 1. Forgot password markup inside unauthenticated view
+    const unauth = document.getElementById('drawerUnauthenticated');
+    if (unauth && !document.getElementById('custForgotPassContainer')) {
+        const loginForm = document.getElementById('custLoginForm');
+        if (loginForm && !document.getElementById('custForgotPassLink')) {
+            const linkHtml = `<div style="text-align:right;margin-bottom:12px;"><a href="javascript:void(0)" class="forgot-pass-link" id="custForgotPassLink">Quên mật khẩu?</a></div>`;
+            const submitBtn = loginForm.querySelector('button[type="submit"]');
+            if (submitBtn) submitBtn.insertAdjacentHTML('beforebegin', linkHtml);
+        }
+
+        const forgotHtml = `
+        <div id="custForgotPassContainer" style="display:none;">
+            <div style="margin-bottom:16px;">
+                <a href="javascript:void(0)" id="backToLoginLink" style="font-size:13px;color:var(--text-muted);display:inline-flex;align-items:center;gap:4px;font-weight:600;">← Quay lại đăng nhập</a>
+                <h3 style="font:800 17px 'Space Grotesk',sans-serif;margin-top:10px;">Quên mật khẩu</h3>
+                <p style="font-size:12.5px;color:var(--text-muted);">Nhập email đã đăng ký để tạo mã đặt lại mật khẩu mới.</p>
+            </div>
+
+            <!-- STEP 1: REQUEST TOKEN -->
+            <form id="forgotPassStep1">
+                <div class="cust-form-group">
+                    <label>Email tài khoản *</label>
+                    <input type="email" id="forgotPassEmail" required placeholder="email@toystore.vn">
+                </div>
+                <p id="forgotPassError" style="color:var(--danger);font-size:12.5px;font-weight:700;margin-bottom:12px;"></p>
+                <button class="cart-checkout-btn" type="submit" id="forgotPassSubmitBtn">Gửi mã xác nhận</button>
+            </form>
+
+            <!-- STEP 2: RESET PASSWORD -->
+            <form id="forgotPassStep2" style="display:none;">
+                <div class="cust-form-group">
+                    <label>Email *</label>
+                    <input type="email" id="resetPassEmail" required readonly style="background:#f1f5f9;">
+                </div>
+                <div class="cust-form-group">
+                    <label>Mã xác nhận / Token *</label>
+                    <input type="text" id="resetPassToken" required placeholder="Mã token đã được tạo">
+                </div>
+                <div class="cust-form-group">
+                    <label>Mật khẩu mới *</label>
+                    <input type="password" id="resetPassNewPassword" required minlength="6" placeholder="Tối thiểu 6 ký tự">
+                </div>
+                <div class="cust-form-group">
+                    <label>Xác nhận mật khẩu mới *</label>
+                    <input type="password" id="resetPassConfirmPassword" required minlength="6" placeholder="Nhập lại mật khẩu">
+                </div>
+                <p id="resetPassError" style="color:var(--danger);font-size:12.5px;font-weight:700;margin-bottom:12px;"></p>
+                <button class="cart-checkout-btn" type="submit" id="resetPassSubmitBtn">Xác nhận đổi mật khẩu</button>
+            </form>
+        </div>`;
+
+        unauth.insertAdjacentHTML('beforeend', forgotHtml);
+
+        document.getElementById('custForgotPassLink')?.addEventListener('click', () => showForgotPassView(1));
+        document.getElementById('backToLoginLink')?.addEventListener('click', showLoginView);
+        document.getElementById('forgotPassStep1')?.addEventListener('submit', handleForgotPassRequest);
+        document.getElementById('forgotPassStep2')?.addEventListener('submit', handleResetPassSubmit);
+    }
+
+    // 2. Account Tabs in authenticated view
+    const auth = document.getElementById('drawerAuthenticated');
+    if (auth && !document.getElementById('accountNavTabs')) {
+        const tabsHtml = `
+        <div class="cust-nav-tabs" id="accountNavTabs">
+            <button type="button" class="cust-nav-tab active" data-tab="profile">👤 Hồ sơ</button>
+            <button type="button" class="cust-nav-tab" data-tab="orders">📦 Đơn hàng</button>
+            <button type="button" class="cust-nav-tab" data-tab="security">🔒 Đổi MK</button>
+        </div>
+        <div id="tabContentOrders" style="display:none;">
+            <div id="customerOrdersList"></div>
+        </div>`;
+
+        auth.insertAdjacentHTML('afterbegin', tabsHtml);
+
+        // Move password form into security tab
+        const changePassForm = document.getElementById('custChangePassForm');
+        const togglePassBtn = document.getElementById('toggleChangePassBtn');
+        if (togglePassBtn) togglePassBtn.style.display = 'none';
+
+        document.querySelectorAll('.cust-nav-tab').forEach(tabBtn => {
+            tabBtn.addEventListener('click', () => {
+                document.querySelectorAll('.cust-nav-tab').forEach(t => t.classList.remove('active'));
+                tabBtn.classList.add('active');
+                const target = tabBtn.dataset.tab;
+
+                const loyaltyBox = auth.querySelector('.loyalty-card-box');
+                const infoBox = auth.querySelector('div[style*="background:#ffffff;border:1px solid"]');
+                const profilePanel = document.getElementById('customerProfilePanel');
+                const ordersBox = document.getElementById('tabContentOrders');
+                const passForm = document.getElementById('custChangePassForm');
+
+                if (target === 'profile') {
+                    if (loyaltyBox) loyaltyBox.style.display = 'block';
+                    if (infoBox) infoBox.style.display = 'block';
+                    if (profilePanel) profilePanel.style.display = 'block';
+                    if (ordersBox) ordersBox.style.display = 'none';
+                    if (passForm) passForm.style.display = 'none';
+                } else if (target === 'orders') {
+                    if (loyaltyBox) loyaltyBox.style.display = 'none';
+                    if (infoBox) infoBox.style.display = 'none';
+                    if (profilePanel) profilePanel.style.display = 'none';
+                    if (ordersBox) ordersBox.style.display = 'block';
+                    if (passForm) passForm.style.display = 'none';
+                    loadCustomerOrders();
+                } else if (target === 'security') {
+                    if (loyaltyBox) loyaltyBox.style.display = 'none';
+                    if (infoBox) infoBox.style.display = 'none';
+                    if (profilePanel) profilePanel.style.display = 'none';
+                    if (ordersBox) ordersBox.style.display = 'none';
+                    if (passForm) passForm.style.display = 'block';
+                }
+            });
+        });
+    }
+}
+
 async function syncAccountDrawerView() {
     const token = getAuthToken();
     const user = getAuthUser();
 
     if (redirectAdminPortalUser(user)) return;
+
+    ensureCustomerAccountHtmlStructure();
+    ensureOrderDetailModalInDom();
 
     const unauthView = document.getElementById('drawerUnauthenticated');
     const authView = document.getElementById('drawerAuthenticated');
@@ -772,6 +1317,7 @@ async function syncAccountDrawerView() {
         if (unauthView) unauthView.style.display = 'block';
         if (authView) authView.style.display = 'none';
         if (drawerTitle) drawerTitle.textContent = 'Đăng nhập / Đăng ký';
+        showLoginView();
         return;
     }
 
@@ -786,14 +1332,14 @@ async function syncAccountDrawerView() {
     if (emailNode) emailNode.textContent = user.email || '';
     if (roleNode) roleNode.textContent = user.role || 'Customer';
 
-    // Fetch customer loyalty points from API
+    // Fetch customer loyalty points & profile from API
     try {
         const customerData = await loadCustomerProfile();
         renderCustomerProfileForm(customerData);
 
         if (customerData && nameNode) nameNode.textContent = customerData.fullName || nameNode.textContent;
 
-        const points = customerData?.loyaltyPoint || 0;
+        const points = customerData?.loyaltyPoint ?? customerData?.loyaltyPoints ?? 0;
         const ptsEl = document.getElementById('userLoyaltyPoints');
         if (ptsEl) ptsEl.textContent = Number(points).toLocaleString('vi-VN');
 
@@ -891,7 +1437,7 @@ async function handleCustomerRegister(e) {
             role: data.role
         }));
 
-        showToast(`Đăng ký thành công! Hãy hoàn thiện hồ sơ để xác nhận đơn hàng và nhận điểm thưởng.`);
+        showToast(`Đăng ký thành công! Hãy hoàn thiện hồ sơ để nhận nhiều quyền lợi.`);
         syncAccountDrawerView();
         renderPersonalizedRecommendations();
     } catch (err) {
@@ -934,7 +1480,6 @@ async function handleCustomerChangePassword(e) {
         }
 
         document.getElementById('custChangePassForm').reset();
-        document.getElementById('custChangePassForm').style.display = 'none';
         showToast('🔒 Đổi mật khẩu thành công!');
     } catch (err) {
         if (errNode) errNode.textContent = err.message;
