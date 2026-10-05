@@ -185,8 +185,6 @@ namespace ToyStoreManagement.Infrastructure.Services
             await _orderRepository.AddAsync(order);
             await _unitOfWork.SaveChangesAsync();
 
-            // Lưu riêng thông tin nhận hàng để quản lý đơn có thể hiển thị đúng
-            // dữ liệu, thay vì phải tách chuỗi ghi chú do khách hàng gửi lên.
             _context.Shippings.Add(new Shipping
             {
                 OrderId = order.OrderId,
@@ -194,6 +192,7 @@ namespace ToyStoreManagement.Infrastructure.Services
                 ReceiverPhone = dto.Shipping.ReceiverPhone.Trim(),
                 Address = dto.Shipping.Address.Trim(),
                 ShippingMethod = dto.Shipping.ShippingMethod,
+                TrackingCode = !string.IsNullOrWhiteSpace(dto.Shipping.TrackingCode) ? dto.Shipping.TrackingCode.Trim() : $"TRK-{order.OrderCode}",
                 ShippingFee = order.ShippingFee,
                 Status = 0
             });
@@ -289,7 +288,7 @@ namespace ToyStoreManagement.Infrastructure.Services
 
             order.UpdatedAt = DateTime.UtcNow;
 
-            // Hoàn tất đơn: xác nhận thanh toán và cộng điểm đúng một lần.
+            // Hoàn tất đơn: xác nhận thanh toán, hoàn thành giao hàng và cộng điểm đúng một lần.
             if (dto.Status == 4 && oldStatus != 4)
             {
                 var payment = order.Payment
@@ -315,7 +314,32 @@ namespace ToyStoreManagement.Infrastructure.Services
                     payment.PaidAt = DateTime.UtcNow;
                 }
 
-                if (order.CustomerId.HasValue && order.CustomerId.Value > 0)
+                // Cập nhật trạng thái giao hàng sang thành công
+                var shipping = order.Shipping
+                    ?? await _shippingRepository.FirstOrDefaultAsync(x => x.OrderId == order.OrderId);
+                if (shipping != null)
+                {
+                    shipping.Status = 1; // 1: Đã giao
+                    shipping.DeliveredAt = DateTime.UtcNow;
+                }
+
+                // Xác định khách hàng nhận điểm tích lũy
+                int? targetCustomerId = order.CustomerId;
+                if (!targetCustomerId.HasValue || targetCustomerId.Value <= 0)
+                {
+                    if (shipping != null && !string.IsNullOrWhiteSpace(shipping.ReceiverPhone))
+                    {
+                        var custByPhone = await _context.Customers
+                            .FirstOrDefaultAsync(c => c.Phone == shipping.ReceiverPhone);
+                        if (custByPhone != null)
+                        {
+                            targetCustomerId = custByPhone.CustomerId;
+                            order.CustomerId = targetCustomerId;
+                        }
+                    }
+                }
+
+                if (targetCustomerId.HasValue && targetCustomerId.Value > 0)
                 {
                     var alreadyEarnedPoints = await _context.LoyaltyTransactions
                         .AnyAsync(item => item.OrderId == order.OrderId
@@ -324,13 +348,14 @@ namespace ToyStoreManagement.Infrastructure.Services
                     if (!alreadyEarnedPoints)
                     {
                         var customer = await _context.Customers
-                            .FindAsync(order.CustomerId.Value);
+                            .FindAsync(targetCustomerId.Value);
                         var earnedPoints = (int)(order.TotalAmount / 10000m);
 
                         if (customer != null && earnedPoints > 0)
                         {
                             customer.LoyaltyPoint += earnedPoints;
                             customer.UpdatedAt = DateTime.UtcNow;
+                            _context.Entry(customer).State = Microsoft.EntityFrameworkCore.EntityState.Modified;
 
                             _context.LoyaltyTransactions.Add(new LoyaltyTransaction
                             {
@@ -512,6 +537,7 @@ namespace ToyStoreManagement.Infrastructure.Services
                 ReceiverPhone = dto.ReceiverPhone,
                 Address = dto.Address,
                 ShippingMethod = dto.ShippingMethod,
+                TrackingCode = !string.IsNullOrWhiteSpace(dto.TrackingCode) ? dto.TrackingCode.Trim() : $"TRK-{order.OrderCode}",
                 ShippingFee = dto.ShippingFee,
                 Status = 0
             };

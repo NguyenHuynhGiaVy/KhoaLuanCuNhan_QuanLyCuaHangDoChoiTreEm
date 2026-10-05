@@ -92,6 +92,45 @@ namespace ToyStore.API.Controllers
             }
         }
 
+        [HttpPost("forgot-password")]
+        public async Task<IActionResult> ForgotPassword(
+            [FromBody] ForgotPasswordRequestDto request)
+        {
+            try
+            {
+                var token = await _authService.ForgotPasswordAsync(request);
+                return Ok(new
+                {
+                    message = "Mã xác nhận đặt lại mật khẩu đã được tạo thành công.",
+                    resetToken = token
+                });
+            }
+            catch (Exception ex)
+            {
+                return BadRequest(new { message = ex.Message });
+            }
+        }
+
+        [HttpPost("reset-password")]
+        public async Task<IActionResult> ResetPassword(
+            [FromBody] ResetPasswordRequestDto request)
+        {
+            try
+            {
+                var success = await _authService.ResetPasswordAsync(request);
+                if (!success)
+                {
+                    return BadRequest(new { message = "Đặt lại mật khẩu thất bại. Vui lòng thử lại." });
+                }
+
+                return Ok(new { message = "Đặt lại mật khẩu thành công! Bạn có thể đăng nhập bằng mật khẩu mới." });
+            }
+            catch (Exception ex)
+            {
+                return BadRequest(new { message = ex.Message });
+            }
+        }
+
         [HttpGet("users")]
         [Microsoft.AspNetCore.Authorization.Authorize(Policy = "AdminOnly")]
         public async Task<IActionResult> GetUsers()

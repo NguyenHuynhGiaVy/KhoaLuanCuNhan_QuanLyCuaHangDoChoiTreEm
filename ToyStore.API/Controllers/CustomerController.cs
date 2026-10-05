@@ -1,4 +1,4 @@
-﻿using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.Mvc;
 
 using Microsoft.AspNetCore.Authorization;
 
@@ -60,7 +60,7 @@ namespace ToyStoreManagement.API.Controllers
 
         // GET: api/Customer/profile
         [HttpGet("profile")]
-        [Authorize(Policy = "CustomerAccess")]
+        [Authorize]
         public async Task<IActionResult> GetMyProfile()
         {
             var userId = GetCurrentUserId();
@@ -69,14 +69,56 @@ namespace ToyStoreManagement.API.Controllers
 
             var result = await _customerService.GetByUserIdAsync(userId);
             if (result == null)
-                return NotFound(new { message = "Bạn chưa tạo hồ sơ khách hàng." });
+            {
+                var email = User.FindFirstValue(ClaimTypes.Email)
+                    ?? User.FindFirstValue(JwtRegisteredClaimNames.Email)
+                    ?? string.Empty;
+                var fullName = User.FindFirstValue("FullName")
+                    ?? User.FindFirstValue(ClaimTypes.Name)
+                    ?? "Khách hàng";
+
+                // Check if customer exists by email to link
+                if (!string.IsNullOrWhiteSpace(email))
+                {
+                    var all = await _customerService.GetAllAsync();
+                    var match = all.FirstOrDefault(c => string.Equals(c.Email, email, StringComparison.OrdinalIgnoreCase));
+                    if (match != null)
+                    {
+                        await _customerService.UpdateAsync(match.CustomerId, new UpdateCustomerDto
+                        {
+                            FullName = match.FullName,
+                            Phone = match.Phone,
+                            Email = match.Email,
+                            DateOfBirth = match.DateOfBirth,
+                            Gender = match.Gender,
+                            Address = match.Address,
+                            Status = match.Status
+                        });
+                        return Ok(match);
+                    }
+                }
+
+                // Return a valid default customer DTO without violating DB unique constraints
+                return Ok(new CustomerDto
+                {
+                    CustomerId = 0,
+                    FullName = fullName,
+                    Email = email,
+                    Phone = string.Empty,
+                    UserId = userId,
+                    Address = string.Empty,
+                    LoyaltyPoint = 0,
+                    Status = 1,
+                    CreatedAt = DateTime.UtcNow
+                });
+            }
 
             return Ok(result);
         }
 
         // PUT: api/Customer/profile
         [HttpPut("profile")]
-        [Authorize(Policy = "CustomerAccess")]
+        [Authorize]
         public async Task<IActionResult> SaveMyProfile(
             [FromBody] SaveCustomerProfileDto dto)
         {
@@ -88,51 +130,72 @@ namespace ToyStoreManagement.API.Controllers
                 || string.IsNullOrWhiteSpace(dto.Phone)
                 || string.IsNullOrWhiteSpace(dto.Address))
             {
-                return BadRequest(new { message = "Vui lòng nhập họ tên, số điện thoại và địa chỉ." });
+                return BadRequest(new { message = "Vui lòng nhập đầy đủ họ tên, số điện thoại và địa chỉ." });
             }
 
-            var existing = await _customerService.GetByUserIdAsync(userId);
             var email = User.FindFirstValue(ClaimTypes.Email)
                 ?? User.FindFirstValue(JwtRegisteredClaimNames.Email)
-                ?? existing?.Email
                 ?? string.Empty;
 
             try
             {
-                if (existing == null)
+                var existing = await _customerService.GetByUserIdAsync(userId);
+                if (existing != null)
                 {
-                    var created = await _customerService.CreateAsync(new CreateCustomerDto
+                    var updated = await _customerService.UpdateAsync(existing.CustomerId, new UpdateCustomerDto
                     {
                         FullName = dto.FullName.Trim(),
                         Phone = dto.Phone.Trim(),
-                        Email = email,
-                        UserId = userId,
+                        Email = !string.IsNullOrWhiteSpace(email) ? email : existing.Email,
                         DateOfBirth = dto.DateOfBirth,
                         Gender = dto.Gender,
                         Address = dto.Address.Trim(),
-                        LoyaltyPoint = 0,
-                        Status = 1
+                        Status = existing.Status
                     });
 
-                    return Ok(created);
+                    return Ok(updated);
                 }
 
-                var updated = await _customerService.UpdateAsync(existing.CustomerId, new UpdateCustomerDto
+                // Check if customer exists by phone or email
+                var all = await _customerService.GetAllAsync();
+                var match = all.FirstOrDefault(c =>
+                    c.Phone == dto.Phone.Trim()
+                    || (!string.IsNullOrWhiteSpace(email) && string.Equals(c.Email, email, StringComparison.OrdinalIgnoreCase)));
+
+                if (match != null)
+                {
+                    var updated = await _customerService.UpdateAsync(match.CustomerId, new UpdateCustomerDto
+                    {
+                        FullName = dto.FullName.Trim(),
+                        Phone = dto.Phone.Trim(),
+                        Email = !string.IsNullOrWhiteSpace(email) ? email : match.Email,
+                        DateOfBirth = dto.DateOfBirth,
+                        Gender = dto.Gender,
+                        Address = dto.Address.Trim(),
+                        Status = match.Status
+                    });
+
+                    return Ok(updated);
+                }
+
+                var created = await _customerService.CreateAsync(new CreateCustomerDto
                 {
                     FullName = dto.FullName.Trim(),
                     Phone = dto.Phone.Trim(),
                     Email = email,
+                    UserId = userId,
                     DateOfBirth = dto.DateOfBirth,
                     Gender = dto.Gender,
                     Address = dto.Address.Trim(),
-                    Status = existing.Status
+                    LoyaltyPoint = 0,
+                    Status = 1
                 });
 
-                return Ok(updated);
+                return Ok(created);
             }
             catch (Exception ex)
             {
-                return BadRequest(new { message = ex.Message });
+                return BadRequest(new { message = ex.InnerException?.Message ?? ex.Message });
             }
         }
 

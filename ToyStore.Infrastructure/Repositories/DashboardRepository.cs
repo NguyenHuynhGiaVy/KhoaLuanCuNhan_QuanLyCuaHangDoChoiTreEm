@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Text;
@@ -182,11 +182,14 @@ namespace ToyStoreManagement.Infrastructure.Repositories
             {
                 var dayCount = period == "day30" ? 30 : 7;
                 var firstDate = now.Date.AddDays(-(dayCount - 1));
-                var revenuesByDate = await _context.Orders
+                var completedOrders = await _context.Orders
                     .Where(x => x.Status == 4 && x.OrderDate >= firstDate)
+                    .Select(x => new { x.OrderDate, x.TotalAmount })
+                    .ToListAsync();
+
+                var revenuesByDate = completedOrders
                     .GroupBy(x => x.OrderDate.Date)
-                    .Select(x => new { Date = x.Key, Revenue = x.Sum(order => order.TotalAmount) })
-                    .ToDictionaryAsync(x => x.Date, x => x.Revenue);
+                    .ToDictionary(x => x.Key, x => x.Sum(order => order.TotalAmount));
 
                 for (int i = dayCount - 1; i >= 0; i--)
                 {

@@ -143,7 +143,26 @@
       recordPurchasedProducts(pending.items);
       localStorage.removeItem('toyStorePendingOrder');
       localStorage.removeItem('toyStoreCart');
-      root.innerHTML = `<section class="review-card review-success"><div class="mark">✓</div><h1>Đặt hàng thành công!</h1><p style="color:var(--text-muted);margin:8px 0 20px;">Mã đơn hàng của bạn là <strong>#${escapeHtml(result.orderCode || result.orderId)}</strong>. Chúng tôi sẽ sớm xác nhận đơn hàng.</p><a class="review-primary" href="/products.html" style="display:inline-block;width:auto;">Tiếp tục mua sắm</a></section>`;
+      const finalOrderId = result.orderId || result.orderCode;
+      root.innerHTML = `
+        <section class="review-card review-success">
+          <div class="mark">✓</div>
+          <h1>Đặt hàng thành công!</h1>
+          <p style="color:var(--text-muted);margin:8px 0 20px;">Mã đơn hàng của bạn là <strong>#${escapeHtml(result.orderCode || result.orderId)}</strong>. Cửa hàng đã ghi nhận đơn hàng của bạn.</p>
+          <div style="display:flex;justify-content:center;gap:12px;flex-wrap:wrap;">
+            <button type="button" class="review-primary" id="viewCreatedOrderBtn" style="width:auto;padding:12px 24px;">👁 Xem chi tiết đơn hàng</button>
+            <a class="review-secondary" href="/products.html" style="display:inline-flex;align-items:center;width:auto;padding:12px 24px;text-decoration:none;">Tiếp tục mua sắm</a>
+          </div>
+        </section>`;
+      
+      document.getElementById('viewCreatedOrderBtn')?.addEventListener('click', () => {
+        if (typeof window.showOrderDetailModal === 'function') {
+          window.showOrderDetailModal(finalOrderId);
+        } else {
+          location.href = `/customer.html`;
+        }
+      });
+
       showToast('Đơn hàng đã được tạo thành công.');
     } catch (error) {
       showToast(`Lỗi đặt hàng: ${error.message}`, 'error');
