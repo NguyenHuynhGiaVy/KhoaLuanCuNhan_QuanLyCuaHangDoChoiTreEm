@@ -15,6 +15,7 @@ let products = [];
 let categories = [];
 let activeFilter = 'all';
 let currentCustomerProfile = null;
+let appliedVoucher = null;
 
 // Filter state
 let selectedPrices = [];
@@ -75,6 +76,7 @@ async function loadData() {
         products = (newProducts || []).filter(product =>
             Number(product.status) !== 0 && Number(product.status) !== 3);
         categories = newCategories || [];
+        refreshCartPricesFromProducts();
 
         renderCategories();
         renderBrandFilters();
@@ -131,8 +133,21 @@ function availableQuantityOf(variant) {
 }
 
 function sellingPriceOf(variant) {
-    const price = Number(variant?.price);
+    const price = Number(variant?.salePrice ?? variant?.price);
     return Number.isFinite(price) && price > 0 ? price : null;
+}
+
+function originalPriceOf(variant) {
+    const price = Number(variant?.originalPrice ?? variant?.price);
+    return Number.isFinite(price) && price > 0 ? price : null;
+}
+
+function promotionOf(variant) {
+    const originalPrice = originalPriceOf(variant);
+    const salePrice = sellingPriceOf(variant);
+    return originalPrice !== null && salePrice !== null && salePrice < originalPrice
+        ? { originalPrice, salePrice, discount: originalPrice - salePrice }
+        : null;
 }
 
 function preferredVariantOf(product) {
@@ -143,10 +158,38 @@ function preferredVariantOf(product) {
         || null;
 }
 
+function refreshCartPricesFromProducts() {
+    const cart = getCart();
+    let changed = false;
+
+    cart.forEach(item => {
+        const product = products.find(candidate =>
+            Number(candidate.productId) === Number(item.productId));
+        const variant = (product?.productVariants || product?.variants || [])
+            .find(candidate => Number(candidate.variantId) === Number(item.variantId));
+        const salePrice = sellingPriceOf(variant);
+        const originalPrice = originalPriceOf(variant);
+        if (salePrice === null || originalPrice === null) return;
+
+        if (Number(item.price) !== salePrice
+            || Number(item.originalPrice ?? item.price) !== originalPrice
+            || String(item.promotionName || '') !== String(variant?.promotionName || '')) {
+            item.price = salePrice;
+            item.originalPrice = originalPrice;
+            item.promotionName = variant?.promotionName || '';
+            item.stockQuantity = availableQuantityOf(variant);
+            changed = true;
+        }
+    });
+
+    if (changed) localStorage.setItem('toyStoreCart', JSON.stringify(cart));
+}
+
 function productCard(p) {
     const variant = preferredVariantOf(p);
     const availableQuantity = availableQuantityOf(variant);
     const price = sellingPriceOf(variant);
+    const promotion = promotionOf(variant);
     const unavailable = availableQuantity === null || availableQuantity <= 0 || price === null;
     const unavailableLabel = availableQuantity === null
         ? 'Hàng chưa về'
@@ -164,7 +207,9 @@ function productCard(p) {
                     <div class="cat-tag">${escapeHtml(p.categoryName || 'Đồ chơi cao cấp')}</div>
                     <h3>${escapeHtml(p.name)}</h3>
                     <div class="product-price">
-                        <b>${price === null ? 'Chưa cập nhật giá' : money(price)}</b>
+                        ${price === null ? '<b>Chưa cập nhật giá</b>' : promotion
+                            ? `<del class="original-price">${money(promotion.originalPrice)}</del><b>${money(price)}</b>`
+                            : `<b>${money(price)}</b>`}
                         ${price === null ? '' : `<small style="color:var(--secondary);font-weight:700;font-size:11.5px;">+${estPoints} điểm</small>`}
                     </div>
                 </div>
@@ -195,7 +240,7 @@ function renderProducts() {
     // Filter theo giá
     if (selectedPrices.length > 0) {
         filtered = filtered.filter(p => {
-            const price = p.basePrice || (p.variants && p.variants[0]?.price) || 0;
+            const price = sellingPriceOf(preferredVariantOf(p)) || p.basePrice || 0;
             return selectedPrices.some(range => {
                 const [min, max] = range.split('-').map(Number);
                 return price >= min && price <= max;
@@ -227,8 +272,8 @@ function renderProducts() {
 
     // Sort
     const sortVal = sortSelect ? sortSelect.value : '';
-    if (sortVal === 'priceAsc') filtered.sort((a, b) => (a.basePrice || 0) - (b.basePrice || 0));
-    else if (sortVal === 'priceDesc') filtered.sort((a, b) => (b.basePrice || 0) - (a.basePrice || 0));
+    if (sortVal === 'priceAsc') filtered.sort((a, b) => (sellingPriceOf(preferredVariantOf(a)) || a.basePrice || 0) - (sellingPriceOf(preferredVariantOf(b)) || b.basePrice || 0));
+    else if (sortVal === 'priceDesc') filtered.sort((a, b) => (sellingPriceOf(preferredVariantOf(b)) || b.basePrice || 0) - (sellingPriceOf(preferredVariantOf(a)) || a.basePrice || 0));
     else if (sortVal === 'name') filtered.sort((a, b) => (a.name || '').localeCompare(b.name || ''));
 
     if (resultCount) resultCount.textContent = `${filtered.length} Sản phẩm tìm thấy`;
@@ -420,6 +465,7 @@ function saveCart(cart) {
     localStorage.setItem('toyStoreCart', JSON.stringify(cart));
     updateCartCountBadge();
     renderCartDrawer();
+    updateCheckoutTotal();
 }
 
 function updateCartCountBadge() {
@@ -489,6 +535,98 @@ function removeCartItem(index) {
     showToast('Đã xóa sản phẩm khỏi giỏ hàng.');
 }
 
+function getCartPricing(cart = getCart()) {
+    const originalSubtotal = cart.reduce((sum, item) => {
+        const originalPrice = Number(item.originalPrice ?? item.price ?? 0);
+        return sum + originalPrice * Number(item.quantity || 1);
+    }, 0);
+    const saleSubtotal = cart.reduce((sum, item) =>
+        sum + Number(item.price || 0) * Number(item.quantity || 1), 0);
+
+    return {
+        originalSubtotal,
+        saleSubtotal,
+        promotionDiscount: Math.max(0, originalSubtotal - saleSubtotal),
+        shippingFee: saleSubtotal >= 500000 || saleSubtotal === 0 ? 0 : 30000
+    };
+}
+
+function voucherDiscountFor(voucher, merchandiseTotal) {
+    if (!voucher || merchandiseTotal <= 0) return 0;
+    const minimumOrderValue = Number(voucher.minimumOrderValue || 0);
+    if (minimumOrderValue > 0 && merchandiseTotal < minimumOrderValue) return 0;
+
+    let discount = Number(voucher.discountType) === 0
+        ? merchandiseTotal * Number(voucher.discountValue || 0) / 100
+        : Number(voucher.discountValue || 0);
+    if (voucher.maximumDiscount !== null && voucher.maximumDiscount !== undefined) {
+        discount = Math.min(discount, Number(voucher.maximumDiscount));
+    }
+    return Math.min(merchandiseTotal, Math.max(0, discount));
+}
+
+function updateCheckoutTotal() {
+    const pricing = getCartPricing();
+    const voucherDiscount = voucherDiscountFor(appliedVoucher, pricing.saleSubtotal);
+    const total = Math.max(0, pricing.saleSubtotal + pricing.shippingFee - voucherDiscount);
+    const totalEl = document.getElementById('checkoutFinalTotal');
+    if (totalEl) totalEl.textContent = money(total);
+    return { ...pricing, voucherDiscount, total };
+}
+
+async function applyVoucher() {
+    const codeInput = document.getElementById('orderVoucherCode');
+    const message = document.getElementById('voucherMessage');
+    const code = codeInput?.value.trim();
+    const token = getAuthToken();
+    if (message) message.textContent = '';
+
+    if (!code) {
+        if (message) { message.textContent = 'Vui lòng nhập mã voucher.'; message.style.color = 'var(--danger)'; }
+        return;
+    }
+    if (!token) {
+        closeCheckoutDrawer();
+        openAccountDrawer();
+        showToast('Vui lòng đăng nhập để sử dụng voucher.', 'error');
+        return;
+    }
+
+    try {
+        const response = await fetch(`${API_BASE}/api/Voucher/code/${encodeURIComponent(code)}`, {
+            headers: { 'Authorization': `Bearer ${token}` }
+        });
+        const voucher = await response.json().catch(() => ({}));
+        if (!response.ok) throw new Error(voucher.message || voucher.title || 'Không tìm thấy voucher.');
+
+        const now = new Date();
+        if (Number(voucher.status) !== 1
+            || new Date(voucher.startDate) > now
+            || new Date(voucher.endDate) < now) {
+            throw new Error('Voucher không còn hiệu lực.');
+        }
+
+        const pricing = getCartPricing();
+        const discount = voucherDiscountFor(voucher, pricing.saleSubtotal);
+        if (Number(voucher.minimumOrderValue || 0) > pricing.saleSubtotal) {
+            throw new Error(`Voucher áp dụng cho đơn từ ${money(voucher.minimumOrderValue)}.`);
+        }
+        if (discount <= 0) throw new Error('Voucher không tạo được mức giảm giá hợp lệ.');
+
+        appliedVoucher = voucher;
+        if (codeInput) codeInput.value = voucher.code || code.toUpperCase();
+        if (message) {
+            message.textContent = `Đã áp dụng ${voucher.code}: giảm ${money(discount)}.`;
+            message.style.color = 'var(--success)';
+        }
+        updateCheckoutTotal();
+    } catch (error) {
+        appliedVoucher = null;
+        updateCheckoutTotal();
+        if (message) { message.textContent = error.message; message.style.color = 'var(--danger)'; }
+    }
+}
+
 function renderCartDrawer() {
     const body = document.getElementById('cartDrawerBody');
     if (!body) return;
@@ -512,6 +650,8 @@ function renderCartDrawer() {
     let subtotal = 0;
     body.innerHTML = cart.map((item, idx) => {
         const itemTotal = (item.price || 0) * (item.quantity || 1);
+        const originalPrice = Number(item.originalPrice ?? item.price ?? 0);
+        const hasPromotion = originalPrice > Number(item.price || 0);
         const stockQuantity = availableQuantityOf({ availableQuantity: item.stockQuantity });
         const cannotIncrease = stockQuantity !== null && item.quantity >= stockQuantity;
         subtotal += itemTotal;
@@ -520,7 +660,7 @@ function renderCartDrawer() {
                 <img src="${escapeHtml(item.imageUrl || 'https://placehold.co/100x100?text=Toy')}" style="width:64px;height:64px;object-fit:cover;border-radius:10px;border:1px solid var(--border-color);">
                 <div style="flex:1;min-width:0;">
                     <h4 style="font-size:13.5px;font-weight:700;margin-bottom:4px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${escapeHtml(item.name)}</h4>
-                    <p style="font-size:13px;color:var(--primary);font-weight:800;margin:0 0 6px;">${money(item.price)}</p>
+                    <p style="font-size:13px;color:var(--primary);font-weight:800;margin:0 0 6px;">${hasPromotion ? `<del class="original-price">${money(originalPrice)}</del> ` : ''}${money(item.price)}</p>
                     <div style="display:flex;align-items:center;gap:8px;">
                         <button type="button" class="btn-qty-minus" data-index="${idx}" style="width:24px;height:24px;border:1px solid var(--border-color);background:#fff;border-radius:4px;cursor:pointer;">-</button>
                         <span style="font-size:13px;font-weight:700;min-width:20px;text-align:center;">${item.quantity}</span>
@@ -584,11 +724,7 @@ function openCheckoutDrawer() {
         if (nameIn && !nameIn.value) nameIn.value = user.fullName || '';
     }
 
-    let subtotal = cart.reduce((s, i) => s + (i.price * i.quantity), 0);
-    const shipping = subtotal >= 500000 ? 0 : 30000;
-    const total = subtotal + shipping;
-    const totalEl = document.getElementById('checkoutFinalTotal');
-    if (totalEl) totalEl.textContent = money(total);
+    updateCheckoutTotal();
 
     document.getElementById('checkoutDrawerOverlay')?.classList.add('open');
 }
@@ -1547,11 +1683,19 @@ async function handleCheckoutSubmit(e) {
     }));
 
     const paymentMethod = document.getElementById('orderPaymentMethod')?.value || 'COD';
+    const pricing = updateCheckoutTotal();
     const pendingOrder = {
         customerId: customerProfile.customerId,
         customer: { fullName, phone, address },
         note: note || '',
         paymentMethod,
+        voucherCode: appliedVoucher?.code || null,
+        voucherDiscount: pricing.voucherDiscount,
+        promotionDiscount: pricing.promotionDiscount,
+        originalSubtotal: pricing.originalSubtotal,
+        discountedSubtotal: pricing.saleSubtotal,
+        shippingFee: pricing.shippingFee,
+        total: pricing.total,
         orderDetails,
         items: cart.map(item => ({
             productId: item.productId,
@@ -1559,6 +1703,8 @@ async function handleCheckoutSubmit(e) {
             name: item.name,
             imageUrl: item.imageUrl,
             price: item.price,
+            originalPrice: item.originalPrice ?? item.price,
+            promotionName: item.promotionName || '',
             quantity: item.quantity || 1
         })),
         createdAt: new Date().toISOString()
@@ -1602,6 +1748,11 @@ document.addEventListener('click', e => {
         return;
     }
 
+    if (e.target.closest('#applyVoucherBtn')) {
+        applyVoucher();
+        return;
+    }
+
     // Add to cart from card
     const addCartBtn = e.target.closest('.add-cart');
     if (addCartBtn && addCartBtn.dataset.id) {
@@ -1613,7 +1764,9 @@ document.addEventListener('click', e => {
                 productId: targetProd.productId,
                 variantId: variant?.variantId || targetProd.productId,
                 name: targetProd.name,
-                price: variant?.price ?? targetProd.basePrice,
+                price: sellingPriceOf(variant) ?? targetProd.basePrice,
+                originalPrice: originalPriceOf(variant) ?? targetProd.basePrice,
+                promotionName: variant?.promotionName || '',
                 imageUrl: targetProd.imageUrl || variant?.imageUrl,
                 quantity: 1,
                 sku: variant?.sku || '',
@@ -1686,6 +1839,14 @@ document.addEventListener('change', e => {
 });
 
 document.getElementById('checkoutDrawerForm')?.addEventListener('submit', handleCheckoutSubmit);
+document.getElementById('orderVoucherCode')?.addEventListener('input', event => {
+    if (!appliedVoucher) return;
+    if (String(event.target.value || '').trim().toUpperCase() === String(appliedVoucher.code || '').trim().toUpperCase()) return;
+    appliedVoucher = null;
+    const message = document.getElementById('voucherMessage');
+    if (message) message.textContent = '';
+    updateCheckoutTotal();
+});
 document.getElementById('custLoginForm')?.addEventListener('submit', handleCustomerLogin);
 document.getElementById('custRegisterForm')?.addEventListener('submit', handleCustomerRegister);
 document.getElementById('custChangePassForm')?.addEventListener('submit', handleCustomerChangePassword);

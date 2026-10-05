@@ -57,8 +57,14 @@
       }
     });
     if (!response.ok) {
-      const body = await response.json().catch(() => ({}));
-      throw new Error(body.message || `Lỗi yêu cầu (${response.status})`);
+      const body = await response.json().catch(() => null);
+      const validationMessage = body && typeof body === 'object'
+        ? Object.values(body.errors || {}).flat().find(Boolean)
+        : '';
+      const message = typeof body === 'string'
+        ? body
+        : body?.message || validationMessage || body?.title;
+      throw new Error(message || `Lỗi yêu cầu (${response.status})`);
     }
     return response.status === 204 ? null : response.json();
   }
@@ -66,6 +72,7 @@
   let customerOrders = [];
   let catalogProducts = [];
   let priorReturns = [];
+  const returnWindowMs = 7 * 24 * 60 * 60 * 1000;
 
   function productForVariant(variantId) {
     for (const product of catalogProducts) {
@@ -76,16 +83,44 @@
     return null;
   }
 
+  function completedAtForReturn(order) {
+    const value = order?.shipping?.deliveredAt || order?.orderDate;
+    const completedAt = value ? new Date(value) : null;
+    return completedAt && !Number.isNaN(completedAt.getTime()) ? completedAt : null;
+  }
+
+  function isReturnableOrder(order) {
+    const completedAt = completedAtForReturn(order);
+    return Number(order.status) === 4
+      && completedAt
+      && Date.now() - completedAt.getTime() <= returnWindowMs;
+  }
+
+  function previouslyRequestedQuantity(orderId, variantId) {
+    return priorReturns
+      .filter(request => Number(request.orderId) === Number(orderId)
+        && [0, 1, 3].includes(Number(request.status)))
+      .flatMap(request => request.details || [])
+      .filter(detail => Number(detail.variantId) === Number(variantId))
+      .reduce((total, detail) => total + Number(detail.quantity || 0), 0);
+  }
+
   function renderReturnForm() {
     const content = returnPanel.querySelector('#supportReturnContent');
     const completedOrders = customerOrders.filter(order => Number(order.status) === 4);
+    const returnableOrders = completedOrders.filter(isReturnableOrder);
+    const expiredOrderCount = completedOrders.length - returnableOrders.length;
     content.innerHTML = `
       <form id="supportReturnForm">
-        <label>Đơn hàng đã hoàn tất<select id="supportReturnOrder" required>
+        <label>Đơn hàng đã hoàn tất (trong 7 ngày)<select id="supportReturnOrder" required>
           <option value="">-- Chọn đơn hàng --</option>
-          ${completedOrders.map(order => `<option value="${order.orderId}">${escapeHtml(order.orderCode)} · ${new Date(order.orderDate).toLocaleDateString('vi-VN')}</option>`).join('')}
+          ${returnableOrders.map(order => {
+            const completedAt = completedAtForReturn(order);
+            return `<option value="${order.orderId}">${escapeHtml(order.orderCode)} · Hoàn tất ${completedAt.toLocaleDateString('vi-VN')}</option>`;
+          }).join('')}
         </select></label>
-        <div id="supportReturnItems" class="support-return-items"><small>Chọn đơn hàng để xem sản phẩm.</small></div>
+        <div id="supportReturnItems" class="support-return-items"><small>${returnableOrders.length ? 'Chọn đơn hàng để xem sản phẩm.' : 'Không có đơn hàng nào còn trong thời hạn trả hàng 7 ngày.'}</small></div>
+        ${expiredOrderCount ? `<small>Có ${expiredOrderCount} đơn đã hoàn tất nhưng đã quá thời hạn trả hàng 7 ngày.</small>` : ''}
         <label>Lý do<select id="supportReturnReason">
           <option value="0">Sản phẩm lỗi / hư hỏng</option>
           <option value="1">Giao sai sản phẩm</option>
@@ -93,7 +128,7 @@
           <option value="3">Lý do khác</option>
         </select></label>
         <label>Mô tả<textarea id="supportReturnDescription" maxlength="2000" rows="3" placeholder="Mô tả tình trạng sản phẩm..." required></textarea></label>
-        <button class="support-return-submit" type="submit" ${completedOrders.length ? '' : 'disabled'}>Gửi yêu cầu trả hàng</button>
+        <button class="support-return-submit" type="submit" ${returnableOrders.length ? '' : 'disabled'}>Gửi yêu cầu trả hàng</button>
       </form>
       <div class="support-return-history"><strong>Yêu cầu đã gửi</strong>
         ${priorReturns.length ? priorReturns.map(item => {
@@ -104,36 +139,47 @@
 
     const orderSelect = content.querySelector('#supportReturnOrder');
     orderSelect.addEventListener('change', () => {
-      const order = completedOrders.find(item => Number(item.orderId) === Number(orderSelect.value));
+      const order = returnableOrders.find(item => Number(item.orderId) === Number(orderSelect.value));
       const productLines = new Map();
       (order?.orderDetails || []).forEach(line => {
         const current = productLines.get(line.variantId);
         if (current) current.quantity += Number(line.quantity);
         else productLines.set(line.variantId, { variantId: Number(line.variantId), quantity: Number(line.quantity) });
       });
-      content.querySelector('#supportReturnItems').innerHTML = productLines.size
-        ? Array.from(productLines.values()).map(item => {
+      const returnableLines = Array.from(productLines.values())
+        .map(item => ({
+          ...item,
+          remainingQuantity: item.quantity - previouslyRequestedQuantity(order?.orderId, item.variantId)
+        }))
+        .filter(item => item.remainingQuantity > 0);
+      content.querySelector('#supportReturnItems').innerHTML = returnableLines.length
+        ? returnableLines.map(item => {
           const match = productForVariant(item.variantId);
           const label = match ? `${match.product.name} · ${match.variant.sku}` : `Biến thể #${item.variantId}`;
-          return `<label class="support-return-product"><input type="checkbox" data-return-variant="${item.variantId}"><span>${escapeHtml(label)}<small>Đã mua: ${item.quantity}</small></span><input type="number" min="1" max="${item.quantity}" value="1" data-return-quantity="${item.variantId}"></label>`;
+          return `<label class="support-return-product"><input type="checkbox" data-return-variant="${item.variantId}"><span>${escapeHtml(label)}<small>Đã mua: ${item.quantity} · Còn có thể trả: ${item.remainingQuantity}</small></span><input type="number" min="1" max="${item.remainingQuantity}" value="1" data-return-quantity="${item.variantId}"></label>`;
         }).join('')
-        : '<small>Không có sản phẩm để trả trong đơn này.</small>';
+        : '<small>Các sản phẩm trong đơn này đã có yêu cầu trả hàng với đủ số lượng.</small>';
     });
 
     content.querySelector('#supportReturnForm').addEventListener('submit', async event => {
       event.preventDefault();
       const orderId = Number(orderSelect.value);
-      const details = Array.from(content.querySelectorAll('[data-return-variant]:checked')).map(checkbox => ({
-        variantId: Number(checkbox.dataset.returnVariant),
-        quantity: Number(content.querySelector(`[data-return-quantity="${checkbox.dataset.returnVariant}"]`)?.value),
-        unitPrice: 0,
-        refundAmount: 0,
-        reason: content.querySelector('#supportReturnDescription').value.trim()
-      }));
-      if (!details.length || details.some(item => !Number.isInteger(item.quantity) || item.quantity <= 0)) {
+      const selectedDetails = Array.from(content.querySelectorAll('[data-return-variant]:checked')).map(checkbox => {
+        const quantityInput = content.querySelector(`[data-return-quantity="${checkbox.dataset.returnVariant}"]`);
+        return {
+          variantId: Number(checkbox.dataset.returnVariant),
+          quantity: Number(quantityInput?.value),
+          maximumQuantity: Number(quantityInput?.max),
+          unitPrice: 0,
+          refundAmount: 0,
+          reason: content.querySelector('#supportReturnDescription').value.trim()
+        };
+      });
+      if (!orderId || !selectedDetails.length || selectedDetails.some(item => !Number.isInteger(item.quantity) || item.quantity <= 0 || item.quantity > item.maximumQuantity)) {
         content.querySelector('#supportReturnItems').insertAdjacentHTML('beforeend', '<small class="support-return-error">Chọn ít nhất một sản phẩm và số lượng hợp lệ.</small>');
         return;
       }
+      const details = selectedDetails.map(({ maximumQuantity, ...detail }) => detail);
       try {
         await returnRequest('/ReturnRequest', {
           method: 'POST',
@@ -142,6 +188,7 @@
             returnType: 0,
             reason: Number(content.querySelector('#supportReturnReason').value),
             description: content.querySelector('#supportReturnDescription').value.trim(),
+            evidenceImageUrl: '',
             details
           })
         });

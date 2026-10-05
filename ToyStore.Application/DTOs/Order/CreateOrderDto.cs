@@ -16,6 +16,10 @@ namespace ToyStoreManagement.Application.DTOs.Order
         // Thông tin nhận hàng được lưu trong bảng Shipping, không ghép vào ghi chú.
         public CreateShippingDto Shipping { get; set; }
 
+        // Mã voucher chỉ được dùng để máy chủ tự tính và ghi nhận giảm giá.
+        // Không nhận số tiền giảm từ giao diện để tránh sai lệch giá trị đơn hàng.
+        public string? VoucherCode { get; set; }
+
         public List<CreateOrderDetailDto> OrderDetails { get; set; }
     }
 }

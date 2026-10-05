@@ -133,6 +133,16 @@
   margin-bottom: 16px;
 }
 
+.detail-price .original-price {
+  color: var(--text-muted);
+  font-size: .52em;
+  font-weight: 700;
+  margin-right: 10px;
+  vertical-align: middle;
+}
+
+.detail-price strong { color: var(--primary); }
+
 .detail-description {
   color: var(--text-muted);
   font-size: 14.5px;

@@ -50,7 +50,11 @@ namespace ToyStoreManagement.Infrastructure.Services
                 await _productRepository
                     .GetProductsWithDetailsAsync();
 
-            return products.Select(MapToDto);
+            var productList = products.ToList();
+            var promotionPrices = await GetActivePromotionPricesAsync(productList);
+
+            return productList.Select(product =>
+                MapToDto(product, promotionPrices));
         }
 
         // ==========================================
@@ -67,7 +71,10 @@ namespace ToyStoreManagement.Infrastructure.Services
             if (product == null)
                 return null;
 
-            return MapToDto(product);
+            var promotionPrices = await GetActivePromotionPricesAsync(
+                new[] { product });
+
+            return MapToDto(product, promotionPrices);
         }
 
         // ==========================================
@@ -186,7 +193,9 @@ namespace ToyStoreManagement.Infrastructure.Services
                 await _unitOfWork.SaveChangesAsync();
             }
 
-            return await GetByIdAsync(product.ProductId) ?? MapToDto(product);
+            return await GetByIdAsync(product.ProductId)
+                ?? MapToDto(product,
+                    new Dictionary<int, PromotionPrice>());
         }
 
         // ==========================================
@@ -423,7 +432,7 @@ namespace ToyStoreManagement.Infrastructure.Services
             await _unitOfWork
                 .SaveChangesAsync();
 
-            return MapVariantToDto(variant);
+            return MapVariantToDto(variant, null);
         }
 
         // ==========================================
@@ -528,7 +537,8 @@ namespace ToyStoreManagement.Infrastructure.Services
         // ==========================================
 
         private static ProductDto MapToDto(
-            Product product)
+            Product product,
+            IReadOnlyDictionary<int, PromotionPrice> promotionPrices)
         {
             return new ProductDto
             {
@@ -575,7 +585,13 @@ namespace ToyStoreManagement.Infrastructure.Services
 
                 ProductVariants =
                     product.ProductVariants?
-                        .Select(MapVariantToDto)
+                        .Select(variant => MapVariantToDto(
+                            variant,
+                            promotionPrices.TryGetValue(
+                                variant.VariantId,
+                                out var promotionPrice)
+                                ? promotionPrice
+                                : null))
                         .ToList()
                     ?? new List<ProductVariantDto>()
             };
@@ -587,8 +603,13 @@ namespace ToyStoreManagement.Infrastructure.Services
 
         private static ProductVariantDto
             MapVariantToDto(
-                ProductVariant variant)
+                ProductVariant variant,
+                PromotionPrice? promotionPrice)
         {
+            var originalPrice = variant.Price;
+            var salePrice = promotionPrice?.SalePrice ?? originalPrice;
+            var discountAmount = promotionPrice?.DiscountAmount ?? 0;
+
             return new ProductVariantDto
             {
                 VariantId = variant.VariantId,
@@ -616,6 +637,14 @@ namespace ToyStoreManagement.Infrastructure.Services
 
                 Price = variant.Price,
 
+                OriginalPrice = originalPrice,
+
+                SalePrice = salePrice,
+
+                PromotionDiscountAmount = discountAmount,
+
+                PromotionName = promotionPrice?.PromotionName,
+
                 CostPrice = variant.CostPrice,
 
                 Weight = variant.Weight,
@@ -633,6 +662,122 @@ namespace ToyStoreManagement.Infrastructure.Services
                 UpdatedAt = variant.UpdatedAt
             };
         }
+
+        private async Task<IReadOnlyDictionary<int, PromotionPrice>>
+            GetActivePromotionPricesAsync(IEnumerable<Product> products)
+        {
+            var productList = products.ToList();
+            if (productList.Count == 0)
+                return new Dictionary<int, PromotionPrice>();
+
+            var now = DateTime.UtcNow;
+            var promotions = await _context.Promotions
+                .AsNoTracking()
+                .Include(promotion => promotion.PromotionProducts)
+                .Include(promotion => promotion.PromotionConditions)
+                .Where(promotion => promotion.Status == 1
+                    && promotion.StartDate <= now
+                    && promotion.EndDate >= now)
+                .ToListAsync();
+
+            var result = new Dictionary<int, PromotionPrice>();
+
+            foreach (var product in productList)
+            {
+                foreach (var variant in product.ProductVariants ??
+                    Enumerable.Empty<ProductVariant>())
+                {
+                    if (variant.Price <= 0)
+                        continue;
+
+                    PromotionPrice? bestPrice = null;
+
+                    foreach (var promotion in promotions)
+                    {
+                        if (!AppliesToVariant(promotion, variant.VariantId))
+                            continue;
+
+                        if (promotion.PromotionConditions.Any(condition =>
+                            (condition.CategoryId.HasValue
+                                && condition.CategoryId.Value != product.CategoryId)
+                            || (condition.BrandId.HasValue
+                                && condition.BrandId.Value != product.BrandId)))
+                        {
+                            continue;
+                        }
+
+                        // Điều kiện giỏ hàng (giá trị đơn/số lượng) chỉ được
+                        // xác nhận ở lúc tạo đơn. Giá trên catalog chỉ phản ánh
+                        // chương trình áp trực tiếp cho sản phẩm.
+                        if (promotion.PromotionConditions.Any(condition =>
+                            condition.MinimumOrderValue.HasValue
+                            || condition.MinimumQuantity.HasValue
+                            || condition.CustomerLevel.HasValue))
+                        {
+                            continue;
+                        }
+
+                        var discountAmount = CalculatePromotionDiscount(
+                            variant.Price,
+                            promotion);
+
+                        if (discountAmount <= 0)
+                            continue;
+
+                        var candidate = new PromotionPrice(
+                            Math.Max(0, variant.Price - discountAmount),
+                            discountAmount,
+                            promotion.Name,
+                            promotion.Priority);
+
+                        if (bestPrice == null
+                            || candidate.DiscountAmount > bestPrice.DiscountAmount
+                            || (candidate.DiscountAmount == bestPrice.DiscountAmount
+                                && candidate.Priority > bestPrice.Priority))
+                        {
+                            bestPrice = candidate;
+                        }
+                    }
+
+                    if (bestPrice != null)
+                        result[variant.VariantId] = bestPrice;
+                }
+            }
+
+            return result;
+        }
+
+        private static bool AppliesToVariant(
+            Promotion promotion,
+            int variantId)
+        {
+            // Một chương trình không gắn sản phẩm được hiểu là áp dụng toàn bộ
+            // sản phẩm. Nếu đã gắn biến thể, chỉ các biến thể đó được giảm giá.
+            return !promotion.PromotionProducts.Any()
+                || promotion.PromotionProducts.Any(product =>
+                    product.VariantId == variantId);
+        }
+
+        private static decimal CalculatePromotionDiscount(
+            decimal price,
+            Promotion promotion)
+        {
+            var discount = promotion.PromotionType == 0
+                ? price * promotion.DiscountValue / 100m
+                : promotion.DiscountValue;
+
+            if (promotion.MaximumDiscount.HasValue)
+                discount = Math.Min(discount,
+                    promotion.MaximumDiscount.Value);
+
+            return Math.Min(price, Math.Max(0, discount));
+        }
+
+        private sealed record PromotionPrice(
+            decimal SalePrice,
+            decimal DiscountAmount,
+            string? PromotionName,
+            int Priority);
 
         private static string GetAttributeValue(
             IEnumerable<CreateProductVariantAttributeDto> attributes,

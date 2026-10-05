@@ -350,6 +350,13 @@ a {
   color: var(--primary);
 }
 
+.original-price {
+  color: var(--text-muted);
+  font-size: 12px;
+  font-weight: 600;
+  margin-right: 6px;
+}
+
 .add-cart {
   width: 100%;
   background: var(--bg-subtle);

@@ -158,11 +158,12 @@ namespace ToyStoreManagement.Infrastructure.Services
                 ReturnCode = $"RET-{DateTime.UtcNow:yyyyMMddHHmmssfff}-{Guid.NewGuid():N}"[..32],
                 ReturnType = dto.ReturnType,
                 Reason = dto.Reason,
-                Description = dto.Description,
-                EvidenceImageUrl = dto.EvidenceImageUrl,
+                Description = dto.Description?.Trim() ?? string.Empty,
+                EvidenceImageUrl = dto.EvidenceImageUrl?.Trim() ?? string.Empty,
                 Status = 0,
                 RefundAmount = 0,
-                RequestedAt = DateTime.UtcNow
+                RequestedAt = DateTime.UtcNow,
+                StaffNote = string.Empty
             };
 
             _context.ReturnRequests.Add(returnRequest);

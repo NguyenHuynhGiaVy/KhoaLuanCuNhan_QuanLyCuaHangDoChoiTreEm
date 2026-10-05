@@ -61,9 +61,14 @@
       return;
     }
 
-    const subtotal = pending.items.reduce((sum, item) => sum + Number(item.price || 0) * Number(item.quantity || 1), 0);
+    const originalSubtotal = pending.items.reduce((sum, item) =>
+      sum + Number(item.originalPrice ?? item.price ?? 0) * Number(item.quantity || 1), 0);
+    const subtotal = pending.items.reduce((sum, item) =>
+      sum + Number(item.price || 0) * Number(item.quantity || 1), 0);
+    const promotionDiscount = Math.max(0, originalSubtotal - subtotal);
+    const voucherDiscount = Math.min(subtotal, Math.max(0, Number(pending.voucherDiscount || 0)));
     const shippingFee = subtotal >= 500000 ? 0 : 30000;
-    const total = subtotal + shippingFee;
+    const total = Math.max(0, subtotal - voucherDiscount + shippingFee);
     const paymentName = pending.paymentMethod === 'Banking' ? 'Chuyển khoản ngân hàng' : 'Thanh toán khi nhận hàng (COD)';
     const points = Math.floor(total / 10000);
 
@@ -81,7 +86,7 @@
           <section class="review-card"><h2>Sản phẩm đã chọn</h2>${pending.items.map(item => `
             <article class="review-item">
               <img src="${escapeHtml(item.imageUrl || 'https://placehold.co/100x100?text=Toy')}" alt="${escapeHtml(item.name)}">
-              <div><h3>${escapeHtml(item.name)}</h3><small>${money(item.price)} × ${Number(item.quantity || 1)}</small></div>
+              <div><h3>${escapeHtml(item.name)}</h3><small>${Number(item.originalPrice ?? item.price) > Number(item.price) ? `<del class="original-price">${money(item.originalPrice)}</del> ` : ''}${money(item.price)} × ${Number(item.quantity || 1)}</small></div>
               <strong>${money(Number(item.price || 0) * Number(item.quantity || 1))}</strong>
             </article>`).join('')}</section>
           <section class="review-card"><h2>Thông tin nhận hàng</h2>
@@ -89,7 +94,9 @@
           </section>
         </div>
         <aside class="review-card"><h2>Tổng đơn hàng</h2>
-          <div class="review-total-row"><span>Tạm tính</span><strong>${money(subtotal)}</strong></div>
+          <div class="review-total-row"><span>Tạm tính</span><strong>${money(originalSubtotal)}</strong></div>
+          ${promotionDiscount > 0 ? `<div class="review-total-row"><span>Khuyến mãi sản phẩm</span><strong style="color:var(--success);">−${money(promotionDiscount)}</strong></div>` : ''}
+          ${voucherDiscount > 0 ? `<div class="review-total-row"><span>Voucher ${pending.voucherCode ? `(${escapeHtml(pending.voucherCode)})` : ''}</span><strong style="color:var(--success);">−${money(voucherDiscount)}</strong></div>` : ''}
           <div class="review-total-row"><span>Phí giao hàng</span><strong>${shippingFee ? money(shippingFee) : 'Miễn phí'}</strong></div>
           <div class="review-total-row"><span>Thanh toán</span><strong>${escapeHtml(paymentName)}</strong></div>
           <div class="review-total-row total"><span>Tổng cộng</span><strong>${money(total)}</strong></div>
@@ -124,6 +131,7 @@
         customerId: profile.customerId,
         paymentMethod: pending.paymentMethod === 'Banking' ? 1 : 0,
         note: pending.note || '',
+        voucherCode: pending.voucherCode || null,
         shipping: {
           receiverName: pending.customer.fullName,
           receiverPhone: pending.customer.phone,

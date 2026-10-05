@@ -23,6 +23,16 @@ namespace ToyStoreManagement.Application.DTOs.Product
 
         public decimal Price { get; set; }
 
+        // Giá niêm yết và giá sau ưu đãi được trả về riêng để giao diện
+        // có thể hiển thị giá gốc bị gạch mà không làm thay đổi giá bán gốc.
+        public decimal OriginalPrice { get; set; }
+
+        public decimal SalePrice { get; set; }
+
+        public decimal PromotionDiscountAmount { get; set; }
+
+        public string? PromotionName { get; set; }
+
         public decimal CostPrice { get; set; }
 
         public decimal? Weight { get; set; }

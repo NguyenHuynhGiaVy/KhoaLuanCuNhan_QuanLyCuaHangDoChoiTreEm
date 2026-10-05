@@ -870,16 +870,20 @@ async function renderCustomerCare() {
     const list = (feedbacks || []).sort((left, right) =>
       Number(left.status >= 2) - Number(right.status >= 2)
       || new Date(right.createdAt) - new Date(left.createdAt));
+    const returnList = returnRequests || [];
     cache.customerCare = list;
-    const newCount = list.filter(item => Number(item.status) === 0).length;
-    const processingCount = list.filter(item => Number(item.status) === 1).length;
-    const resolvedCount = list.filter(item => Number(item.status) >= 2).length;
+    const newCount = list.filter(item => Number(item.status) === 0).length
+      + returnList.filter(item => Number(item.status) === 0).length;
+    const processingCount = list.filter(item => Number(item.status) === 1).length
+      + returnList.filter(item => Number(item.status) === 1).length;
+    const resolvedCount = list.filter(item => Number(item.status) >= 2).length
+      + returnList.filter(item => [2, 3, 4].includes(Number(item.status))).length;
 
     app.innerHTML = `
       <div class="stats-grid" style="margin-bottom:24px;">
-        <div class="stat-card"><div class="stat-icon-wrap cst">💬</div><div class="stat-label">Yêu cầu mới</div><div class="stat-value">${newCount}</div><div class="stat-sub">Cần tiếp nhận phản hồi</div></div>
-        <div class="stat-card"><div class="stat-icon-wrap ord">⌛</div><div class="stat-label">Đang xử lý</div><div class="stat-value">${processingCount}</div><div class="stat-sub">Yêu cầu chưa hoàn tất</div></div>
-        <div class="stat-card"><div class="stat-icon-wrap rev">✓</div><div class="stat-label">Đã hoàn tất</div><div class="stat-value">${resolvedCount}</div><div class="stat-sub">Đã phản hồi hoặc đóng yêu cầu</div></div>
+        <div class="stat-card"><div class="stat-icon-wrap cst">💬</div><div class="stat-label">Yêu cầu mới</div><div class="stat-value">${newCount}</div><div class="stat-sub">Bao gồm yêu cầu trả hàng mới</div></div>
+        <div class="stat-card"><div class="stat-icon-wrap ord">⌛</div><div class="stat-label">Đang xử lý</div><div class="stat-value">${processingCount}</div><div class="stat-sub">Phản hồi và trả hàng chờ xử lý</div></div>
+        <div class="stat-card"><div class="stat-icon-wrap rev">✓</div><div class="stat-label">Đã hoàn tất</div><div class="stat-value">${resolvedCount}</div><div class="stat-sub">Đã xử lý xong hoặc đã đóng</div></div>
       </div>
       <div class="panel">
         <div class="panel-header"><div class="panel-title-area"><h2>Hộp thư chăm sóc khách hàng</h2><p>Tiếp nhận, trả lời và theo dõi yêu cầu của khách hàng.</p></div></div>
@@ -2105,8 +2109,8 @@ async function handleFormSubmit(e, key, index) {
     payload.discountValue = Number(payload.discountValue);
     payload.minOrderAmount = Number(payload.minOrderAmount || 0);
     payload.status = Number(payload.status);
-    payload.startDate = new Date(payload.startDate).toISOString();
-    payload.endDate = new Date(payload.endDate).toISOString();
+    payload.startDate = new Date(`${payload.startDate}T00:00:00`).toISOString();
+    payload.endDate = new Date(`${payload.endDate}T23:59:59.999`).toISOString();
   } else if (key === 'vouchers') {
     payload.discountType = Number(payload.discountType);
     payload.discountValue = Number(payload.discountValue);

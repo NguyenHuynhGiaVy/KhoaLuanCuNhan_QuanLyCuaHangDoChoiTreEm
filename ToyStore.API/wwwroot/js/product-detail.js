@@ -16,6 +16,15 @@ let selectedReviewRating = 5;
   const escapeHtml = value => String(value ?? '').replace(/[&<>'"]/g, character => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', "'": '&#39;', '"': '&quot;' }[character]));
   const money = value => value == null ? 'Liên hệ' : `${Number(value).toLocaleString('vi-VN')}đ`;
   const imageOf = product => product?.imageUrl || placeholderImage;
+  const salePriceOf = variant => Number(variant?.salePrice ?? variant?.price ?? 0);
+  const originalPriceOf = variant => Number(variant?.originalPrice ?? variant?.price ?? 0);
+  const priceMarkup = (variant, fallbackPrice) => {
+    const originalPrice = originalPriceOf(variant) || Number(fallbackPrice || 0);
+    const salePrice = salePriceOf(variant) || originalPrice;
+    return salePrice < originalPrice
+      ? `<del class="original-price">${money(originalPrice)}</del><strong>${money(salePrice)}</strong>`
+      : money(salePrice);
+  };
 
   function updateCart() {
     document.getElementById('cartCount').textContent = detailCartCount;
@@ -296,7 +305,7 @@ let selectedReviewRating = 5;
         <span class="detail-kicker">${escapeHtml(product.categoryName || 'ĐỒ CHƠI TRẺ EM')}</span>
         <h1>${escapeHtml(product.name)}</h1>
         <div class="detail-rating"><span class="detail-review-stars" id="detailReviewStars">${reviewStars(getReviewStats().average)}</span><button type="button" class="detail-review-link" id="detailReviewLink"><u id="detailReviewSummary">Chưa có đánh giá</u></button><i>SKU: ${escapeHtml(selectedVariant?.sku || 'Đang cập nhật')}</i></div>
-        <div class="detail-price">${money(selectedVariant?.price ?? product.basePrice)}</div>
+        <div class="detail-price">${priceMarkup(selectedVariant, product.basePrice)}</div>
         ${stockStatusMarkup()}
         <p class="detail-description">${escapeHtml(product.description || 'Một món đồ chơi thú vị cho những giờ chơi đầy sáng tạo và khám phá.')}</p>
         ${renderVariantChoices()}
@@ -330,7 +339,7 @@ let selectedReviewRating = 5;
   function updateVariantView() {
     const image = document.getElementById('mainProductImage');
     if (!selectedVariant) return;
-    document.querySelector('.detail-price').textContent = money(selectedVariant.price);
+    document.querySelector('.detail-price').innerHTML = priceMarkup(selectedVariant, detailProduct?.basePrice);
     document.querySelector('.detail-rating i').textContent = `SKU: ${selectedVariant.sku || 'Đang cập nhật'}`;
     if (selectedVariant.imageUrl) image.src = selectedVariant.imageUrl;
     document.querySelectorAll('.variant-choice').forEach(button => {
@@ -352,7 +361,10 @@ let selectedReviewRating = 5;
 
   function renderRelated(products) {
     const related = products.filter(product => product.productId !== detailProduct.productId && product.categoryId === detailProduct.categoryId).slice(0, 4);
-    relatedRoot.innerHTML = related.length ? related.map(product => `<a class="related-card" href="/product-detail.html?id=${product.productId}"><div class="related-card-image"><img src="${escapeHtml(imageOf(product))}" alt="${escapeHtml(product.name)}"></div><div class="related-card-body"><small>${escapeHtml(product.categoryName || 'Đồ chơi')}</small><h3>${escapeHtml(product.name)}</h3><div class="related-card-price"><b>${money(product.basePrice)}</b><span>→</span></div></div></a>`).join('') : '<p class="muted">Chưa có sản phẩm liên quan.</p>';
+    relatedRoot.innerHTML = related.length ? related.map(product => {
+      const variant = (product.productVariants || []).find(item => Number(item.availableQuantity || 0) > 0) || product.productVariants?.[0];
+      return `<a class="related-card" href="/product-detail.html?id=${product.productId}"><div class="related-card-image"><img src="${escapeHtml(imageOf(product))}" alt="${escapeHtml(product.name)}"></div><div class="related-card-body"><small>${escapeHtml(product.categoryName || 'Đồ chơi')}</small><h3>${escapeHtml(product.name)}</h3><div class="related-card-price"><b>${priceMarkup(variant, product.basePrice)}</b><span>→</span></div></div></a>`;
+    }).join('') : '<p class="muted">Chưa có sản phẩm liên quan.</p>';
   }
 
   async function loadDetail() {
@@ -434,7 +446,9 @@ let selectedReviewRating = 5;
             productId: detailProduct.productId,
             variantId: selectedVariant?.variantId || detailProduct.productId,
             name: detailProduct.name,
-            price: selectedVariant?.price ?? detailProduct.basePrice,
+            price: salePriceOf(selectedVariant) || detailProduct.basePrice,
+            originalPrice: originalPriceOf(selectedVariant) || detailProduct.basePrice,
+            promotionName: selectedVariant?.promotionName || '',
             imageUrl: selectedVariant?.imageUrl || imageOf(detailProduct),
             quantity: detailQuantity,
             sku: selectedVariant?.sku || '',

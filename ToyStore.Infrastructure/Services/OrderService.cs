@@ -89,6 +89,8 @@ namespace ToyStoreManagement.Infrastructure.Services
                 .BeginTransactionAsync(System.Data.IsolationLevel.Serializable);
 
             var affectedProductIds = new HashSet<int>();
+            decimal originalSubtotal = 0;
+            var totalItemQuantity = 0;
 
             foreach (var detail in dto.OrderDetails)
             {
@@ -123,7 +125,26 @@ namespace ToyStoreManagement.Infrastructure.Services
                     throw new Exception(
                         $"Sản phẩm (SKU: {variant.SKU}) không đủ số lượng tồn kho. Hiện chỉ còn {availableQuantity} sản phẩm.");
                 }
+
+                originalSubtotal += variant.Price * detail.Quantity;
+                totalItemQuantity += detail.Quantity;
             }
+
+            var activePromotions = await GetActivePromotionsAsync();
+            var variantIds = dto.OrderDetails
+                .Select(detail => detail.VariantId)
+                .Distinct()
+                .ToList();
+            var variantProductInfo = await _context.ProductVariants
+                .AsNoTracking()
+                .Where(variant => variantIds.Contains(variant.VariantId))
+                .Select(variant => new
+                {
+                    variant.VariantId,
+                    variant.Product.CategoryId,
+                    variant.Product.BrandId
+                })
+                .ToDictionaryAsync(variant => variant.VariantId);
 
             var order = new Order
             {
@@ -138,26 +159,45 @@ namespace ToyStoreManagement.Infrastructure.Services
             };
 
             decimal subtotal = 0;
+            decimal productPromotionDiscount = 0;
 
             foreach (var detailDto in dto.OrderDetails)
             {
                 var variant = await _variantRepository
-                    .GetByIdAsync(detailDto.VariantId);
+                    .GetByIdAsync(detailDto.VariantId)
+                    ?? throw new Exception(
+                        $"Không tìm thấy biến thể sản phẩm ID {detailDto.VariantId}.");
+                variantProductInfo.TryGetValue(
+                    detailDto.VariantId,
+                    out var productInfo);
 
-                decimal totalAmount =
-                    variant.Price * detailDto.Quantity;
+                var lineAmount = variant.Price * detailDto.Quantity;
+                var promotion = FindBestPromotion(
+                    activePromotions,
+                    detailDto.VariantId,
+                    variant.Price,
+                    originalSubtotal,
+                    totalItemQuantity,
+                    productInfo?.CategoryId,
+                    productInfo?.BrandId);
+                var unitPromotionDiscount = promotion == null
+                    ? 0
+                    : CalculatePromotionDiscount(variant.Price, promotion);
+                var lineDiscount = unitPromotionDiscount * detailDto.Quantity;
+                var totalAmount = lineAmount - lineDiscount;
 
                 var detail = new OrderDetail
                 {
                     VariantId = detailDto.VariantId,
                     Quantity = detailDto.Quantity,
                     UnitPrice = variant.Price,
-                    DiscountAmount = 0,
+                    DiscountAmount = lineDiscount,
                     TotalAmount = totalAmount
                 };
 
                 order.OrderDetails.Add(detail);
-                subtotal += totalAmount;
+                subtotal += lineAmount;
+                productPromotionDiscount += lineDiscount;
 
                 // Trừ số lượng tồn kho
                 var inventory = await _context.Inventories
@@ -174,8 +214,18 @@ namespace ToyStoreManagement.Infrastructure.Services
                 affectedProductIds.Add(variant.ProductId);
             }
 
+            var merchandiseTotal = subtotal - productPromotionDiscount;
+            var voucher = await GetVoucherForCheckoutAsync(
+                dto.VoucherCode,
+                merchandiseTotal,
+                dto.CustomerId);
+            var voucherDiscount = voucher == null
+                ? 0
+                : CalculateVoucherDiscount(merchandiseTotal, voucher);
+
             order.Subtotal = subtotal;
-            order.ShippingFee = subtotal >= 500000 ? 0 : 30000;
+            order.DiscountAmount = productPromotionDiscount + voucherDiscount;
+            order.ShippingFee = merchandiseTotal >= 500000 ? 0 : 30000;
 
             order.TotalAmount =
                 order.Subtotal
@@ -184,6 +234,20 @@ namespace ToyStoreManagement.Infrastructure.Services
 
             await _orderRepository.AddAsync(order);
             await _unitOfWork.SaveChangesAsync();
+
+            if (voucher != null)
+            {
+                _context.VoucherUsages.Add(new VoucherUsage
+                {
+                    VoucherId = voucher.VoucherId,
+                    OrderId = order.OrderId,
+                    CustomerId = dto.CustomerId,
+                    DiscountAmount = voucherDiscount,
+                    UsedAt = DateTime.UtcNow
+                });
+                voucher.UsedCount++;
+                voucher.UpdatedAt = DateTime.UtcNow;
+            }
 
             _context.Shippings.Add(new Shipping
             {
@@ -562,6 +626,134 @@ namespace ToyStoreManagement.Infrastructure.Services
         {
             return "ORD-" +
                    DateTime.UtcNow.ToString("yyyyMMddHHmmssfff");
+        }
+
+        private async Task<List<Promotion>> GetActivePromotionsAsync()
+        {
+            var now = DateTime.UtcNow;
+
+            return await _context.Promotions
+                .Include(promotion => promotion.PromotionProducts)
+                .Include(promotion => promotion.PromotionConditions)
+                .Where(promotion => promotion.Status == 1
+                    && promotion.StartDate <= now
+                    && promotion.EndDate >= now)
+                .ToListAsync();
+        }
+
+        private static Promotion? FindBestPromotion(
+            IEnumerable<Promotion> promotions,
+            int variantId,
+            decimal unitPrice,
+            decimal orderSubtotal,
+            int totalItemQuantity,
+            int? categoryId,
+            int? brandId)
+        {
+            return promotions
+                .Where(promotion =>
+                    (!promotion.PromotionProducts.Any()
+                        || promotion.PromotionProducts.Any(product =>
+                            product.VariantId == variantId))
+                    && promotion.PromotionConditions.All(condition =>
+                        (!condition.MinimumOrderValue.HasValue
+                            || orderSubtotal >= condition.MinimumOrderValue.Value)
+                        && (!condition.MinimumQuantity.HasValue
+                            || totalItemQuantity >= condition.MinimumQuantity.Value)
+                        && (!condition.CategoryId.HasValue
+                            || condition.CategoryId.Value == categoryId)
+                        && (!condition.BrandId.HasValue
+                            || condition.BrandId.Value == brandId)
+                        && !condition.CustomerLevel.HasValue))
+                .OrderByDescending(promotion =>
+                    CalculatePromotionDiscount(unitPrice, promotion))
+                .ThenByDescending(promotion => promotion.Priority)
+                .ThenBy(promotion => promotion.PromotionId)
+                .FirstOrDefault();
+        }
+
+        private static decimal CalculatePromotionDiscount(
+            decimal price,
+            Promotion promotion)
+        {
+            var discount = promotion.PromotionType == 0
+                ? price * promotion.DiscountValue / 100m
+                : promotion.DiscountValue;
+
+            if (promotion.MaximumDiscount.HasValue)
+                discount = Math.Min(discount,
+                    promotion.MaximumDiscount.Value);
+
+            return Math.Min(price, Math.Max(0, discount));
+        }
+
+        private async Task<Voucher?> GetVoucherForCheckoutAsync(
+            string? voucherCode,
+            decimal merchandiseTotal,
+            int? customerId)
+        {
+            if (string.IsNullOrWhiteSpace(voucherCode))
+                return null;
+
+            var normalizedCode = voucherCode.Trim().ToUpperInvariant();
+            var voucher = await _context.Vouchers
+                .FirstOrDefaultAsync(item =>
+                    item.Code.ToUpper() == normalizedCode);
+
+            if (voucher == null)
+                throw new Exception("Không tìm thấy mã voucher.");
+
+            var now = DateTime.UtcNow;
+            if (voucher.Status != 1
+                || voucher.StartDate > now
+                || voucher.EndDate < now)
+            {
+                throw new Exception("Voucher không còn hiệu lực.");
+            }
+
+            if (voucher.UsageLimit > 0
+                && voucher.UsedCount >= voucher.UsageLimit)
+            {
+                throw new Exception("Voucher đã hết lượt sử dụng.");
+            }
+
+            if (voucher.MinimumOrderValue.HasValue
+                && merchandiseTotal < voucher.MinimumOrderValue.Value)
+            {
+                throw new Exception(
+                    "Đơn hàng chưa đạt giá trị tối thiểu để sử dụng voucher.");
+            }
+
+            if (customerId.HasValue
+                && voucher.UsageLimitPerCustomer.HasValue)
+            {
+                var usageCount = await _context.VoucherUsages.CountAsync(usage =>
+                    usage.VoucherId == voucher.VoucherId
+                    && usage.CustomerId == customerId.Value);
+
+                if (usageCount >= voucher.UsageLimitPerCustomer.Value)
+                {
+                    throw new Exception(
+                        "Khách hàng đã đạt giới hạn sử dụng voucher.");
+                }
+            }
+
+            return voucher;
+        }
+
+        private static decimal CalculateVoucherDiscount(
+            decimal merchandiseTotal,
+            Voucher voucher)
+        {
+            var discount = voucher.DiscountType == 0
+                ? merchandiseTotal * voucher.DiscountValue / 100m
+                : voucher.DiscountValue;
+
+            if (voucher.MaximumDiscount.HasValue)
+                discount = Math.Min(discount,
+                    voucher.MaximumDiscount.Value);
+
+            return Math.Min(merchandiseTotal, Math.Max(0, discount));
         }
 
         private static OrderDto MapToDto(Order order)
