@@ -7,6 +7,7 @@ using ToyStore.Application.Interfaces.Repositories;
 using ToyStore.Application.Interfaces.Services;
 using ToyStore.Application.Interfaces;
 using ToyStoreManagement.Domain.Entities;
+using ToyStoreManagement.Domain.Common;
 using ToyStoreManagement.Application.DTOs.Product;
 using ToyStoreManagement.Application.Interfaces;
 using ToyStoreManagement.Application.Interfaces.Repositories;
@@ -258,7 +259,7 @@ namespace ToyStoreManagement.Infrastructure.Services
                 return;
 
             if (product.Status != 2)
-                product.Status = totalQuantity > 0 ? 1 : 0;
+                ProductStockStatus.Synchronize(product, totalQuantity);
             product.UpdatedAt = DateTime.UtcNow;
             await _unitOfWork.SaveChangesAsync();
         }

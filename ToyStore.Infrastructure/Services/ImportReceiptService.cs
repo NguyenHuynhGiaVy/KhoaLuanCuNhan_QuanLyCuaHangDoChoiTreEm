@@ -11,6 +11,7 @@ using ToyStoreManagement.Application.Interfaces.Repositories;
 using ToyStoreManagement.Application.Interfaces.Services;
 using ToyStoreManagement.Domain.Entities;
 using ToyStoreManagement.Infrastructure.Data;
+using ToyStoreManagement.Domain.Common;
 
 namespace ToyStoreManagement.Infrastructure.Services
 {
@@ -356,7 +357,7 @@ namespace ToyStoreManagement.Infrastructure.Services
 
                     // Giữ trạng thái thanh lý/ngừng nhập mới do Admin đã chọn.
                     if (product.Status != 2)
-                        product.Status = totalQuantity > 0 ? 1 : 0;
+                        ProductStockStatus.Synchronize(product, totalQuantity);
 
                     product.UpdatedAt = DateTime.UtcNow;
                 }

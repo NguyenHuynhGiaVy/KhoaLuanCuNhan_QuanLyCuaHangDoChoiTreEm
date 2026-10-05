@@ -22,12 +22,16 @@ namespace ToyStoreManagement.Application.Interfaces.Services
         Task<ReturnRequestDto?> GetByReturnCodeAsync(
             string returnCode);
 
+        Task<ReturnRequestDetailDto?> GetDetailByIdAsync(int returnRequestDetailId);
+
         Task<ReturnRequestDto> CreateAsync(
             CreateReturnRequestDto dto);
 
         Task<ReturnRequestDto?> UpdateAsync(
             int returnRequestId,
             UpdateReturnRequestDto dto);
+
+        Task<ReturnRequestDto?> ReceiveAsync(int returnRequestId);
 
         Task<bool> DeleteAsync(int returnRequestId);
 

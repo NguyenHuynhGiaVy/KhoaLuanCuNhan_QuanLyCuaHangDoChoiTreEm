@@ -5,6 +5,9 @@ using System;
 using System.Threading.Tasks;
 using ToyStoreManagement.Application.DTOs.Order;
 using ToyStoreManagement.Application.Interfaces.Services;
+using System.Security.Claims;
+using Microsoft.EntityFrameworkCore;
+using ToyStoreManagement.Infrastructure.Data;
 
 namespace ToyStoreManagement.API.Controllers
 {
@@ -14,14 +17,17 @@ namespace ToyStoreManagement.API.Controllers
     public class OrderController : ControllerBase
     {
         private readonly IOrderService _orderService;
+        private readonly ApplicationDbContext _context;
 
-        public OrderController(IOrderService orderService)
+        public OrderController(IOrderService orderService, ApplicationDbContext context)
         {
             _orderService = orderService;
+            _context = context;
         }
 
         // GET: api/Order
         [HttpGet]
+        [Authorize(Policy = "StaffAccess")]
         public async Task<IActionResult> GetAll()
         {
             var result = await _orderService.GetAllAsync();
@@ -36,6 +42,8 @@ namespace ToyStoreManagement.API.Controllers
 
             if (result == null)
                 return NotFound("Không tìm thấy đơn hàng.");
+            if (!IsStaff && result.CustomerId != await GetCurrentCustomerId())
+                return Forbid();
 
             return Ok(result);
         }
@@ -50,6 +58,8 @@ namespace ToyStoreManagement.API.Controllers
 
             if (result == null)
                 return NotFound("Không tìm thấy đơn hàng.");
+            if (!IsStaff && result.CustomerId != await GetCurrentCustomerId())
+                return Forbid();
 
             return Ok(result);
         }
@@ -59,10 +69,22 @@ namespace ToyStoreManagement.API.Controllers
         public async Task<IActionResult> GetByCustomerId(
             int customerId)
         {
+            if (!IsStaff && await GetCurrentCustomerId() != customerId)
+                return Forbid();
             var result =
                 await _orderService.GetByCustomerIdAsync(customerId);
 
             return Ok(result);
+        }
+
+        [HttpGet("mine")]
+        [Authorize(Policy = "CustomerAccess")]
+        public async Task<IActionResult> GetMine()
+        {
+            var customerId = await GetCurrentCustomerId();
+            if (!customerId.HasValue)
+                return NotFound(new { message = "Bạn chưa tạo hồ sơ khách hàng." });
+            return Ok(await _orderService.GetByCustomerIdAsync(customerId.Value));
         }
 
         // POST: api/Order
@@ -204,6 +226,21 @@ namespace ToyStoreManagement.API.Controllers
             {
                 return BadRequest(ex.Message);
             }
+        }
+
+        private bool IsStaff =>
+            User.IsInRole("Admin") || User.IsInRole("Manager") || User.IsInRole("Staff");
+
+        private async Task<int?> GetCurrentCustomerId()
+        {
+            var userId = User.FindFirstValue(ClaimTypes.NameIdentifier)
+                ?? User.FindFirstValue("sub");
+            if (string.IsNullOrWhiteSpace(userId))
+                return null;
+            return await _context.Customers
+                .Where(x => x.UserId == userId)
+                .Select(x => (int?)x.CustomerId)
+                .FirstOrDefaultAsync();
         }
     }
 }

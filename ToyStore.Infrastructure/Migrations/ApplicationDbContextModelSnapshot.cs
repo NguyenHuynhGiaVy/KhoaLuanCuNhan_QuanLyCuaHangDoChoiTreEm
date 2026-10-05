@@ -1801,6 +1801,8 @@ namespace ToyStore.Infrastructure.Migrations
 
                     b.Navigation("ReturnRequests");
 
+                    b.Navigation("SupportConversations");
+
                     b.Navigation("VoucherUsages");
                 });
 
@@ -1844,6 +1846,8 @@ namespace ToyStore.Infrastructure.Migrations
 
                     b.Navigation("InventoryTransactions");
 
+                    b.Navigation("LiquidationReceiptDetails");
+
                     b.Navigation("OrderDetails");
 
                     b.Navigation("ProductReviews");
@@ -1875,6 +1879,191 @@ namespace ToyStore.Infrastructure.Migrations
             modelBuilder.Entity("ToyStoreManagement.Domain.Entities.Voucher", b =>
                 {
                     b.Navigation("VoucherUsages");
+                });
+
+            modelBuilder.Entity("ToyStoreManagement.Domain.Entities.LiquidationReceipt", b =>
+                {
+                    b.Property<int>("LiquidationReceiptId")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("LiquidationReceiptId"));
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("CreatedByUserId")
+                        .IsRequired()
+                        .HasMaxLength(450)
+                        .HasColumnType("nvarchar(450)");
+
+                    b.Property<DateTime?>("CompletedAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("Note")
+                        .HasMaxLength(2000)
+                        .HasColumnType("nvarchar(2000)");
+
+                    b.Property<string>("ReceiptCode")
+                        .IsRequired()
+                        .HasMaxLength(50)
+                        .HasColumnType("nvarchar(50)");
+
+                    b.Property<int>("Status")
+                        .HasColumnType("int");
+
+                    b.HasKey("LiquidationReceiptId");
+
+                    b.HasIndex("ReceiptCode")
+                        .IsUnique();
+
+                    b.ToTable("LiquidationReceipts");
+                });
+
+            modelBuilder.Entity("ToyStoreManagement.Domain.Entities.LiquidationReceiptDetail", b =>
+                {
+                    b.Property<int>("LiquidationReceiptDetailId")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("LiquidationReceiptDetailId"));
+
+                    b.Property<int>("LiquidationReceiptId")
+                        .HasColumnType("int");
+
+                    b.Property<int>("Quantity")
+                        .HasColumnType("int");
+
+                    b.Property<int>("VariantId")
+                        .HasColumnType("int");
+
+                    b.HasKey("LiquidationReceiptDetailId");
+
+                    b.HasIndex("VariantId");
+
+                    b.HasIndex("LiquidationReceiptId", "VariantId")
+                        .IsUnique();
+
+                    b.ToTable("LiquidationReceiptDetails");
+                });
+
+            modelBuilder.Entity("ToyStoreManagement.Domain.Entities.SupportConversation", b =>
+                {
+                    b.Property<int>("SupportConversationId")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("SupportConversationId"));
+
+                    b.Property<string>("AssignedManagerUserId")
+                        .HasMaxLength(450)
+                        .HasColumnType("nvarchar(450)");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<int>("CustomerId")
+                        .HasColumnType("int");
+
+                    b.Property<DateTime?>("LastMessageAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<int>("Status")
+                        .HasColumnType("int");
+
+                    b.Property<DateTime>("UpdatedAt")
+                        .HasColumnType("datetime2");
+
+                    b.HasKey("SupportConversationId");
+
+                    b.HasIndex("CustomerId", "Status");
+
+                    b.ToTable("SupportConversations");
+                });
+
+            modelBuilder.Entity("ToyStoreManagement.Domain.Entities.SupportMessage", b =>
+                {
+                    b.Property<long>("SupportMessageId")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bigint");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<long>("SupportMessageId"));
+
+                    b.Property<string>("Content")
+                        .IsRequired()
+                        .HasMaxLength(4000)
+                        .HasColumnType("nvarchar(4000)");
+
+                    b.Property<DateTime?>("ReadAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("SenderRole")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .HasColumnType("nvarchar(32)");
+
+                    b.Property<string>("SenderUserId")
+                        .IsRequired()
+                        .HasMaxLength(450)
+                        .HasColumnType("nvarchar(450)");
+
+                    b.Property<DateTime>("SentAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<int>("SupportConversationId")
+                        .HasColumnType("int");
+
+                    b.HasKey("SupportMessageId");
+
+                    b.HasIndex("SupportConversationId", "SentAt");
+
+                    b.ToTable("SupportMessages");
+                });
+
+            modelBuilder.Entity("ToyStoreManagement.Domain.Entities.LiquidationReceipt", b =>
+                {
+                    b.Navigation("Details");
+                });
+
+            modelBuilder.Entity("ToyStoreManagement.Domain.Entities.LiquidationReceiptDetail", b =>
+                {
+                    b.HasOne("ToyStoreManagement.Domain.Entities.LiquidationReceipt", "LiquidationReceipt")
+                        .WithMany("Details")
+                        .HasForeignKey("LiquidationReceiptId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("ToyStoreManagement.Domain.Entities.ProductVariant", "ProductVariant")
+                        .WithMany("LiquidationReceiptDetails")
+                        .HasForeignKey("VariantId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.Navigation("LiquidationReceipt");
+
+                    b.Navigation("ProductVariant");
+                });
+
+            modelBuilder.Entity("ToyStoreManagement.Domain.Entities.SupportConversation", b =>
+                {
+                    b.HasOne("ToyStoreManagement.Domain.Entities.Customer", "Customer")
+                        .WithMany("SupportConversations")
+                        .HasForeignKey("CustomerId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.Navigation("Customer");
+                });
+
+            modelBuilder.Entity("ToyStoreManagement.Domain.Entities.SupportMessage", b =>
+                {
+                    b.HasOne("ToyStoreManagement.Domain.Entities.SupportConversation", "Conversation")
+                        .WithMany("Messages")
+                        .HasForeignKey("SupportConversationId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Conversation");
                 });
 #pragma warning restore 612, 618
         }

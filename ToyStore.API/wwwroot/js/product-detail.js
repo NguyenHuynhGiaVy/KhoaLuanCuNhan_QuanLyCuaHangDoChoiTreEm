@@ -364,8 +364,9 @@ let selectedReviewRating = 5;
       const [productResponse, productsResponse] = await Promise.all([fetch(`/api/Product/${detailId}`), fetch('/api/Product')]);
       if (!productResponse.ok) throw new Error('Không tìm thấy sản phẩm');
       detailProduct = await productResponse.json();
-      if (Number(detailProduct.status) === 0) {
-        detailRoot.innerHTML = '<div class="detail-empty"><h1>Sản phẩm hiện tạm ngưng kinh doanh</h1><a href="/products.html">Quay lại danh sách</a></div>';
+      if (Number(detailProduct.status) === 0 || Number(detailProduct.status) === 3) {
+        const stockMessage = Number(detailProduct.status) === 3 ? 'Sản phẩm hiện đã hết hàng' : 'Sản phẩm hiện tạm ngưng kinh doanh';
+        detailRoot.innerHTML = `<div class="detail-empty"><h1>${escapeHtml(stockMessage)}</h1><a href="/products.html">Quay lại danh sách</a></div>`;
         return;
       }
       renderDetail();

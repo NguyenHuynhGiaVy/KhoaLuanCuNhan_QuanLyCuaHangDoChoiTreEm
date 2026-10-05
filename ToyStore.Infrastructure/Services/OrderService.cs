@@ -12,6 +12,7 @@ using ToyStore.Application.Interfaces.Repositories;
 
 using Microsoft.EntityFrameworkCore;
 using ToyStoreManagement.Infrastructure.Data;
+using ToyStoreManagement.Domain.Common;
 
 namespace ToyStoreManagement.Infrastructure.Services
 {
@@ -206,7 +207,7 @@ namespace ToyStoreManagement.Infrastructure.Services
                     .Where(x => x.ProductVariant.ProductId == productId)
                     .SumAsync(x => (int?)x.Quantity) ?? 0;
 
-                product.Status = totalQuantity > 0 ? 1 : 0;
+                ProductStockStatus.Synchronize(product, totalQuantity);
 
                 product.UpdatedAt = DateTime.UtcNow;
             }
@@ -414,7 +415,7 @@ namespace ToyStoreManagement.Infrastructure.Services
                     .Where(x => x.ProductVariant.ProductId == productId)
                     .SumAsync(x => (int?)x.Quantity) ?? 0;
 
-                product.Status = totalQuantity > 0 ? 1 : 0;
+                ProductStockStatus.Synchronize(product, totalQuantity);
 
                 product.UpdatedAt = DateTime.UtcNow;
             }

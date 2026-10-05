@@ -69,6 +69,14 @@ namespace ToyStoreManagement.Infrastructure.Data
 
         public DbSet<ReturnRequestDetail> ReturnRequestDetails { get; set; }
 
+        public DbSet<LiquidationReceipt> LiquidationReceipts { get; set; }
+
+        public DbSet<LiquidationReceiptDetail> LiquidationReceiptDetails { get; set; }
+
+        public DbSet<SupportConversation> SupportConversations { get; set; }
+
+        public DbSet<SupportMessage> SupportMessages { get; set; }
+
         protected override void OnModelCreating(ModelBuilder modelBuilder)
         {
             base.OnModelCreating(modelBuilder);
