@@ -1,4 +1,4 @@
-﻿using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Authorization;
 using ToyStoreManagement.Application.Interfaces.Services;
 
@@ -6,7 +6,7 @@ namespace ToyStoreManagement.API.Controllers
 {
     [Route("api/[controller]")]
     [ApiController]
-    [Authorize(Policy = "AdminOrManager")]
+    [Authorize(Policy = "StaffAccess")]
     public class DashboardController : ControllerBase
     {
         private readonly IDashboardService _dashboardService;

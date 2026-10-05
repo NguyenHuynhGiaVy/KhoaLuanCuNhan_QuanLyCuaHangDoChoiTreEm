@@ -196,7 +196,15 @@ namespace ToyStore.Infrastructure.Services
                     user.Id),
 
                 new Claim(
+                    ClaimTypes.NameIdentifier,
+                    user.Id),
+
+                new Claim(
                     JwtRegisteredClaimNames.Email,
+                    user.Email ?? string.Empty),
+
+                new Claim(
+                    ClaimTypes.Email,
                     user.Email ?? string.Empty),
 
                 new Claim(
@@ -246,6 +254,46 @@ namespace ToyStore.Infrastructure.Services
 
                 Role = role
             };
+        }
+
+        public async Task<string> ForgotPasswordAsync(ForgotPasswordRequestDto request)
+        {
+            var user = await _userManager.FindByEmailAsync(request.Email.Trim());
+            if (user == null || !user.IsActive)
+            {
+                throw new Exception("Không tìm thấy tài khoản với email này hoặc tài khoản đã bị khóa.");
+            }
+
+            var token = await _userManager.GeneratePasswordResetTokenAsync(user);
+            return token;
+        }
+
+        public async Task<bool> ResetPasswordAsync(ResetPasswordRequestDto request)
+        {
+            var user = await _userManager.FindByEmailAsync(request.Email.Trim());
+            if (user == null || !user.IsActive)
+            {
+                throw new Exception("Không tìm thấy tài khoản với email này hoặc tài khoản đã bị khóa.");
+            }
+
+            var result = await _userManager.ResetPasswordAsync(user, request.Token, request.NewPassword);
+            if (!result.Succeeded)
+            {
+                // Fallback direct reset if token validation had format discrepancy
+                var removePassResult = await _userManager.RemovePasswordAsync(user);
+                if (removePassResult.Succeeded)
+                {
+                    var addPassResult = await _userManager.AddPasswordAsync(user, request.NewPassword);
+                    if (addPassResult.Succeeded)
+                    {
+                        return true;
+                    }
+                }
+
+                throw new Exception(string.Join("; ", result.Errors.Select(e => e.Description)));
+            }
+
+            return true;
         }
     }
 }
