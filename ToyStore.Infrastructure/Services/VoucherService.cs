@@ -3,11 +3,13 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
+using Microsoft.EntityFrameworkCore;
 using ToyStoreManagement.Application.DTOs.Promotion;
 using ToyStoreManagement.Application.Interfaces.Repositories;
 using ToyStoreManagement.Application.Interfaces.Services;
 using ToyStoreManagement.Domain.Entities;
 using ToyStore.Application.Interfaces.Repositories;
+using ToyStoreManagement.Infrastructure.Data;
 
 namespace ToyStoreManagement.Infrastructure.Services
 {
@@ -18,19 +20,22 @@ namespace ToyStoreManagement.Infrastructure.Services
         private readonly IGenericRepository<Order> _orderRepository;
         private readonly IGenericRepository<Customer> _customerRepository;
         private readonly IUnitOfWork _unitOfWork;
+        private readonly ApplicationDbContext _context;
 
         public VoucherService(
             IVoucherRepository voucherRepository,
             IVoucherUsageRepository usageRepository,
             IGenericRepository<Order> orderRepository,
             IGenericRepository<Customer> customerRepository,
-            IUnitOfWork unitOfWork)
+            IUnitOfWork unitOfWork,
+            ApplicationDbContext context)
         {
             _voucherRepository = voucherRepository;
             _usageRepository = usageRepository;
             _orderRepository = orderRepository;
             _customerRepository = customerRepository;
             _unitOfWork = unitOfWork;
+            _context = context;
         }
 
         public async Task<IEnumerable<VoucherDto>> GetAllAsync()
@@ -82,23 +87,13 @@ namespace ToyStoreManagement.Infrastructure.Services
                 throw new Exception(
                     "Ngày bắt đầu phải trước ngày kết thúc.");
 
-            if (dto.DiscountValue < 0)
-                throw new Exception(
-                    "Giá trị giảm giá không được âm.");
-
-            if (dto.MaximumDiscount.HasValue &&
-                dto.MaximumDiscount.Value < 0)
-                throw new Exception(
-                    "Mức giảm tối đa không được âm.");
+            ValidateDiscount(dto.DiscountType, dto.DiscountValue,
+                dto.MaximumDiscount);
 
             if (dto.MinimumOrderValue.HasValue &&
                 dto.MinimumOrderValue.Value < 0)
                 throw new Exception(
                     "Giá trị đơn hàng tối thiểu không được âm.");
-
-            if (dto.RequiredPoints < 0)
-                throw new Exception(
-                    "Số điểm đổi voucher không được âm.");
 
             if (dto.UsageLimit < 0)
                 throw new Exception(
@@ -109,8 +104,11 @@ namespace ToyStoreManagement.Infrastructure.Services
                 throw new Exception(
                     "Giới hạn sử dụng mỗi khách hàng phải lớn hơn 0.");
 
+            ValidateRequiredPoints(dto.RequiredPoints);
+
             var existingVoucher =
-                await _voucherRepository.GetByCodeAsync(dto.Code);
+                await _voucherRepository.GetByCodeAsync(
+                    dto.Code.Trim().ToUpperInvariant());
 
             if (existingVoucher != null)
                 throw new Exception(
@@ -118,8 +116,8 @@ namespace ToyStoreManagement.Infrastructure.Services
 
             var voucher = new Voucher
             {
-                Code = dto.Code,
-                Name = dto.Name,
+                Code = dto.Code.Trim().ToUpperInvariant(),
+                Name = dto.Name.Trim(),
                 DiscountType = dto.DiscountType,
                 DiscountValue = dto.DiscountValue,
                 MaximumDiscount = dto.MaximumDiscount,
@@ -165,25 +163,16 @@ namespace ToyStoreManagement.Infrastructure.Services
                 throw new Exception(
                     "Ngày bắt đầu phải trước ngày kết thúc.");
 
-            if (dto.DiscountValue < 0)
-                throw new Exception(
-                    "Giá trị giảm giá không được âm.");
-
-            if (dto.MaximumDiscount.HasValue &&
-                dto.MaximumDiscount.Value < 0)
-                throw new Exception(
-                    "Mức giảm tối đa không được âm.");
+            ValidateDiscount(dto.DiscountType, dto.DiscountValue,
+                dto.MaximumDiscount);
 
             if (dto.MinimumOrderValue.HasValue &&
                 dto.MinimumOrderValue.Value < 0)
                 throw new Exception(
                     "Giá trị đơn hàng tối thiểu không được âm.");
 
-            if (dto.RequiredPoints < 0)
-                throw new Exception(
-                    "Số điểm đổi voucher không được âm.");
-
-            if (dto.UsageLimit < voucher.UsedCount)
+            if (dto.UsageLimit > 0
+                && dto.UsageLimit < voucher.UsedCount)
                 throw new Exception(
                     "UsageLimit không được nhỏ hơn số lượt đã sử dụng.");
 
@@ -192,7 +181,18 @@ namespace ToyStoreManagement.Infrastructure.Services
                 throw new Exception(
                     "Giới hạn sử dụng mỗi khách hàng phải lớn hơn 0.");
 
-            voucher.Name = dto.Name;
+            ValidateRequiredPoints(dto.RequiredPoints);
+
+            // Không biến voucher thường đã được dùng thành phần thưởng đổi điểm,
+            // hoặc ngược lại, vì sẽ làm thay đổi quyền đã cấp cho khách hàng.
+            if (voucher.RequiredPoints != dto.RequiredPoints
+                && (voucher.UsedCount > 0 || await _context.LoyaltyTransactions
+                    .AnyAsync(item => item.VoucherId == voucherId && item.TransactionType == 2)))
+            {
+                throw new Exception("Voucher đã phát sinh sử dụng hoặc đổi điểm nên không thể đổi hình thức phát hành.");
+            }
+
+            voucher.Name = dto.Name.Trim();
             voucher.DiscountType = dto.DiscountType;
             voucher.DiscountValue = dto.DiscountValue;
             voucher.MaximumDiscount = dto.MaximumDiscount;
@@ -217,6 +217,31 @@ namespace ToyStoreManagement.Infrastructure.Services
             return result == null
                 ? null
                 : MapToDto(result);
+        }
+
+        private static void ValidateDiscount(
+            int discountType,
+            decimal discountValue,
+            decimal? maximumDiscount)
+        {
+            if (discountType is not 0 and not 1)
+                throw new Exception("Loại giảm giá không hợp lệ.");
+
+            if (discountValue <= 0)
+                throw new Exception("Giá trị giảm giá phải lớn hơn 0.");
+
+            if (discountType == 0 && discountValue > 100)
+                throw new Exception(
+                    "Voucher giảm theo phần trăm không được vượt quá 100%.");
+
+            if (maximumDiscount.HasValue && maximumDiscount.Value < 0)
+                throw new Exception("Mức giảm tối đa không được âm.");
+        }
+
+        private static void ValidateRequiredPoints(int requiredPoints)
+        {
+            if (requiredPoints < 0)
+                throw new Exception("Số điểm cần đổi không được âm.");
         }
 
         public async Task<bool> DeleteAsync(int voucherId)
@@ -282,7 +307,8 @@ namespace ToyStoreManagement.Infrastructure.Services
                 throw new Exception(
                     "Voucher không nằm trong thời gian hiệu lực.");
 
-            if (voucher.UsageLimit > 0 &&
+            var isRewardVoucher = voucher.RequiredPoints > 0;
+            if (!isRewardVoucher && voucher.UsageLimit > 0 &&
                 voucher.UsedCount >= voucher.UsageLimit)
                 throw new Exception(
                     "Voucher đã hết lượt sử dụng.");
@@ -306,7 +332,26 @@ namespace ToyStoreManagement.Infrastructure.Services
                     "Đơn hàng chưa đạt giá trị tối thiểu để sử dụng voucher.");
             }
 
-            if (customerId.HasValue &&
+            if (isRewardVoucher)
+            {
+                if (!customerId.HasValue)
+                    throw new Exception("Voucher đổi điểm chỉ áp dụng cho tài khoản đã đổi voucher.");
+
+                var hasRedeemed = await _context.LoyaltyTransactions.AnyAsync(item =>
+                    item.CustomerId == customerId.Value
+                    && item.VoucherId == voucherId
+                    && item.TransactionType == 2);
+                if (!hasRedeemed)
+                    throw new Exception("Bạn cần đổi voucher này bằng điểm trước khi sử dụng.");
+
+                var hasUsedReward = await _context.VoucherUsages.AnyAsync(usage =>
+                    usage.VoucherId == voucherId
+                    && usage.CustomerId == customerId.Value);
+                if (hasUsedReward)
+                    throw new Exception("Voucher đổi điểm này đã được sử dụng.");
+            }
+
+            if (!isRewardVoucher && customerId.HasValue &&
                 voucher.UsageLimitPerCustomer.HasValue)
             {
                 var customerUsages =
@@ -347,7 +392,8 @@ namespace ToyStoreManagement.Infrastructure.Services
 
             await _usageRepository.AddAsync(usage);
 
-            voucher.UsedCount++;
+            if (!isRewardVoucher)
+                voucher.UsedCount++;
 
             _voucherRepository.Update(voucher);
 

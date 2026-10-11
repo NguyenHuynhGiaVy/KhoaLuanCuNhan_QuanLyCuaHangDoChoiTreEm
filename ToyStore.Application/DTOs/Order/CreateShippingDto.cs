@@ -14,5 +14,7 @@ namespace ToyStoreManagement.Application.DTOs.Order
         public string? TrackingCode { get; set; }
         public int ShippingMethod { get; set; }
         public decimal ShippingFee { get; set; }
+        // Nhân viên có thể điều chỉnh ETA, nếu để trống hệ thống sẽ tự ước tính.
+        public DateTime? EstimatedDeliveryAt { get; set; }
     }
 }

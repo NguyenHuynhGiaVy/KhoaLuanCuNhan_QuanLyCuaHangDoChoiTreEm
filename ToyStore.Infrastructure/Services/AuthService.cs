@@ -6,12 +6,15 @@ using System.Threading.Tasks;
 using System.IdentityModel.Tokens.Jwt;
 using System.Security.Claims;
 using Microsoft.AspNetCore.Identity;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.IdentityModel.Tokens;
 using ToyStore.Application.DTOs.Auth;
 using ToyStore.Application.Interfaces.Services;
 using ToyStoreManagement.Domain.Identity;
 using ToyStore.Domain.Identity;
+using ToyStoreManagement.Domain.Entities;
+using ToyStoreManagement.Infrastructure.Data;
 
 namespace ToyStore.Infrastructure.Services
 {
@@ -19,32 +22,52 @@ namespace ToyStore.Infrastructure.Services
     {
         private readonly UserManager<ApplicationUser> _userManager;
         private readonly IConfiguration _configuration;
+        private readonly ApplicationDbContext _context;
 
         public AuthService(
             UserManager<ApplicationUser> userManager,
-            IConfiguration configuration)
+            IConfiguration configuration,
+            ApplicationDbContext context)
         {
             _userManager = userManager;
             _configuration = configuration;
+            _context = context;
         }
 
         public async Task<AuthResponseDto?> RegisterAsync(
             RegisterRequestDto request)
         {
+            if (string.IsNullOrWhiteSpace(request.FullName)
+                || string.IsNullOrWhiteSpace(request.Email)
+                || string.IsNullOrWhiteSpace(request.PhoneNumber))
+            {
+                throw new Exception("Vui lòng nhập đầy đủ họ tên, email và số điện thoại.");
+            }
+
+            var email = request.Email.Trim();
+            var phoneNumber = request.PhoneNumber.Trim();
             var existingUser = await _userManager.FindByEmailAsync(
-                request.Email);
+                email);
 
             if (existingUser != null)
             {
                 return null;
             }
 
+            // Không tự ghép tài khoản mới với hồ sơ cũ dựa vào số điện thoại.
+            // Điều đó có thể làm lộ đơn hàng và điểm thưởng của người khác.
+            if (await _context.Customers.AsNoTracking()
+                .AnyAsync(customer => customer.Phone == phoneNumber))
+            {
+                throw new Exception("Số điện thoại này đã thuộc về một hồ sơ khách hàng khác.");
+            }
+
             var user = new ApplicationUser
             {
-                UserName = request.Email,
-                Email = request.Email,
-                FullName = request.FullName,
-                PhoneNumber = request.PhoneNumber,
+                UserName = email,
+                Email = email,
+                FullName = request.FullName.Trim(),
+                PhoneNumber = phoneNumber,
                 IsActive = true
             };
 
@@ -60,9 +83,36 @@ namespace ToyStore.Infrastructure.Services
                         result.Errors.Select(x => x.Description)));
             }
 
-            await _userManager.AddToRoleAsync(
+            var roleResult = await _userManager.AddToRoleAsync(
                 user,
                 "Customer");
+
+            if (!roleResult.Succeeded)
+            {
+                await _userManager.DeleteAsync(user);
+                throw new Exception(string.Join("; ", roleResult.Errors.Select(error => error.Description)));
+            }
+
+            try
+            {
+                _context.Customers.Add(new Customer
+                {
+                    FullName = user.FullName ?? request.FullName.Trim(),
+                    Phone = phoneNumber,
+                    Email = email,
+                    UserId = user.Id,
+                    Address = string.Empty,
+                    LoyaltyPoint = 0,
+                    Status = 1,
+                    CreatedAt = DateTime.UtcNow
+                });
+                await _context.SaveChangesAsync();
+            }
+            catch
+            {
+                await _userManager.DeleteAsync(user);
+                throw;
+            }
 
             return await GenerateAuthResponseAsync(user);
         }

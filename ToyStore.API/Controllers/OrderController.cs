@@ -89,12 +89,19 @@ namespace ToyStoreManagement.API.Controllers
 
         // POST: api/Order
         [HttpPost]
-        [AllowAnonymous]
+        [Authorize(Policy = "CustomerAccess")]
         public async Task<IActionResult> Create(
             [FromBody] CreateOrderDto dto)
         {
             try
             {
+                var customerId = await GetCurrentCustomerId();
+                if (!customerId.HasValue)
+                    return BadRequest(new { message = "Vui lòng hoàn thiện hồ sơ khách hàng trước khi đặt hàng." });
+
+                // Không tin CustomerId từ trình duyệt: máy chủ luôn lấy hồ sơ của
+                // chính tài khoản đang đăng nhập để tránh tạo đơn nhầm khách hàng.
+                dto.CustomerId = customerId.Value;
                 var result =
                     await _orderService.CreateAsync(dto);
 
@@ -160,6 +167,9 @@ namespace ToyStoreManagement.API.Controllers
         [HttpGet("{orderId}/payment")]
         public async Task<IActionResult> GetPayment(int orderId)
         {
+            if (!await CanAccessOrderAsync(orderId))
+                return Forbid();
+
             var result =
                 await _orderService.GetPaymentAsync(orderId);
 
@@ -196,6 +206,9 @@ namespace ToyStoreManagement.API.Controllers
         [HttpGet("{orderId}/shipping")]
         public async Task<IActionResult> GetShipping(int orderId)
         {
+            if (!await CanAccessOrderAsync(orderId))
+                return Forbid();
+
             var result =
                 await _orderService.GetShippingAsync(orderId);
 
@@ -241,6 +254,19 @@ namespace ToyStoreManagement.API.Controllers
                 .Where(x => x.UserId == userId)
                 .Select(x => (int?)x.CustomerId)
                 .FirstOrDefaultAsync();
+        }
+
+        private async Task<bool> CanAccessOrderAsync(int orderId)
+        {
+            if (IsStaff)
+                return true;
+
+            var customerId = await GetCurrentCustomerId();
+            if (!customerId.HasValue)
+                return false;
+
+            var order = await _orderService.GetByIdAsync(orderId);
+            return order?.CustomerId == customerId.Value;
         }
     }
 }

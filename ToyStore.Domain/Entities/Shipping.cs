@@ -20,6 +20,16 @@ namespace ToyStoreManagement.Domain.Entities
 
         public decimal ShippingFee { get; set; }
 
+        // Mã lô giúp nhân viên gom các đơn cùng tuyến giao hàng.
+        public string? DeliveryBatchCode { get; set; }
+
+        // Giữ lại cho dữ liệu cũ; giao diện mới dùng khoảng ngày bên dưới.
+        public DateTime? EstimatedDeliveryAt { get; set; }
+
+        public DateTime? EstimatedDeliveryFromDate { get; set; }
+
+        public DateTime? EstimatedDeliveryToDate { get; set; }
+
         public int Status { get; set; }
 
         public DateTime? ShippedAt { get; set; }

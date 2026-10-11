@@ -11,6 +11,10 @@
     try { return JSON.parse(localStorage.getItem('toyStorePendingOrder') || 'null'); }
     catch { return null; }
   };
+  const getCurrentUserId = () => {
+    try { return JSON.parse(localStorage.getItem('toyStoreUser') || 'null')?.userId || null; }
+    catch { return null; }
+  };
 
   function recordPurchasedProducts(items) {
     let user;
@@ -60,6 +64,11 @@
       showEmpty();
       return;
     }
+    if (!pending.accountUserId || pending.accountUserId !== getCurrentUserId()) {
+      localStorage.removeItem('toyStorePendingOrder');
+      showEmpty('Phiên xác nhận đơn không còn hiệu lực.');
+      return;
+    }
 
     const originalSubtotal = pending.items.reduce((sum, item) =>
       sum + Number(item.originalPrice ?? item.price ?? 0) * Number(item.quantity || 1), 0);
@@ -69,7 +78,12 @@
     const voucherDiscount = Math.min(subtotal, Math.max(0, Number(pending.voucherDiscount || 0)));
     const shippingFee = subtotal >= 500000 ? 0 : 30000;
     const total = Math.max(0, subtotal - voucherDiscount + shippingFee);
-    const paymentName = pending.paymentMethod === 'Banking' ? 'Chuyển khoản ngân hàng' : 'Thanh toán khi nhận hàng (COD)';
+    const isZaloPay = pending.paymentMethod === 'ZaloPay';
+    const paymentName = isZaloPay
+      ? 'ZaloPay (thanh toán online)'
+      : pending.paymentMethod === 'Banking'
+        ? 'Chuyển khoản ngân hàng'
+        : 'Thanh toán khi nhận hàng (COD)';
     const points = Math.floor(total / 10000);
 
     root.innerHTML = `
@@ -101,7 +115,7 @@
           <div class="review-total-row"><span>Thanh toán</span><strong>${escapeHtml(paymentName)}</strong></div>
           <div class="review-total-row total"><span>Tổng cộng</span><strong>${money(total)}</strong></div>
           <div class="review-reward-note">🎁 Điểm thưởng dự kiến: <strong>+${points} điểm</strong>. Điểm chỉ được cộng khi đơn hàng hoàn tất.</div>
-          <button class="review-primary" id="placeOrderBtn">Đặt hàng</button>
+          <button class="review-primary" id="placeOrderBtn">${isZaloPay ? 'Tiếp tục thanh toán ZaloPay' : 'Đặt hàng'}</button>
           <button class="review-secondary" id="backToCheckoutBtn">Quay lại chỉnh sửa</button>
         </aside>
       </div>`;
@@ -112,7 +126,9 @@
 
   async function placeOrder(pending) {
     const token = localStorage.getItem('toyStoreToken');
-    if (!token) {
+    const currentUserId = getCurrentUserId();
+    if (!token || !currentUserId || pending.accountUserId !== currentUserId) {
+      localStorage.removeItem('toyStorePendingOrder');
       showToast('Phiên đăng nhập đã hết. Vui lòng đăng nhập lại.', 'error');
       return;
     }
@@ -125,28 +141,77 @@
         headers: { 'Authorization': `Bearer ${token}` }
       });
       const profile = await profileResponse.json().catch(() => ({}));
-      if (!profileResponse.ok || !profile.customerId) throw new Error('Vui lòng hoàn thiện hồ sơ khách hàng trước khi đặt hàng.');
+      if (!profileResponse.ok || !profile.customerId || profile.userId !== currentUserId) {
+        throw new Error('Phiên tài khoản đã thay đổi. Vui lòng tạo lại đơn hàng.');
+      }
 
-      const payload = {
-        customerId: profile.customerId,
-        paymentMethod: pending.paymentMethod === 'Banking' ? 1 : 0,
-        note: pending.note || '',
-        voucherCode: pending.voucherCode || null,
-        shipping: {
-          receiverName: pending.customer.fullName,
-          receiverPhone: pending.customer.phone,
-          address: pending.customer.address,
-          shippingMethod: 0
-        },
-        orderDetails: pending.orderDetails
-      };
-      const response = await fetch(`${API_BASE}/api/Order`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
-        body: JSON.stringify(payload)
-      });
-      const result = await response.json().catch(() => ({}));
-      if (!response.ok) throw new Error(result.message || result.title || 'Không thể tạo đơn hàng.');
+      const isZaloPay = pending.paymentMethod === 'ZaloPay';
+      let result;
+      if (isZaloPay && pending.createdOrderId) {
+        result = { orderId: pending.createdOrderId, orderCode: pending.createdOrderCode };
+      } else {
+        const payload = {
+          customerId: profile.customerId,
+          paymentMethod: isZaloPay ? 2 : pending.paymentMethod === 'Banking' ? 1 : 0,
+          note: pending.note || '',
+          voucherCode: pending.voucherCode || null,
+          shipping: {
+            receiverName: pending.customer.fullName,
+            receiverPhone: pending.customer.phone,
+            address: pending.customer.address,
+            shippingMethod: 0
+          },
+          orderDetails: pending.orderDetails
+        };
+        const response = await fetch(`${API_BASE}/api/Order`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+          body: JSON.stringify(payload)
+        });
+        result = await response.json().catch(() => ({}));
+        if (!response.ok) throw new Error(result.message || result.title || 'Không thể tạo đơn hàng.');
+
+        if (isZaloPay) {
+          pending.createdOrderId = result.orderId;
+          pending.createdOrderCode = result.orderCode;
+          localStorage.setItem('toyStorePendingOrder', JSON.stringify(pending));
+        }
+      }
+
+      if (isZaloPay) {
+        if (!result.orderId) throw new Error('Không xác định được đơn hàng để thanh toán ZaloPay.');
+        if (pending.zaloPaymentUrl) {
+          window.location.assign(pending.zaloPaymentUrl);
+          return;
+        }
+        if (button) button.textContent = 'Đang chuyển đến ZaloPay...';
+
+        const zaloResponse = await fetch(`${API_BASE}/api/ZaloPay/orders/${encodeURIComponent(result.orderId)}/create`, {
+          method: 'POST',
+          headers: { 'Authorization': `Bearer ${token}` }
+        });
+        const zaloPayment = await zaloResponse.json().catch(() => ({}));
+        if (zaloPayment.isPaid) {
+          recordPurchasedProducts(pending.items);
+          localStorage.removeItem('toyStorePendingOrder');
+          localStorage.removeItem('toyStoreCart');
+          window.location.assign(`/order-review.html?zalopay=return&orderId=${encodeURIComponent(result.orderId)}`);
+          return;
+        }
+        if (zaloResponse.status === 409) {
+          window.location.assign(`/order-review.html?zalopay=return&orderId=${encodeURIComponent(result.orderId)}`);
+          return;
+        }
+        if (!zaloResponse.ok || !zaloPayment.orderUrl) {
+          throw new Error(zaloPayment.message || 'Không thể khởi tạo thanh toán ZaloPay.');
+        }
+
+        // Chỉ xoá giỏ sau khi ZaloPay xác nhận thành công, để khách có thể quay lại thử lại.
+        pending.zaloPaymentUrl = zaloPayment.orderUrl;
+        localStorage.setItem('toyStorePendingOrder', JSON.stringify(pending));
+        window.location.assign(zaloPayment.orderUrl);
+        return;
+      }
 
       recordPurchasedProducts(pending.items);
       localStorage.removeItem('toyStorePendingOrder');
@@ -178,5 +243,64 @@
     }
   }
 
-  renderReview();
+  async function renderZaloPayReturn() {
+    const params = new URLSearchParams(window.location.search);
+    if (params.get('zalopay') !== 'return') return false;
+
+    const orderId = Number(params.get('orderId'));
+    const token = localStorage.getItem('toyStoreToken');
+    if (!Number.isInteger(orderId) || orderId <= 0 || !token) {
+      showEmpty('Không thể kiểm tra kết quả thanh toán ZaloPay.');
+      return true;
+    }
+
+    root.innerHTML = `
+      <section class="review-card review-empty">
+        <div style="font-size:44px;">⌛</div>
+        <h1>Đang kiểm tra thanh toán ZaloPay...</h1>
+        <p style="color:var(--text-muted);">Vui lòng chờ trong giây lát.</p>
+      </section>`;
+
+    try {
+      const response = await fetch(`${API_BASE}/api/ZaloPay/orders/${encodeURIComponent(orderId)}/status`, {
+        headers: { 'Authorization': `Bearer ${token}` }
+      });
+      const payment = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(payment.message || 'Không thể kiểm tra trạng thái thanh toán.');
+
+      if (payment.isPaid) {
+        const pending = getPendingOrder();
+        if (pending?.accountUserId === getCurrentUserId()) {
+          recordPurchasedProducts(pending.items);
+          localStorage.removeItem('toyStorePendingOrder');
+          localStorage.removeItem('toyStoreCart');
+        }
+        root.innerHTML = `
+          <section class="review-card review-success">
+            <div class="mark">✓</div>
+            <h1>Thanh toán ZaloPay thành công!</h1>
+            <p style="color:var(--text-muted);margin:8px 0 20px;">Đơn hàng <strong>#${escapeHtml(payment.orderCode || orderId)}</strong> đã được ghi nhận. Cửa hàng sẽ xử lý đơn trong thời gian sớm nhất.</p>
+            <a class="review-primary" href="/customer.html" style="display:inline-flex;align-items:center;width:auto;padding:12px 24px;text-decoration:none;">Xem đơn hàng của tôi</a>
+          </section>`;
+        return true;
+      }
+
+      root.innerHTML = `
+        <section class="review-card review-empty">
+          <div style="font-size:44px;">⌛</div>
+          <h1>Thanh toán ZaloPay chưa hoàn tất</h1>
+          <p style="color:var(--text-muted);">Đơn hàng <strong>#${escapeHtml(payment.orderCode || orderId)}</strong> đang chờ ZaloPay xác nhận. Bạn có thể kiểm tra lại sau ít phút.</p>
+          <button type="button" class="review-primary" id="checkZaloPayStatusBtn" style="width:auto;padding:12px 24px;">Kiểm tra lại</button>
+          <a class="review-secondary" href="/customer.html" style="display:inline-flex;align-items:center;width:auto;padding:12px 24px;text-decoration:none;margin-top:12px;">Xem đơn hàng của tôi</a>
+        </section>`;
+      document.getElementById('checkZaloPayStatusBtn')?.addEventListener('click', renderZaloPayReturn);
+    } catch (error) {
+      showEmpty(error.message || 'Không thể kiểm tra trạng thái thanh toán ZaloPay.');
+    }
+    return true;
+  }
+
+  renderZaloPayReturn().then(isZaloPayReturn => {
+    if (!isZaloPayReturn) renderReview();
+  });
 })();

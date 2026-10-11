@@ -59,7 +59,7 @@ const MODULES = {
   orders: {
     title: 'Đơn hàng', kicker: 'VẬN HÀNH & NHẬP HÀNG',
     endpoint: 'Order',
-    columns: ['Mã đơn', 'Khách hàng', 'SĐT', 'Ngày đặt', 'Giá trị', 'Thanh toán', 'Trạng thái'],
+    columns: ['Mã đơn', 'Khách hàng', 'SĐT', 'Ngày đặt', 'Lô giao', 'Dự kiến giao', 'Giá trị', 'Thanh toán', 'Trạng thái'],
     canAdd: false, canEdit: true, canDelete: false
   },
   suppliers: {
@@ -77,13 +77,13 @@ const MODULES = {
   promotions: {
     title: 'Khuyến mãi', kicker: 'MARKETING',
     endpoint: 'Promotion',
-    columns: ['Tên chương trình', 'Loại giảm giá', 'Giá trị', 'Thời gian áp dụng', 'Trạng thái'],
+    columns: ['Tên chương trình', 'Sản phẩm áp dụng', 'Loại giảm giá', 'Giá trị', 'Thời gian áp dụng', 'Trạng thái'],
     canAdd: true, canEdit: true, canDelete: true
   },
   vouchers: {
     title: 'Voucher', kicker: 'MARKETING',
     endpoint: 'Voucher',
-    columns: ['Mã voucher', 'Tên voucher', 'Giá trị giảm', 'Điểm đổi', 'Đơn tối thiểu', 'Hạn dùng', 'Trạng thái'],
+    columns: ['Mã voucher', 'Tên voucher', 'Giá trị giảm', 'Đã dùng / giới hạn', 'Đơn tối thiểu', 'Hiệu lực', 'Trạng thái'],
     canAdd: true, canEdit: true, canDelete: true
   },
   customers: {
@@ -116,6 +116,16 @@ const esc = v => String(v ?? '').replace(/[&<>'"]/g, c => ({ '&': '&amp;', '<': 
 const money = v => v == null ? '—' : Number(v).toLocaleString('vi-VN') + ' đ';
 const fmtDate = s => s ? new Date(s).toLocaleDateString('vi-VN') : '—';
 const fmtDateTime = s => s ? new Date(s).toLocaleString('vi-VN') : '—';
+const fmtDeliveryWindow = (from, to) => {
+  if (!from) return 'Đang xác nhận';
+  const formatDateOnly = value => {
+    const match = String(value).match(/^(\d{4})-(\d{2})-(\d{2})/);
+    return match ? `${match[3]}/${match[2]}/${match[1]}` : fmtDate(value);
+  };
+  const fromText = formatDateOnly(from);
+  const toText = to ? formatDateOnly(to) : '';
+  return toText && toText !== fromText ? `${fromText} – ${toText}` : fromText;
+};
 const productVariantsOf = product => product?.productVariants || product?.variants || [];
 const hasAvailableStock = product => productVariantsOf(product)
   .some(variant => Number(variant.availableQuantity || 0) > 0);
@@ -831,12 +841,9 @@ window.submitLiquidationCampaign = async function(event, variantId) {
         endDate: new Date(`${endDateValue}T23:59:59`).toISOString(),
         priority: 100,
         canCombine: false,
+        variantIds: [item.variantId],
         status: 1
       })
-    });
-    await api(`Promotion/${promotion.promotionId}/products`, {
-      method: 'POST',
-      body: JSON.stringify({ promotionId: promotion.promotionId, variantId: item.variantId })
     });
     toast('Đã tạo ưu đãi thanh lý và gắn đúng biến thể sản phẩm.', 'success');
     renderLiquidation();
@@ -1237,6 +1244,8 @@ function getRowCells(key, r) {
         esc(r.customerName || r.shipping?.receiverName || 'Khách vãng lai'),
         esc(r.phoneNumber || r.shipping?.receiverPhone || '—'),
         fmtDate(r.orderDate || r.createdAt),
+        `<code style="background:var(--slate-100);padding:3px 6px;border-radius:4px;">${esc(r.shipping?.deliveryBatchCode || '—')}</code>`,
+        fmtDeliveryWindow(r.shipping?.estimatedDeliveryFromDate || r.shipping?.estimatedDeliveryAt, r.shipping?.estimatedDeliveryToDate),
         `<strong style="color:var(--primary);">${money(r.finalAmount || r.totalAmount)}</strong>`,
         pill(r.paymentStatus === 1 ? 'Đã thanh toán' : 'Chưa thanh toán', r.paymentStatus === 1 ? 'success' : 'neutral'),
         pill(ORDER_STATUS_LABELS[r.status] || 'Đang xử lý', r.status === 4 ? 'success' : (r.status === 5 ? 'danger' : 'warning'))
@@ -1264,8 +1273,12 @@ function getRowCells(key, r) {
 
     case 'promotions':
       const promotionActive = r.status === undefined ? r.isActive === true : r.status === 1;
+      const promotionProducts = r.promotionProducts || [];
       return [
         `<strong>${esc(r.name)}</strong><br><small style="color:var(--slate-400);">${esc(r.description || '')}</small>`,
+        promotionProducts.length
+          ? `${promotionProducts.slice(0, 2).map(product => `<small>${esc(product.productName || product.sku || `SKU #${product.variantId}`)}</small>`).join('<br>')}${promotionProducts.length > 2 ? `<br><small>+${promotionProducts.length - 2} biến thể</small>` : ''}`
+          : '<span style="color:var(--danger)">Chưa chọn sản phẩm</span>',
         r.promotionType === 0 ? 'Phần trăm (%)' : 'Số tiền cố định (đ)',
         `<strong>${r.promotionType === 0 ? `${r.discountValue}%` : money(r.discountValue)}</strong>`,
         `${fmtDate(r.startDate)} - ${fmtDate(r.endDate)}`,
@@ -1274,13 +1287,17 @@ function getRowCells(key, r) {
 
     case 'vouchers':
       const voucherActive = r.status === undefined ? r.isActive === true : r.status === 1;
+      const usageLimit = Number(r.usageLimit ?? r.maxUsage ?? 0);
+      const usedCount = Number(r.usedCount || 0);
       return [
         `<code style="background:var(--primary-light);color:var(--primary);padding:4px 8px;border-radius:6px;font-weight:700;">${esc(r.code)}</code>`,
-        `<strong>${esc(r.name || r.code)}</strong>`,
+        `<strong>${esc(r.name || r.code)}</strong>${Number(r.requiredPoints || 0) > 0 ? `<br><small style="color:var(--primary);font-weight:700;">Đổi ${Number(r.requiredPoints).toLocaleString('vi-VN')} điểm</small>` : ''}`,
         `<strong>${r.discountType === 0 ? `${r.discountValue}%` : money(r.discountValue)}</strong>`,
-        r.requiredPoints > 0 ? `<strong style="color:var(--secondary);">${Number(r.requiredPoints).toLocaleString('vi-VN')} điểm</strong>` : 'Voucher thường',
+        usageLimit > 0
+          ? `<strong>${usedCount}/${usageLimit}</strong><br><small>Còn ${Math.max(0, usageLimit - usedCount)} lượt</small>`
+          : `<strong>${usedCount}</strong><br><small>Không giới hạn</small>`,
         money(r.minimumOrderValue ?? r.minOrderAmount ?? 0),
-        fmtDate(r.endDate || r.expiryDate),
+        `${fmtDate(r.startDate)} - ${fmtDate(r.endDate || r.expiryDate)}`,
         pill(voucherActive ? 'Khả dụng' : 'Khóa', voucherActive ? 'success' : 'danger')
       ];
 
@@ -1409,20 +1426,9 @@ function renderProductVariantEditor(variant = {}) {
           <input type="text" class="input-control variant-sku" value="${esc(variant.sku)}" required placeholder="Ví dụ: LEGO-CITY-RED">
         </div>
         <div class="form-group">
-          <label>Trạng thái biến thể</label>
-          <select class="input-control variant-status">
-            <option value="1" ${(variant.status ?? 1) === 1 ? 'selected' : ''}>Đang kinh doanh</option>
-            <option value="0" ${variant.status === 0 ? 'selected' : ''}>Tạm ngưng</option>
-          </select>
-        </div>
-        <div class="form-group">
           <label>Giá bán biến thể (VNĐ)</label>
           <input type="number" min="0" step="1000" class="input-control variant-price" value="${variant.price ?? ''}" ${canSetPrice ? '' : 'disabled'} title="${esc(priceHint)}" placeholder="Nhập sau khi có tồn kho">
           <small style="display:block;margin-top:5px;color:${canSetPrice ? 'var(--success)' : 'var(--slate-500)'};">${esc(priceHint)}</small>
-        </div>
-        <div class="form-group">
-          <label>Giá vốn tham khảo (VNĐ)</label>
-          <input type="number" min="0" step="1000" class="input-control variant-cost-price" value="${variant.costPrice ?? ''}" placeholder="Có thể cập nhật khi lập phiếu nhập">
         </div>
         <div class="form-group">
           <label>Khối lượng (gram)</label>
@@ -1435,7 +1441,7 @@ function renderProductVariantEditor(variant = {}) {
       </div>
       <div style="margin-top:12px;">
         <div style="display:flex;justify-content:space-between;gap:12px;align-items:center;">
-          <label style="font-weight:700;">Thuộc tính biến thể</label>
+          <label style="font-weight:700;">Thông số & điểm khác biệt của biến thể</label>
           <button type="button" class="secondary-btn" style="padding:7px 10px;" onclick="addVariantAttributeRow('${rowKey}')">+ Thêm thuộc tính</button>
         </div>
         <div id="variantAttributes_${rowKey}" class="variant-attributes">
@@ -1453,7 +1459,7 @@ function renderProductVariantsSection(product) {
       <div style="display:flex;justify-content:space-between;gap:16px;align-items:flex-start;">
         <div>
           <h3 style="margin:0;">Biến thể sản phẩm *</h3>
-          <p style="margin:5px 0 0;color:var(--slate-500);font-size:13px;">Thêm SKU và các thuộc tính tự do cho từng phiên bản. Giá bán chỉ mở khi biến thể đã có tồn kho.</p>
+          <p style="margin:5px 0 0;color:var(--slate-500);font-size:13px;">Khai báo đúng các tổ hợp có bán, ví dụ Đỏ-S và Đỏ-M; không cần ép mọi màu phải có mọi kích cỡ. Khách sẽ chọn màu và kích cỡ độc lập. Giá vốn được lấy từ phiếu nhập, giá bán chỉ mở sau khi đã có tồn kho.</p>
         </div>
         <button type="button" class="secondary-btn" onclick="addProductVariantRow()">+ Thêm biến thể</button>
       </div>
@@ -1515,13 +1521,11 @@ function collectProductVariants() {
     });
 
     const priceInput = row.querySelector('.variant-price');
-    const costPriceInput = row.querySelector('.variant-cost-price');
     const weightInput = row.querySelector('.variant-weight');
     const price = !priceInput.disabled && priceInput.value !== '' ? Number(priceInput.value) : null;
-    const costPrice = costPriceInput.value !== '' ? Number(costPriceInput.value) : null;
     const weight = weightInput.value !== '' ? Number(weightInput.value) : null;
-    if ((price !== null && price < 0) || (costPrice !== null && costPrice < 0) || (weight !== null && weight < 0)) {
-      throw new Error('Giá và khối lượng không được là số âm.');
+    if ((price !== null && price < 0) || (weight !== null && weight < 0)) {
+      throw new Error('Giá bán và khối lượng không được là số âm.');
     }
 
     variants.push({
@@ -1529,24 +1533,84 @@ function collectProductVariants() {
       sku,
       attributes,
       price,
-      costPrice,
       weight,
-      imageUrl: row.querySelector('.variant-image-url')?.value.trim() || null,
-      status: Number(row.querySelector('.variant-status')?.value || 1)
+      imageUrl: row.querySelector('.variant-image-url')?.value.trim() || null
     });
   });
+
+  if (variants.length > 1) {
+    if (variants.some(variant => variant.attributes.length === 0)) {
+      throw new Error('Khi có nhiều biến thể, mỗi biến thể cần ít nhất một thông số mô tả điểm khác biệt.');
+    }
+    const definitions = variants.map(variant => variant.attributes
+      .map(attribute => `${attribute.attributeName.trim().toUpperCase()}:${attribute.attributeValue.trim().toUpperCase()}`)
+      .sort()
+      .join('|'));
+    if (new Set(definitions).size !== definitions.length) {
+      throw new Error('Các biến thể đang có thông số giống nhau. Hãy mô tả điểm khác biệt của từng biến thể.');
+    }
+  }
   return variants;
+}
+
+function productAgeInputValue(months) {
+  if (months === null || months === undefined || months === '') return '';
+  const value = Number(months);
+  if (!Number.isFinite(value) || value < 0) return '';
+  return value > 0 && value % 12 === 0 ? value / 12 : value;
+}
+
+function productAgeInputUnit(months) {
+  const value = Number(months);
+  return value > 0 && value % 12 === 0 ? 'year' : 'month';
+}
+
+function ageToMonths(value, unit) {
+  if (value === '' || value === null || value === undefined) return null;
+  const number = Number(value);
+  if (!Number.isInteger(number) || number < 0) {
+    throw new Error('Độ tuổi phải là số nguyên không âm.');
+  }
+  return unit === 'year' ? number * 12 : number;
+}
+
+function renderPromotionVariantChoices(promotion = {}) {
+  const selectedVariantIds = new Set((promotion.promotionProducts || [])
+    .map(item => Number(item.variantId)));
+  const variants = (ref.products || []).flatMap(product => productVariantsOf(product)
+    .map(variant => ({
+      id: Number(variant.variantId || variant.id),
+      productName: product.name || 'Sản phẩm',
+      sku: variant.sku || `SKU #${variant.variantId || variant.id}`,
+      price: variant.price
+    })))
+    .filter(variant => variant.id > 0);
+
+  if (!variants.length) {
+    return '<p style="margin:0;color:var(--danger);">Chưa có biến thể sản phẩm. Hãy tạo sản phẩm, sau đó thêm khuyến mãi.</p>';
+  }
+
+  return `<div style="max-height:220px;overflow:auto;border:1px solid var(--slate-200);border-radius:9px;padding:8px;background:white;">
+    ${variants.map(variant => `<label style="display:flex;gap:9px;align-items:flex-start;padding:8px;border-bottom:1px solid var(--slate-100);cursor:pointer;">
+      <input type="checkbox" name="promotionVariantIds" value="${variant.id}" ${selectedVariantIds.has(variant.id) ? 'checked' : ''}>
+      <span><strong>${esc(variant.productName)}</strong><br><small>SKU: ${esc(variant.sku)} · Giá gốc: ${money(variant.price)}</small></span>
+    </label>`).join('')}
+  </div>`;
 }
 
 function renderFormFields(key, r) {
   const v = r || {};
   switch (key) {
     case 'products': {
-      const canSetBasePrice = hasAvailableStock(v);
-      const basePriceHint = canSetBasePrice
-        ? 'Sản phẩm đã có tồn kho: có thể cập nhật giá bán cơ sở.'
-        : 'Chưa có tồn kho. Duyệt phiếu nhập NCC trước khi nhập giá bán cơ sở.';
+      const ageFromValue = productAgeInputValue(v.ageFrom);
+      const ageToValue = productAgeInputValue(v.ageTo);
+      const ageFromUnit = productAgeInputUnit(v.ageFrom);
+      const ageToUnit = productAgeInputUnit(v.ageTo);
       return `
+        <div class="form-section-card" style="margin:0 0 18px;background:var(--primary-light);border-color:#c7d2fe;">
+          <strong>Trình tự tạo sản phẩm</strong>
+          <p style="margin:6px 0 0;color:var(--slate-600);font-size:13px;">1. Tạo sản phẩm và nêu các biến thể → 2. Lập, duyệt phiếu nhập nhà cung cấp → 3. Khi tồn kho có sẵn, cập nhật giá bán ở đúng biến thể. Trạng thái kinh doanh được hệ thống tự xác định theo tồn kho.</p>
+        </div>
         <div class="form-grid-2">
           <div class="form-group full">
             <label>Tên sản phẩm đồ chơi *</label>
@@ -1573,25 +1637,14 @@ function renderFormFields(key, r) {
             </div>
           </div>
           <div class="form-group">
-            <label>Giá bán cơ sở (VNĐ)</label>
-            <input name="basePrice" type="number" min="0" step="1000" class="input-control" value="${v.basePrice ?? ''}" ${canSetBasePrice ? '' : 'disabled'} title="${esc(basePriceHint)}" placeholder="Nhập sau khi có tồn kho">
-            <small style="display:block;margin-top:5px;color:${canSetBasePrice ? 'var(--success)' : 'var(--slate-500)'};">${esc(basePriceHint)}</small>
-          </div>
-          <div class="form-group">
-            <label>Trạng thái kinh doanh</label>
-            <select name="status" class="input-control">
-              <option value="1" ${v.status === 1 || v.status === undefined ? 'selected' : ''}>Đang kinh doanh</option>
-              <option value="2" ${v.status === 2 ? 'selected' : ''}>Thanh lý / ngừng nhập mới</option>
-              <option value="3" ${v.status === 3 ? 'selected' : ''}>Hết hàng</option>
-              <option value="0" ${v.status === 0 ? 'selected' : ''}>Tạm ngưng</option>
-            </select>
-          </div>
-          <div class="form-group">
-            <label>Độ tuổi phù hợp (tháng)</label>
+            <label>Độ tuổi phù hợp</label>
             <div style="display:flex;gap:10px;">
-              <input name="ageFrom" type="number" min="0" class="input-control" value="${v.ageFrom || ''}" placeholder="Từ (tháng)">
-              <input name="ageTo" type="number" min="0" class="input-control" value="${v.ageTo || ''}" placeholder="Đến (tháng)">
+              <input name="ageFromValue" type="number" min="0" step="1" class="input-control" value="${ageFromValue}" placeholder="Từ">
+              <select name="ageFromUnit" class="input-control" style="max-width:100px;"><option value="month" ${ageFromUnit === 'month' ? 'selected' : ''}>tháng</option><option value="year" ${ageFromUnit === 'year' ? 'selected' : ''}>năm</option></select>
+              <input name="ageToValue" type="number" min="0" step="1" class="input-control" value="${ageToValue}" placeholder="Đến">
+              <select name="ageToUnit" class="input-control" style="max-width:100px;"><option value="month" ${ageToUnit === 'month' ? 'selected' : ''}>tháng</option><option value="year" ${ageToUnit === 'year' ? 'selected' : ''}>năm</option></select>
             </div>
+            <small style="display:block;margin-top:5px;color:var(--slate-500);">Hệ thống lưu theo tháng và tự quy đổi khi bạn chọn năm.</small>
           </div>
           <div class="form-group">
             <label>Giới tính phù hợp</label>
@@ -1691,6 +1744,10 @@ function renderFormFields(key, r) {
             <input name="discountValue" type="number" min="0" step="any" class="input-control" value="${v.discountValue || ''}" required placeholder="10 (nếu là %) hoặc 50000 (nếu là VNĐ)">
           </div>
           <div class="form-group">
+            <label>Mức giảm tối đa (đ)</label>
+            <input name="maximumDiscount" type="number" min="0" step="1000" class="input-control" value="${v.maximumDiscount ?? ''}" placeholder="Chỉ dùng khi giảm theo %">
+          </div>
+          <div class="form-group">
             <label>Ngày bắt đầu *</label>
             <input name="startDate" type="date" class="input-control" value="${v.startDate ? v.startDate.split('T')[0] : new Date().toISOString().split('T')[0]}" required>
           </div>
@@ -1699,15 +1756,16 @@ function renderFormFields(key, r) {
             <input name="endDate" type="date" class="input-control" value="${v.endDate ? v.endDate.split('T')[0] : new Date(Date.now() + 7*86400000).toISOString().split('T')[0]}" required>
           </div>
           <div class="form-group">
-            <label>Giá trị đơn hàng tối thiểu (đ)</label>
-            <input name="minOrderAmount" type="number" min="0" class="input-control" value="${v.minOrderAmount || 0}">
-          </div>
-          <div class="form-group">
             <label>Trạng thái</label>
             <select name="status" class="input-control">
               <option value="1" ${v.status === undefined || v.status === 1 ? 'selected' : ''}>Đang kích hoạt</option>
               <option value="0" ${v.status === 0 ? 'selected' : ''}>Tạm ngưng</option>
             </select>
+          </div>
+          <div class="form-group full">
+            <label>Sản phẩm áp dụng *</label>
+            <small style="display:block;margin:-3px 0 8px;color:var(--slate-500);">Chương trình tự động giảm giá cho toàn bộ biến thể được chọn; khách hàng không cần nhập mã.</small>
+            ${renderPromotionVariantChoices(v)}
           </div>
           <div class="form-group full">
             <label>Mô tả chương trình</label>
@@ -1719,9 +1777,13 @@ function renderFormFields(key, r) {
     case 'vouchers':
       return `
         <div class="form-grid-2">
+          <div class="form-group full" style="padding:11px 12px;border-radius:8px;background:var(--primary-light);color:var(--slate-700);font-size:13px;">
+            Nhập <b>0 điểm</b> cho voucher thông thường. Nhập số điểm lớn hơn 0 để khách đổi điểm lấy mã; mã đó chỉ dùng được bởi đúng khách đã đổi, một lần.
+          </div>
           <div class="form-group">
             <label>Mã Voucher (Code) *</label>
-            <input name="code" class="input-control" value="${esc(v.code)}" required placeholder="SALE50K" style="text-transform:uppercase;font-weight:700;">
+            <input name="code" class="input-control" value="${esc(v.code)}" required placeholder="SALE50K" ${v.voucherId ? 'readonly' : ''} style="text-transform:uppercase;font-weight:700;">
+            ${v.voucherId ? '<small style="color:var(--slate-500);">Mã đã phát hành nên không thể đổi.</small>' : ''}
           </div>
           <div class="form-group">
             <label>Tên Voucher *</label>
@@ -1743,17 +1805,29 @@ function renderFormFields(key, r) {
             <input name="minOrderAmount" type="number" min="0" class="input-control" value="${v.minimumOrderValue ?? v.minOrderAmount ?? 0}">
           </div>
           <div class="form-group">
-            <label>Điểm cần đổi</label>
-            <input name="requiredPoints" type="number" min="0" class="input-control" value="${v.requiredPoints || 0}" placeholder="Ví dụ: 100">
-            <small style="color:var(--slate-400);">Nhập 0 nếu là voucher thường, không đổi bằng điểm.</small>
+            <label>Mức giảm tối đa (đ)</label>
+            <input name="maximumDiscount" type="number" min="0" step="1000" class="input-control" value="${v.maximumDiscount ?? ''}" placeholder="Chỉ dùng khi giảm theo %">
           </div>
           <div class="form-group">
-            <label>Số lượt dùng tối đa</label>
-            <input name="maxUsage" type="number" min="1" class="input-control" value="${v.usageLimit ?? v.maxUsage ?? 100}">
+            <label>Tổng số lượt dùng</label>
+            <input name="maxUsage" type="number" min="0" class="input-control" value="${v.usageLimit ?? v.maxUsage ?? 0}" placeholder="0 = không giới hạn">
           </div>
           <div class="form-group">
-            <label>Hạn sử dụng *</label>
-            <input name="expiryDate" type="date" class="input-control" value="${(v.endDate || v.expiryDate) ? (v.endDate || v.expiryDate).split('T')[0] : new Date(Date.now() + 30*86400000).toISOString().split('T')[0]}" required>
+            <label>Giới hạn mỗi khách</label>
+            <input name="usageLimitPerCustomer" type="number" min="1" class="input-control" value="${v.usageLimitPerCustomer ?? ''}" placeholder="Để trống = không giới hạn">
+          </div>
+          <div class="form-group">
+            <label>Điểm cần để đổi</label>
+            <input name="requiredPoints" type="number" min="0" step="1" class="input-control" value="${Number(v.requiredPoints || 0)}" placeholder="0 = voucher thông thường">
+            <small style="color:var(--slate-500);">Voucher đổi điểm sẽ được giữ 1 lượt ngay khi khách đổi.</small>
+          </div>
+          <div class="form-group">
+            <label>Bắt đầu hiệu lực *</label>
+            <input name="startDate" type="date" class="input-control" value="${v.startDate ? v.startDate.split('T')[0] : new Date().toISOString().split('T')[0]}" required>
+          </div>
+          <div class="form-group">
+            <label>Kết thúc hiệu lực *</label>
+            <input name="endDate" type="date" class="input-control" value="${(v.endDate || v.expiryDate) ? (v.endDate || v.expiryDate).split('T')[0] : new Date(Date.now() + 30*86400000).toISOString().split('T')[0]}" required>
           </div>
           <div class="form-group">
             <label>Trạng thái</label>
@@ -2086,16 +2160,18 @@ async function handleFormSubmit(e, key, index) {
     };
   } else if (key === 'products') {
     try {
-      const basePriceInput = form.querySelector('[name="basePrice"]');
       payload.categoryId = Number(payload.categoryId);
       payload.brandId = Number(payload.brandId);
-      payload.basePrice = !basePriceInput.disabled && basePriceInput.value !== ''
-        ? Number(basePriceInput.value)
-        : null;
-      payload.status = Number(payload.status);
       payload.gender = Number(payload.gender);
-      payload.ageFrom = payload.ageFrom ? Number(payload.ageFrom) : null;
-      payload.ageTo = payload.ageTo ? Number(payload.ageTo) : null;
+      payload.ageFrom = ageToMonths(payload.ageFromValue, payload.ageFromUnit);
+      payload.ageTo = ageToMonths(payload.ageToValue, payload.ageToUnit);
+      if (payload.ageFrom !== null && payload.ageTo !== null && payload.ageFrom > payload.ageTo) {
+        throw new Error('Độ tuổi bắt đầu không được lớn hơn độ tuổi kết thúc.');
+      }
+      delete payload.ageFromValue;
+      delete payload.ageFromUnit;
+      delete payload.ageToValue;
+      delete payload.ageToUnit;
       payload.isNew = record?.isNew ?? true;
       payload.variants = collectProductVariants();
     } catch (err) {
@@ -2107,21 +2183,32 @@ async function handleFormSubmit(e, key, index) {
   } else if (key === 'promotions') {
     payload.promotionType = Number(payload.promotionType);
     payload.discountValue = Number(payload.discountValue);
-    payload.minOrderAmount = Number(payload.minOrderAmount || 0);
+    payload.maximumDiscount = payload.maximumDiscount === '' ? null : Number(payload.maximumDiscount);
     payload.status = Number(payload.status);
     payload.startDate = new Date(`${payload.startDate}T00:00:00`).toISOString();
     payload.endDate = new Date(`${payload.endDate}T23:59:59.999`).toISOString();
+    payload.variantIds = Array.from(form.querySelectorAll('[name="promotionVariantIds"]:checked'))
+      .map(input => Number(input.value));
+    if (!payload.variantIds.length) {
+      toast('Vui lòng chọn ít nhất một biến thể sản phẩm cho chương trình khuyến mãi.', 'error');
+      return;
+    }
+    delete payload.promotionVariantIds;
   } else if (key === 'vouchers') {
     payload.discountType = Number(payload.discountType);
     payload.discountValue = Number(payload.discountValue);
     payload.minimumOrderValue = Number(payload.minOrderAmount || 0);
+    payload.maximumDiscount = payload.maximumDiscount === '' ? null : Number(payload.maximumDiscount);
     payload.requiredPoints = Number(payload.requiredPoints || 0);
-    payload.usageLimit = Number(payload.maxUsage || 100);
+    payload.usageLimit = Number(payload.maxUsage || 0);
+    payload.usageLimitPerCustomer = payload.usageLimitPerCustomer === ''
+      ? null
+      : Number(payload.usageLimitPerCustomer);
     payload.status = payload.isActive === 'true' ? 1 : 0;
-    payload.startDate = isEdit && record?.startDate
-      ? new Date(record.startDate).toISOString()
-      : new Date().toISOString();
-    payload.endDate = new Date(payload.expiryDate).toISOString();
+    payload.code = payload.code.trim().toUpperCase();
+    payload.startDate = new Date(`${payload.startDate}T00:00:00`).toISOString();
+    payload.endDate = new Date(`${payload.endDate}T23:59:59.999`).toISOString();
+    delete payload.maxUsage;
   } else if (key === 'customers') {
     payload.dateOfBirth = payload.dateOfBirth ? new Date(payload.dateOfBirth).toISOString() : null;
     payload.gender = payload.gender === '' || payload.gender === null || payload.gender === undefined ? null : Number(payload.gender);
@@ -2319,6 +2406,11 @@ async function showOrderDetail(id) {
       return;
     }
 
+    const currentStatus = Number(order.status);
+    const canAdvanceOrder = currentStatus >= 0 && currentStatus < 4;
+    const isTerminalOrder = currentStatus === 4 || currentStatus === 5;
+    const nextStatus = canAdvanceOrder ? currentStatus + 1 : null;
+
     app.innerHTML = `
       <div class="form-view-panel">
         <div class="form-view-header">
@@ -2347,17 +2439,20 @@ async function showOrderDetail(id) {
               <p><strong>Người nhận:</strong> ${esc(order.shipping?.receiverName || order.customerName || '—')}</p>
               <p><strong>SĐT nhận hàng:</strong> ${esc(order.shipping?.receiverPhone || order.phoneNumber || '—')}</p>
               <p>${esc(order.shipping?.address || 'Chưa có địa chỉ giao hàng')}</p>
+              <p><strong>Lô giao:</strong> ${esc(order.shipping?.deliveryBatchCode || 'Chưa phân lô')}</p>
+              <p><strong>Giao dự kiến:</strong> ${fmtDeliveryWindow(order.shipping?.estimatedDeliveryFromDate || order.shipping?.estimatedDeliveryAt, order.shipping?.estimatedDeliveryToDate)}</p>
               <p><strong>Ghi chú đơn hàng:</strong> ${esc(order.note || 'Không có ghi chú.')}</p>
             </div>
             <div class="form-section-card" style="margin:0;">
               <h4>Cập nhật trạng thái đơn</h4>
+              <p style="margin:0;color:var(--slate-500);font-size:13px;">${isTerminalOrder ? 'Đơn hàng đã ở trạng thái cuối.' : 'Chỉ có thể chuyển sang giai đoạn kế tiếp; không thể bỏ qua bước.'}</p>
               <div style="display:flex;gap:8px;margin-top:10px;">
-                <select class="input-control" id="orderNewStatusSelect">
-                  ${ORDER_STATUS_LABELS.map((label, stIdx) => `
-                    <option value="${stIdx}" ${order.status === stIdx ? 'selected' : ''}>${label}</option>
-                  `).join('')}
+                <select class="input-control" id="orderNewStatusSelect" ${isTerminalOrder ? 'disabled' : ''}>
+                  <option value="${currentStatus}" disabled>Hiện tại: ${esc(ORDER_STATUS_LABELS[currentStatus] || 'Đang xử lý')}</option>
+                  ${nextStatus !== null ? `<option value="${nextStatus}" selected>Chuyển sang: ${esc(ORDER_STATUS_LABELS[nextStatus])}</option>` : ''}
+                  ${canAdvanceOrder ? '<option value="5">Hủy đơn hàng</option>' : ''}
                 </select>
-                <button class="primary-btn" style="white-space:nowrap;" onclick="updateOrderStatusAction(${order.orderId})">Cập nhật</button>
+                <button class="primary-btn" style="white-space:nowrap;" ${isTerminalOrder ? 'disabled' : ''} onclick="updateOrderStatusAction(${order.orderId})">Cập nhật</button>
               </div>
             </div>
           </div>

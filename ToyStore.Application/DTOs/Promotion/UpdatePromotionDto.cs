@@ -28,6 +28,9 @@ namespace ToyStoreManagement.Application.DTOs.Promotion
 
         public bool CanCombine { get; set; }
 
+        // Danh sách này thay thế toàn bộ sản phẩm áp dụng hiện có.
+        public List<int> VariantIds { get; set; } = new();
+
         public int Status { get; set; }
     }
 }

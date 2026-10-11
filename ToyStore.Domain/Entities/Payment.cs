@@ -12,6 +12,9 @@ namespace ToyStoreManagement.Domain.Entities
 
         public string TransactionCode { get; set; }
 
+        // Mã giao dịch do cổng thanh toán trả về (ví dụ: zp_trans_id của ZaloPay).
+        public string? GatewayTransactionCode { get; set; }
+
         public decimal Amount { get; set; }
 
         public int Status { get; set; }

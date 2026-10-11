@@ -38,6 +38,8 @@ namespace ToyStoreManagement.Application.DTOs.Customer
 
         public bool IsRedeemed { get; set; }
 
+        public bool IsUsed { get; set; }
+
         public DateTime EndDate { get; set; }
     }
 

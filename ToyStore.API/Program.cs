@@ -22,6 +22,8 @@ using ToyStoreManagement.API.Hubs;
 
 var builder = WebApplication.CreateBuilder(args);
 
+builder.Services.AddHttpClient();
+
 builder.Services.AddScoped(typeof(IGenericRepository<>), typeof(GenericRepository<>));
 
 builder.Services.AddScoped<IUnitOfWork, UnitOfWork>();

@@ -54,8 +54,7 @@ namespace ToyStoreManagement.Infrastructure.Services
                 .Where(voucher => voucher.Status == 1
                     && voucher.RequiredPoints > 0
                     && voucher.StartDate <= now
-                    && voucher.EndDate >= now
-                    && (voucher.UsageLimit == 0 || voucher.UsedCount < voucher.UsageLimit))
+                    && voucher.EndDate >= now)
                 .OrderBy(voucher => voucher.RequiredPoints)
                 .ThenBy(voucher => voucher.Name)
                 .ToListAsync();
@@ -76,15 +75,26 @@ namespace ToyStoreManagement.Infrastructure.Services
                 .ToListAsync())
                 .ToHashSet();
 
+            var usedVoucherIds = (await _context.VoucherUsages
+                .AsNoTracking()
+                .Where(item => item.CustomerId == customer.CustomerId)
+                .Select(item => item.VoucherId)
+                .ToListAsync())
+                .ToHashSet();
+
             return new LoyaltySummaryDto
             {
                 CustomerId = customer.CustomerId,
                 CustomerName = customer.FullName,
                 LoyaltyPoint = customer.LoyaltyPoint,
                 RedeemableVouchers = vouchers
+                    .Where(voucher => redeemedVoucherIds.Contains(voucher.VoucherId)
+                        || voucher.UsageLimit == 0
+                        || voucher.UsedCount < voucher.UsageLimit)
                     .Select(voucher => MapRewardVoucher(
                         voucher,
-                        redeemedVoucherIds.Contains(voucher.VoucherId)))
+                        redeemedVoucherIds.Contains(voucher.VoucherId),
+                        usedVoucherIds.Contains(voucher.VoucherId)))
                     .ToList(),
                 Transactions = transactions.Select(MapToDto).ToList()
             };
@@ -142,6 +152,10 @@ namespace ToyStoreManagement.Infrastructure.Services
 
                 customer.LoyaltyPoint -= voucher.RequiredPoints;
                 customer.UpdatedAt = now;
+                // Với voucher đổi điểm, lượt dùng được giữ chỗ ngay khi đổi để
+                // khách khác không thể đổi quá số lượng chương trình cho phép.
+                voucher.UsedCount++;
+                voucher.UpdatedAt = now;
 
                 _context.LoyaltyTransactions.Add(new LoyaltyTransaction
                 {
@@ -209,7 +223,8 @@ namespace ToyStoreManagement.Infrastructure.Services
 
         private static LoyaltyRewardVoucherDto MapRewardVoucher(
             Voucher voucher,
-            bool isRedeemed)
+            bool isRedeemed,
+            bool isUsed)
         {
             return new LoyaltyRewardVoucherDto
             {
@@ -222,6 +237,7 @@ namespace ToyStoreManagement.Infrastructure.Services
                 MinimumOrderValue = voucher.MinimumOrderValue,
                 RequiredPoints = voucher.RequiredPoints,
                 IsRedeemed = isRedeemed,
+                IsUsed = isUsed,
                 EndDate = voucher.EndDate
             };
         }

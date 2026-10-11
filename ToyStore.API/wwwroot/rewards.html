@@ -9,7 +9,7 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:ital,wght@0,400;0,500;0,600;0,700;0,800&family=Space+Grotesk:wght@500;600;700;800&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="/css/customer.css?v=20261005-2">
-  <link rel="stylesheet" href="/css/rewards.css?v=20260922-1">
+  <link rel="stylesheet" href="/css/rewards.css?v=20261011-2">
 </head>
 <body>
   <div class="announcement"><span>✦</span> Miễn phí giao hàng cho đơn từ 500.000đ <span>✦</span> Đổi trả trong 7 ngày <span>✦</span> Tích điểm 1% hoàn tiền <span>✦</span></div>
@@ -84,7 +84,16 @@
         <form id="checkoutDrawerForm">
           <div class="cust-form-group"><label>Họ và tên người nhận *</label><input type="text" id="orderFullName" required placeholder="Nguyễn Văn A"></div>
           <div class="cust-form-group"><label>Số điện thoại *</label><input type="tel" id="orderPhone" required placeholder="0901234567"></div>
-          <div class="cust-form-group"><label>Địa chỉ giao hàng tận nơi *</label><input type="text" id="orderAddress" required placeholder="Số nhà, Tên đường, Phường/Xã, TP..."></div>
+          <div class="cust-form-group">
+            <label>Địa chỉ giao hàng tận nơi *</label>
+            <div id="deliveryAddressPicker" style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:10px;">
+              <div><label for="orderProvince" style="display:block;font-size:12px;font-weight:700;margin-bottom:5px;">Tỉnh / thành phố *</label><select id="orderProvince" required disabled><option value="">Đang tải tỉnh/thành...</option></select></div>
+              <div><label for="orderWard" style="display:block;font-size:12px;font-weight:700;margin-bottom:5px;">Phường / xã / đặc khu *</label><select id="orderWard" required disabled><option value="">Chọn tỉnh/thành trước</option></select></div>
+            </div>
+            <input type="text" id="orderAddressDetail" required placeholder="Số nhà, tên đường, tòa nhà...">
+            <small style="display:block;margin-top:5px;color:var(--text-muted);">Chọn tỉnh/thành và phường/xã trước khi nhập địa chỉ chi tiết.</small>
+            <input type="hidden" id="orderAddress">
+          </div>
           <div class="cust-form-group"><label>Ghi chú đơn hàng</label><textarea id="orderNote" rows="2" placeholder="Ghi chú giao hàng..."></textarea></div>
           <div class="cust-form-group"><label>Mã Voucher</label><div style="display:flex;gap:8px;"><input type="text" id="orderVoucherCode" placeholder="Nhập mã voucher"><button type="button" class="add-cart" id="applyVoucherBtn" style="margin:0;width:auto;white-space:nowrap;padding:8px 16px;">Áp dụng</button></div><small id="voucherMessage" style="color:var(--primary);font-weight:700;display:block;margin-top:4px;"></small></div>
           <div class="cust-form-group"><label>Phương thức thanh toán</label><select id="orderPaymentMethod"><option value="COD">Thanh toán khi nhận hàng (COD)</option><option value="Banking">Chuyển khoản ngân hàng (QR Code)</option></select></div>
@@ -115,7 +124,7 @@
   </div>
 
   <div class="customer-toast" id="customerToast"></div>
-  <script src="/js/customer.js?v=20261005-2"></script>
-  <script src="/js/rewards.js?v=20260922-1"></script>
+  <script src="/js/customer.js?v=20261011-4"></script>
+  <script src="/js/rewards.js?v=20261011-2"></script>
 </body>
 </html>

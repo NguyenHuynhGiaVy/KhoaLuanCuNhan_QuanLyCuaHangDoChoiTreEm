@@ -54,8 +54,9 @@
     const shortage = Math.max(0, cost - points);
     const progress = Math.min(100, cost ? Math.round((points / cost) * 100) : 100);
     const isRedeemed = voucher.isRedeemed === true;
-    const isLocked = shortage > 0;
-    const className = `${isRedeemed ? 'is-redeemed' : ''} ${isLocked ? 'is-locked' : ''}`.trim();
+    const isUsed = voucher.isUsed === true;
+    const isLocked = !isRedeemed && shortage > 0;
+    const className = `${isRedeemed ? 'is-redeemed' : ''} ${isUsed ? 'is-used' : ''} ${isLocked ? 'is-locked' : ''}`.trim();
     const discount = voucher.discountType === 0
       ? `Giảm ${number(voucher.discountValue)}%`
       : `Giảm ${money(voucher.discountValue)}`;
@@ -63,7 +64,9 @@
       ? `Áp dụng cho đơn từ ${money(voucher.minimumOrderValue)}`
       : 'Áp dụng cho mọi đơn hàng';
     const expiry = voucher.endDate ? new Date(voucher.endDate).toLocaleDateString('vi-VN') : 'Đang cập nhật';
-    const buttonLabel = isRedeemed
+    const buttonLabel = isUsed
+      ? '✓ Đã sử dụng'
+      : isRedeemed
       ? `✓ Đã đổi · ${escapeHtml(voucher.code)}`
       : isLocked
         ? `Cần thêm ${number(shortage)} điểm`
@@ -73,15 +76,30 @@
       <article class="reward-voucher-card ${className}">
         <div class="reward-card-top">
           <span class="reward-discount">${discount}</span>
-          <code class="reward-code">${escapeHtml(voucher.code)}</code>
+          <code class="reward-code">${isRedeemed ? escapeHtml(voucher.code) : 'Đổi điểm để nhận mã'}</code>
         </div>
         <h3>${escapeHtml(voucher.name)}</h3>
         <p>${minimum}</p>
         <p>Hạn sử dụng: ${escapeHtml(expiry)}</p>
         <div class="reward-points-cost"><b>${number(cost)}</b> điểm để đổi</div>
         <div class="reward-progress" aria-label="Tiến độ điểm"><span style="width:${progress}%"></span></div>
-        <button class="reward-redeem-btn" data-voucher-id="${voucher.voucherId}" ${isRedeemed || isLocked ? 'disabled' : ''}>${buttonLabel}</button>
+        <button class="reward-redeem-btn" data-voucher-id="${voucher.voucherId}" ${isRedeemed || isLocked || isUsed ? 'disabled' : ''}>${buttonLabel}</button>
+        ${isRedeemed && !isUsed ? `<button class="reward-copy-btn" type="button" data-copy-voucher-code="${escapeHtml(voucher.code)}">Sao chép mã</button>` : ''}
       </article>`;
+  }
+
+  async function copyVoucherCode(code) {
+    try {
+      await navigator.clipboard.writeText(code);
+    } catch {
+      const input = document.createElement('textarea');
+      input.value = code;
+      document.body.appendChild(input);
+      input.select();
+      document.execCommand('copy');
+      input.remove();
+    }
+    notify(`Đã sao chép mã ${code}. Bạn có thể nhập mã này khi thanh toán.`);
   }
 
   function historyItem(item) {
@@ -154,6 +172,12 @@
       return;
     }
 
+    const copyButton = event.target.closest('[data-copy-voucher-code]');
+    if (copyButton) {
+      await copyVoucherCode(copyButton.dataset.copyVoucherCode);
+      return;
+    }
+
     const redeemButton = event.target.closest('[data-voucher-id]');
     if (!redeemButton || redeemButton.disabled) return;
 
@@ -172,6 +196,7 @@
       const data = await response.json().catch(() => ({}));
       if (!response.ok) throw new Error(data.message || 'Không thể đổi voucher.');
 
+      await copyVoucherCode(data.code);
       notify(`Đổi thành công voucher ${data.code}. Đã dùng ${number(data.pointsSpent)} điểm.`, 'success');
       await loadRewards();
     } catch (error) {

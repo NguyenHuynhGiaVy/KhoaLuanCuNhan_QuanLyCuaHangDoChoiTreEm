@@ -23,6 +23,7 @@ namespace ToyStoreManagement.API.Controllers
 
         // GET: api/LoyaltyTransaction
         [HttpGet]
+        [Authorize(Policy = "StaffAccess")]
         public async Task<IActionResult> GetAll()
         {
             var result =
@@ -33,6 +34,7 @@ namespace ToyStoreManagement.API.Controllers
 
         // GET: api/LoyaltyTransaction/customer/5
         [HttpGet("customer/{customerId}")]
+        [Authorize(Policy = "StaffAccess")]
         public async Task<IActionResult> GetByCustomerId(
             int customerId)
         {

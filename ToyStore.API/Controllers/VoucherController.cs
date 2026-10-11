@@ -21,6 +21,7 @@ namespace ToyStoreManagement.API.Controllers
         }
 
         [HttpGet]
+        [Authorize(Policy = "StaffAccess")]
         public async Task<IActionResult> GetAll()
         {
             try
@@ -37,6 +38,7 @@ namespace ToyStoreManagement.API.Controllers
         }
 
         [HttpGet("{voucherId}")]
+        [Authorize(Policy = "StaffAccess")]
         public async Task<IActionResult> GetById(
             int voucherId)
         {

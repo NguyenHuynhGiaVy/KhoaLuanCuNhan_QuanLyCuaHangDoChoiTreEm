@@ -34,7 +34,11 @@ namespace ToyStoreManagement.Infrastructure.Configurations
             builder.Property(x => x.ShippingFee)
                 .HasColumnType("decimal(18,2)");
 
+            builder.Property(x => x.DeliveryBatchCode)
+                .HasMaxLength(50);
+
             builder.HasIndex(x => x.TrackingCode);
+            builder.HasIndex(x => x.DeliveryBatchCode);
 
             builder.HasOne(x => x.Order)
                 .WithOne(x => x.Shipping)

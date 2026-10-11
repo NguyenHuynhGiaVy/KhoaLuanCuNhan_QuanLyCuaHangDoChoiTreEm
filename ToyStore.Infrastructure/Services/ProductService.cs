@@ -84,10 +84,6 @@ namespace ToyStoreManagement.Infrastructure.Services
         public async Task<ProductDto> CreateAsync(
             CreateProductDto dto)
         {
-            if (dto.BasePrice.HasValue)
-                throw new InvalidOperationException(
-                    "Chỉ có thể nhập giá bán sau khi sản phẩm đã được nhập kho.");
-
             if (dto.Variants == null || dto.Variants.Count == 0)
                 throw new InvalidOperationException(
                     "Sản phẩm cần có ít nhất một biến thể để lập phiếu nhập kho.");
@@ -95,6 +91,9 @@ namespace ToyStoreManagement.Infrastructure.Services
             if (dto.Variants.Any(variant => variant.Price.HasValue))
                 throw new InvalidOperationException(
                     "Biến thể chỉ được nhập giá bán sau khi đã có tồn kho.");
+
+            ValidateAgeRange(dto.AgeFrom, dto.AgeTo);
+            ValidateVariantDefinitions(dto.Variants);
 
             var requestedSkus = dto.Variants
                 .Select(variant => variant.SKU?.Trim() ?? string.Empty)
@@ -139,7 +138,9 @@ namespace ToyStoreManagement.Infrastructure.Services
 
                 IsFeatured = dto.IsFeatured,
 
-                BasePrice = dto.BasePrice,
+                // Giá hiển thị lấy theo biến thể. Sản phẩm mới chưa thể có giá
+                // cho đến khi biến thể được nhập kho và cập nhật giá bán.
+                BasePrice = null,
 
                 IsNew = dto.IsNew,
 
@@ -176,7 +177,7 @@ namespace ToyStoreManagement.Infrastructure.Services
                         CostPrice = variantDto.CostPrice ?? 0,
                         Weight = variantDto.Weight,
                         ImageUrl = variantDto.ImageUrl,
-                        Status = variantDto.Status,
+                        Status = 1,
                         CreatedAt = DateTime.UtcNow,
                         UpdatedAt = null,
                         VariantAttributes = variantDto.Attributes.Select(attribute => new ProductVariantAttribute
@@ -213,6 +214,8 @@ namespace ToyStoreManagement.Infrastructure.Services
             if (product == null)
                 return false;
 
+            ValidateAgeRange(dto.AgeFrom, dto.AgeTo);
+
             product.CategoryId = dto.CategoryId;
 
             product.BrandId = dto.BrandId;
@@ -230,18 +233,6 @@ namespace ToyStoreManagement.Infrastructure.Services
             product.Gender = dto.Gender;
 
             product.IsFeatured = dto.IsFeatured;
-
-            product.Status = dto.Status;
-
-            if (dto.BasePrice.HasValue)
-            {
-                var hasInventory = await HasProductAvailableInventoryAsync(productId);
-                if (!hasInventory)
-                    throw new InvalidOperationException(
-                        "Chỉ có thể nhập giá bán sau khi sản phẩm đã có tồn kho từ phiếu nhập NCC.");
-
-                product.BasePrice = dto.BasePrice;
-            }
 
             product.IsNew = dto.IsNew;
 
@@ -394,6 +385,8 @@ namespace ToyStoreManagement.Infrastructure.Services
                 throw new InvalidOperationException(
                     "Biến thể mới chỉ được nhập giá bán sau khi đã có tồn kho từ phiếu nhập NCC.");
 
+            ValidateVariantAttributes(dto.Attributes);
+
             var variant = new ProductVariant
             {
                 ProductId = productId,
@@ -412,7 +405,7 @@ namespace ToyStoreManagement.Infrastructure.Services
 
                 ImageUrl = dto.ImageUrl,
 
-                Status = dto.Status,
+                Status = 1,
 
                 CreatedAt = DateTime.UtcNow,
 
@@ -450,6 +443,8 @@ namespace ToyStoreManagement.Infrastructure.Services
             if (variant == null)
                 return false;
 
+            ValidateVariantAttributes(dto.Attributes);
+
             // Kiểm tra SKU trùng
             var existsSku =
                 await _variantRepository
@@ -486,8 +481,6 @@ namespace ToyStoreManagement.Infrastructure.Services
 
             variant.ImageUrl = dto.ImageUrl;
 
-            variant.Status = dto.Status;
-
             var oldAttributes = await _context.ProductVariantAttributes
                 .Where(attribute => attribute.VariantId == variantId)
                 .ToListAsync();
@@ -508,6 +501,71 @@ namespace ToyStoreManagement.Infrastructure.Services
                 .SaveChangesAsync();
 
             return true;
+        }
+
+        private static void ValidateAgeRange(int? ageFrom, int? ageTo)
+        {
+            if (ageFrom.HasValue && ageFrom.Value < 0
+                || ageTo.HasValue && ageTo.Value < 0)
+            {
+                throw new InvalidOperationException(
+                    "Độ tuổi phù hợp không được là số âm.");
+            }
+
+            if (ageFrom.HasValue && ageTo.HasValue && ageFrom > ageTo)
+            {
+                throw new InvalidOperationException(
+                    "Độ tuổi bắt đầu không được lớn hơn độ tuổi kết thúc.");
+            }
+        }
+
+        private static void ValidateVariantDefinitions(
+            IReadOnlyCollection<CreateProductVariantDto> variants)
+        {
+            foreach (var variant in variants)
+                ValidateVariantAttributes(variant.Attributes);
+
+            if (variants.Count <= 1)
+                return;
+
+            if (variants.Any(variant => variant.Attributes == null
+                || !variant.Attributes.Any()))
+            {
+                throw new InvalidOperationException(
+                    "Khi có nhiều biến thể, mỗi biến thể cần nêu ít nhất một thông số khác biệt.");
+            }
+
+            var duplicatedDefinitions = variants
+                .Select(variant => string.Join("|", variant.Attributes
+                    .OrderBy(attribute => attribute.AttributeName,
+                        StringComparer.OrdinalIgnoreCase)
+                    .ThenBy(attribute => attribute.AttributeValue,
+                        StringComparer.OrdinalIgnoreCase)
+                    .Select(attribute =>
+                        $"{attribute.AttributeName.Trim().ToUpperInvariant()}:{attribute.AttributeValue.Trim().ToUpperInvariant()}")))
+                .GroupBy(definition => definition, StringComparer.OrdinalIgnoreCase)
+                .Any(group => group.Count() > 1);
+
+            if (duplicatedDefinitions)
+            {
+                throw new InvalidOperationException(
+                    "Các biến thể phải có thông số khác biệt nhau.");
+            }
+        }
+
+        private static void ValidateVariantAttributes(
+            IEnumerable<CreateProductVariantAttributeDto>? attributes)
+        {
+            if (attributes == null)
+                return;
+
+            if (attributes.Any(attribute =>
+                string.IsNullOrWhiteSpace(attribute.AttributeName)
+                || string.IsNullOrWhiteSpace(attribute.AttributeValue)))
+            {
+                throw new InvalidOperationException(
+                    "Mỗi thông số biến thể cần có cả tên và giá trị.");
+            }
         }
 
         // ==========================================
@@ -751,10 +809,8 @@ namespace ToyStoreManagement.Infrastructure.Services
             Promotion promotion,
             int variantId)
         {
-            // Một chương trình không gắn sản phẩm được hiểu là áp dụng toàn bộ
-            // sản phẩm. Nếu đã gắn biến thể, chỉ các biến thể đó được giảm giá.
-            return !promotion.PromotionProducts.Any()
-                || promotion.PromotionProducts.Any(product =>
+            // Khuyến mãi mặt hàng chỉ có hiệu lực khi biến thể đã được chọn.
+            return promotion.PromotionProducts.Any(product =>
                     product.VariantId == variantId);
         }
 

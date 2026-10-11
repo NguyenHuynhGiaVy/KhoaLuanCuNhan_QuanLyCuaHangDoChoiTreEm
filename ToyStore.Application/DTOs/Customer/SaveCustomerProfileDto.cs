@@ -14,6 +14,5 @@ namespace ToyStoreManagement.Application.DTOs.Customer
 
         public int? Gender { get; set; }
 
-        public string Address { get; set; } = string.Empty;
     }
 }

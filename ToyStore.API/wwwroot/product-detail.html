@@ -184,7 +184,13 @@
                     </div>
                     <div class="cust-form-group">
                         <label>Địa chỉ giao hàng tận nơi *</label>
-                        <input type="text" id="orderAddress" required placeholder="Số nhà, Tên đường, Phường/Xã, TP...">
+                        <div id="deliveryAddressPicker" style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:10px;">
+                            <div><label for="orderProvince" style="display:block;font-size:12px;font-weight:700;margin-bottom:5px;">Tỉnh / thành phố *</label><select id="orderProvince" required disabled><option value="">Đang tải tỉnh/thành...</option></select></div>
+                            <div><label for="orderWard" style="display:block;font-size:12px;font-weight:700;margin-bottom:5px;">Phường / xã / đặc khu *</label><select id="orderWard" required disabled><option value="">Chọn tỉnh/thành trước</option></select></div>
+                        </div>
+                        <input type="text" id="orderAddressDetail" required placeholder="Số nhà, tên đường, tòa nhà...">
+                        <small style="display:block;margin-top:5px;color:var(--text-muted);">Chọn tỉnh/thành và phường/xã trước khi nhập địa chỉ chi tiết.</small>
+                        <input type="hidden" id="orderAddress">
                     </div>
                     <div class="cust-form-group">
                         <label>Ghi chú đơn hàng</label>
@@ -203,6 +209,7 @@
                         <select id="orderPaymentMethod">
                             <option value="COD">Thanh toán khi nhận hàng (COD)</option>
                             <option value="Banking">Chuyển khoản ngân hàng (QR Code)</option>
+                            <option value="ZaloPay">Thanh toán online qua ZaloPay</option>
                         </select>
                     </div>
                 </form>
@@ -315,7 +322,7 @@
     </div>
 
     <div class="customer-toast" id="customerToast"></div>
-    <script src="/js/customer.js?v=20261005-2"></script>
-    <script src="/js/product-detail.js?v=20260924-7"></script>
+    <script src="/js/customer.js?v=20261011-5"></script>
+    <script src="/js/product-detail.js?v=20261011-1"></script>
 </body>
 </html>

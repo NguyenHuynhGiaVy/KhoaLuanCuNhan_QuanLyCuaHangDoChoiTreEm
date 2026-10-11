@@ -201,6 +201,10 @@
 .reward-redeem-btn:hover:not(:disabled) { background: var(--primary-hover); transform: translateY(-1px); }
 .reward-redeem-btn:disabled { cursor: default; background: #cbd5e1; color: #64748b; }
 .reward-voucher-card.is-redeemed .reward-redeem-btn { background: #16a34a; color: #ffffff; }
+.reward-voucher-card.is-used { background: #f8fafc; border-color: #cbd5e1; }
+.reward-voucher-card.is-used .reward-redeem-btn { background: #64748b; color: #ffffff; }
+.reward-copy-btn { width: 100%; min-height: 38px; margin-top: 9px; border: 1px solid #16a34a; border-radius: 10px; background: #ffffff; color: #15803d; font-weight: 800; cursor: pointer; }
+.reward-copy-btn:hover { background: #f0fdf4; }
 
 .rewards-bottom-grid {
   display: grid;

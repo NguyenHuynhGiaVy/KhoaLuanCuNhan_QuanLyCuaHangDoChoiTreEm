@@ -6,6 +6,7 @@ const placeholderImage = 'https://placehold.co/800x800?text=ToyStore';
 let detailProduct = null;
 let detailVariants = [];
 let selectedVariant = null;
+let selectedVariantAttributes = new Map();
 let detailQuantity = 1;
 let detailCartCount = Number(localStorage.getItem('toyStoreCartCount') || 0);
 let productReviews = [];
@@ -201,12 +202,49 @@ let selectedReviewRating = 5;
     return (variant?.attributes || []).filter(attribute => attribute.attributeName && attribute.attributeValue);
   }
 
+  function normalizedVariantAttribute(value) {
+    return String(value || '').trim().toLocaleLowerCase('vi-VN');
+  }
+
+  function variantAttributeGroups() {
+    const groups = new Map();
+    detailVariants.forEach(variant => variantAttributes(variant).forEach(attribute => {
+      const attributeKey = normalizedVariantAttribute(attribute.attributeName);
+      const valueKey = normalizedVariantAttribute(attribute.attributeValue);
+      if (!attributeKey || !valueKey) return;
+      if (!groups.has(attributeKey)) {
+        groups.set(attributeKey, { name: attribute.attributeName, values: new Map() });
+      }
+      groups.get(attributeKey).values.set(valueKey, attribute.attributeValue);
+    }));
+    return [...groups.entries()];
+  }
+
+  function variantMatchesSelectedAttributes(variant) {
+    return [...selectedVariantAttributes.entries()].every(([attributeKey, valueKey]) =>
+      variantAttributes(variant).some(attribute =>
+        normalizedVariantAttribute(attribute.attributeName) === attributeKey
+        && normalizedVariantAttribute(attribute.attributeValue) === valueKey));
+  }
+
+  function findSelectedVariant() {
+    return detailVariants.find(variant =>
+      variantMatchesSelectedAttributes(variant)
+      && variantAttributes(variant).every(attribute =>
+        selectedVariantAttributes.get(normalizedVariantAttribute(attribute.attributeName))
+          === normalizedVariantAttribute(attribute.attributeValue))) || null;
+  }
+
   function variantLabel(variant) {
     const attributes = variantAttributes(variant);
     return attributes.length ? attributes.map(attribute => `${attribute.attributeName}: ${attribute.attributeValue}`).join(' · ') : `SKU ${variant?.sku || ''}`;
   }
 
   function stockState(variant) {
+    if (!variant) {
+      return { type: 'out', quantity: 0, canPurchase: false, label: 'Tổ hợp chưa được tạo' };
+    }
+
     const rawQuantity = variant?.availableQuantity;
     if (rawQuantity === null || rawQuantity === undefined || rawQuantity === '') {
       return { type: 'pending', quantity: 0, canPurchase: false, label: 'Hàng chưa về' };
@@ -273,17 +311,23 @@ let selectedReviewRating = 5;
     if (metaTitle) metaTitle.textContent = stock.canPurchase ? 'Kho hàng ToyStore' : stock.label;
     if (metaHint) metaHint.textContent = stock.canPurchase
       ? `Có thể đặt tối đa ${stock.quantity} sản phẩm.`
+      : (stock.label === 'Tổ hợp chưa được tạo'
+        ? 'Hãy chọn một tổ hợp màu/kích thước đang được cửa hàng bán.'
       : (stock.type === 'pending'
         ? (stock.label === 'Chưa cập nhật giá bán'
           ? 'Sản phẩm đang chờ cập nhật giá bán.'
           : 'Sản phẩm chưa có thông tin nhập kho.')
-        : 'Vui lòng chọn sản phẩm khác hoặc quay lại sau.');
+        : 'Vui lòng chọn sản phẩm khác hoặc quay lại sau.'));
   }
 
   function renderDetail() {
     const product = detailProduct;
     detailVariants = product.productVariants || [];
     selectedVariant = detailVariants.find(variant => stockState(variant).canPurchase) || detailVariants[0] || null;
+    selectedVariantAttributes = new Map(variantAttributes(selectedVariant).map(attribute => [
+      normalizedVariantAttribute(attribute.attributeName),
+      normalizedVariantAttribute(attribute.attributeValue)
+    ]));
     detailQuantity = 1;
     document.title = `${product.name} - ToyStore`;
     document.getElementById('detailCategory').textContent = product.categoryName || 'Đồ chơi';
@@ -328,35 +372,37 @@ let selectedReviewRating = 5;
 
   function renderVariantChoices() {
     if (!detailVariants.length) return '';
-    const groups = new Map();
-    detailVariants.forEach(variant => variantAttributes(variant).forEach(attribute => {
-      if (!groups.has(attribute.attributeName)) groups.set(attribute.attributeName, new Set());
-      groups.get(attribute.attributeName).add(attribute.attributeValue);
-    }));
-    return `<div class="variant-choices">${[...groups.entries()].map(([name, values]) => `<div class="variant-group"><strong>${escapeHtml(name)}</strong><div>${[...values].map(value => `<button type="button" class="variant-choice" data-attribute-name="${escapeHtml(name)}" data-attribute-value="${escapeHtml(value)}">${escapeHtml(value)}</button>`).join('')}</div></div>`).join('')}</div>`;
+    return `<div class="variant-choices"><p style="margin:0 0 13px;color:var(--text-muted);font-size:12.5px;">Chọn tự do từng thuộc tính. Chỉ tổ hợp đã được tạo và còn hàng mới có thể thêm vào giỏ.</p>${variantAttributeGroups().map(([attributeKey, group]) => `<div class="variant-group"><strong>${escapeHtml(group.name)}</strong><div>${[...group.values.entries()].map(([valueKey, value]) => `<button type="button" class="variant-choice ${selectedVariantAttributes.get(attributeKey) === valueKey ? 'selected' : ''}" data-attribute-key="${escapeHtml(attributeKey)}" data-attribute-value-key="${escapeHtml(valueKey)}">${escapeHtml(value)}</button>`).join('')}</div></div>`).join('')}</div>`;
   }
 
   function updateVariantView() {
     const image = document.getElementById('mainProductImage');
-    if (!selectedVariant) return;
-    document.querySelector('.detail-price').innerHTML = priceMarkup(selectedVariant, detailProduct?.basePrice);
-    document.querySelector('.detail-rating i').textContent = `SKU: ${selectedVariant.sku || 'Đang cập nhật'}`;
-    if (selectedVariant.imageUrl) image.src = selectedVariant.imageUrl;
+    const price = document.querySelector('.detail-price');
+    const sku = document.querySelector('.detail-rating i');
+    if (price) price.innerHTML = selectedVariant
+      ? priceMarkup(selectedVariant, detailProduct?.basePrice)
+      : '<span style="color:var(--text-muted);font-size:16px;">Chưa có tổ hợp này</span>';
+    if (sku) sku.textContent = `SKU: ${selectedVariant?.sku || 'Chọn tổ hợp'}`;
+    if (image) image.src = selectedVariant?.imageUrl || imageOf(detailProduct);
     document.querySelectorAll('.variant-choice').forEach(button => {
-      button.classList.toggle('selected', variantAttributes(selectedVariant).some(attribute => attribute.attributeName === button.dataset.attributeName && attribute.attributeValue === button.dataset.attributeValue));
+      button.classList.toggle('selected', selectedVariantAttributes.get(button.dataset.attributeKey) === button.dataset.attributeValueKey);
     });
     updateStockAndPurchaseControls();
   }
 
   function selectVariantByChoice(button) {
-    const name = button.dataset.attributeName;
-    const value = button.dataset.attributeValue;
-    const compatible = detailVariants.filter(variant => variantAttributes(variant).some(attribute => attribute.attributeName === name && attribute.attributeValue === value));
-    if (compatible.length) {
-      selectedVariant = compatible.find(variant => stockState(variant).canPurchase) || compatible[0];
-      detailQuantity = 1;
-      updateVariantView();
+    const attributeKey = button.dataset.attributeKey;
+    const valueKey = button.dataset.attributeValueKey;
+    if (!attributeKey || !valueKey) return;
+
+    if (selectedVariantAttributes.get(attributeKey) === valueKey) {
+      selectedVariantAttributes.delete(attributeKey);
+    } else {
+      selectedVariantAttributes.set(attributeKey, valueKey);
     }
+    selectedVariant = findSelectedVariant();
+    detailQuantity = 1;
+    updateVariantView();
   }
 
   function renderRelated(products) {

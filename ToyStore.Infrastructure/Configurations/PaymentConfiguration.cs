@@ -22,6 +22,9 @@ namespace ToyStoreManagement.Infrastructure.Configurations
             builder.Property(x => x.TransactionCode)
                 .HasMaxLength(100);
 
+            builder.Property(x => x.GatewayTransactionCode)
+                .HasMaxLength(100);
+
             builder.HasIndex(x => x.TransactionCode)
                 .IsUnique()
                 .HasFilter("[TransactionCode] IS NOT NULL");

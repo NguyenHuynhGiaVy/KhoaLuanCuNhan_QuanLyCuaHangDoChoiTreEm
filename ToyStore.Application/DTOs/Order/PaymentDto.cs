@@ -12,6 +12,7 @@ namespace ToyStoreManagement.Application.DTOs.Order
         public int OrderId { get; set; }
         public int PaymentMethod { get; set; }
         public string TransactionCode { get; set; }
+        public string? GatewayTransactionCode { get; set; }
         public decimal Amount { get; set; }
         public int Status { get; set; }
         public DateTime? PaidAt { get; set; }

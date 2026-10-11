@@ -69,19 +69,15 @@ namespace ToyStoreManagement.Infrastructure.Services
                 throw new Exception(
                     "Ngày bắt đầu phải trước ngày kết thúc.");
 
-            if (dto.DiscountValue < 0)
-                throw new Exception(
-                    "Giá trị giảm giá không được âm.");
+            ValidateDiscount(dto.PromotionType, dto.DiscountValue,
+                dto.MaximumDiscount);
 
-            if (dto.MaximumDiscount.HasValue &&
-                dto.MaximumDiscount.Value < 0)
-                throw new Exception(
-                    "Mức giảm tối đa không được âm.");
+            var variantIds = await ValidateVariantIdsAsync(dto.VariantIds);
 
             var promotion = new Promotion
             {
-                Name = dto.Name,
-                Description = dto.Description,
+                Name = dto.Name.Trim(),
+                Description = dto.Description?.Trim() ?? string.Empty,
                 PromotionType = dto.PromotionType,
                 DiscountValue = dto.DiscountValue,
                 MaximumDiscount = dto.MaximumDiscount,
@@ -92,6 +88,14 @@ namespace ToyStoreManagement.Infrastructure.Services
                 Status = dto.Status == 0 ? 0 : 1,
                 CreatedAt = DateTime.UtcNow
             };
+
+            foreach (var variantId in variantIds)
+            {
+                promotion.PromotionProducts.Add(new PromotionProduct
+                {
+                    VariantId = variantId
+                });
+            }
 
             await _promotionRepository.AddAsync(promotion);
             await _unitOfWork.SaveChangesAsync();
@@ -121,17 +125,13 @@ namespace ToyStoreManagement.Infrastructure.Services
                 throw new Exception(
                     "Ngày bắt đầu phải trước ngày kết thúc.");
 
-            if (dto.DiscountValue < 0)
-                throw new Exception(
-                    "Giá trị giảm giá không được âm.");
+            ValidateDiscount(dto.PromotionType, dto.DiscountValue,
+                dto.MaximumDiscount);
 
-            if (dto.MaximumDiscount.HasValue &&
-                dto.MaximumDiscount.Value < 0)
-                throw new Exception(
-                    "Mức giảm tối đa không được âm.");
+            var variantIds = await ValidateVariantIdsAsync(dto.VariantIds);
 
-            promotion.Name = dto.Name;
-            promotion.Description = dto.Description;
+            promotion.Name = dto.Name.Trim();
+            promotion.Description = dto.Description?.Trim() ?? string.Empty;
             promotion.PromotionType = dto.PromotionType;
             promotion.DiscountValue = dto.DiscountValue;
             promotion.MaximumDiscount = dto.MaximumDiscount;
@@ -139,14 +139,70 @@ namespace ToyStoreManagement.Infrastructure.Services
             promotion.EndDate = dto.EndDate;
             promotion.Priority = dto.Priority;
             promotion.CanCombine = dto.CanCombine;
-            promotion.Status = dto.Status;
+            promotion.Status = dto.Status == 0 ? 0 : 1;
             promotion.UpdatedAt = DateTime.UtcNow;
 
-            _promotionRepository.Update(promotion);
+            foreach (var product in promotion.PromotionProducts.ToList())
+                _productRepository.Delete(product);
 
+            foreach (var variantId in variantIds)
+            {
+                await _productRepository.AddAsync(new PromotionProduct
+                {
+                    PromotionId = promotion.PromotionId,
+                    VariantId = variantId
+                });
+            }
+
+            _promotionRepository.Update(promotion);
             await _unitOfWork.SaveChangesAsync();
 
-            return MapToDto(promotion);
+            var result = await _promotionRepository
+                .GetByIdWithDetailsAsync(promotionId);
+            return MapToDto(result!);
+        }
+
+        private async Task<List<int>> ValidateVariantIdsAsync(
+            IEnumerable<int>? requestedVariantIds)
+        {
+            var variantIds = (requestedVariantIds ?? Enumerable.Empty<int>())
+                .Where(id => id > 0)
+                .Distinct()
+                .ToList();
+
+            if (variantIds.Count == 0)
+                throw new Exception(
+                    "Vui lòng chọn ít nhất một biến thể áp dụng khuyến mãi.");
+
+            var existingCount = await _variantRepository.CountAsync(
+                variant => variantIds.Contains(variant.VariantId));
+            if (existingCount != variantIds.Count)
+                throw new Exception(
+                    "Có sản phẩm biến thể được chọn không còn tồn tại.");
+
+            return variantIds;
+        }
+
+        private static void ValidateDiscount(
+            int promotionType,
+            decimal discountValue,
+            decimal? maximumDiscount)
+        {
+            if (promotionType is not 0 and not 1)
+                throw new Exception("Loại khuyến mãi không hợp lệ.");
+
+            if (discountValue <= 0)
+                throw new Exception(
+                    "Giá trị giảm giá phải lớn hơn 0.");
+
+            if (promotionType == 0 && discountValue > 100)
+                throw new Exception(
+                    "Khuyến mãi theo phần trăm không được vượt quá 100%.");
+
+            if (maximumDiscount.HasValue &&
+                maximumDiscount.Value < 0)
+                throw new Exception(
+                    "Mức giảm tối đa không được âm.");
         }
 
         public async Task<bool> DeleteAsync(int promotionId)

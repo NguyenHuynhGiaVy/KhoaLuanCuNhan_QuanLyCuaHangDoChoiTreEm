@@ -16,6 +16,10 @@ namespace ToyStoreManagement.Application.DTOs.Order
         public int ShippingMethod { get; set; }
         public string TrackingCode { get; set; }
         public decimal ShippingFee { get; set; }
+        public string? DeliveryBatchCode { get; set; }
+        public DateTime? EstimatedDeliveryAt { get; set; }
+        public DateTime? EstimatedDeliveryFromDate { get; set; }
+        public DateTime? EstimatedDeliveryToDate { get; set; }
         public int Status { get; set; }
         public DateTime? ShippedAt { get; set; }
         public DateTime? DeliveredAt { get; set; }

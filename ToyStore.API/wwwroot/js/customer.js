@@ -16,6 +16,8 @@ let categories = [];
 let activeFilter = 'all';
 let currentCustomerProfile = null;
 let appliedVoucher = null;
+let customerAddresses = [];
+let selectedCustomerAddressId = null;
 
 // Filter state
 let selectedPrices = [];
@@ -29,6 +31,19 @@ const pageSize = 12;
 const escapeHtml = v => String(v ?? '').replace(/[&<>'"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', "'": '&#39;', '"': '&quot;' }[c]));
 const money = v => v == null ? 'Liên hệ' : `${Number(v).toLocaleString('vi-VN')}đ`;
 
+function formatDeliveryWindow(fromDate, toDate) {
+    if (!fromDate) return 'Đang xác nhận';
+    const formatDateOnly = value => {
+        const match = String(value).match(/^(\d{4})-(\d{2})-(\d{2})/);
+        if (match) return `${match[3]}/${match[2]}/${match[1]}`;
+        const date = new Date(value);
+        return Number.isNaN(date.getTime()) ? '' : date.toLocaleDateString('vi-VN');
+    };
+    const from = formatDateOnly(fromDate);
+    const to = formatDateOnly(toDate);
+    return from && to && from !== to ? `${from} – ${to}` : from || 'Đang xác nhận';
+}
+
 function showToast(m, type = 'success') {
     const t = document.getElementById('customerToast');
     if (!t) return;
@@ -40,6 +55,12 @@ function showToast(m, type = 'success') {
 const API_BASE = (window.location.protocol === 'file:' || (window.location.port && window.location.port !== '5225'))
     ? 'http://localhost:5225'
     : '';
+
+// Dữ liệu đơn vị hành chính hai cấp, áp dụng từ 01/07/2025.
+// API v2 trả về 34 tỉnh/thành và các phường, xã, đặc khu trực thuộc.
+const VIETNAM_ADDRESS_API = 'https://provinces.open-api.vn/api/v2';
+let vietnamProvincesPromise = null;
+let vietnamAddressInitializationPromise = null;
 
 function updateApiStatus(online) {
     const status = document.getElementById('customerApiStatus');
@@ -703,7 +724,7 @@ function closeCartDrawer() {
     document.getElementById('cartDrawerOverlay')?.classList.remove('open');
 }
 
-function openCheckoutDrawer() {
+async function openCheckoutDrawer() {
     const cart = getCart();
     if (!cart.length) {
         showToast('Giỏ hàng của bạn đang trống.', 'error');
@@ -711,18 +732,20 @@ function openCheckoutDrawer() {
     }
     closeCartDrawer();
     closeAccountDrawer();
+    await initializeVietnamDeliveryAddress();
 
     const user = getAuthUser();
     if (currentCustomerProfile) {
         populateCheckoutFromProfile(currentCustomerProfile);
     } else if (user && getAuthToken()) {
-        loadCustomerProfile()
-            .then(profile => populateCheckoutFromProfile(profile))
-            .catch(() => null);
+        const profile = await loadCustomerProfile();
+        populateCheckoutFromProfile(profile);
     } else if (user) {
         const nameIn = document.getElementById('orderFullName');
         if (nameIn && !nameIn.value) nameIn.value = user.fullName || '';
     }
+
+    await loadCheckoutAddresses();
 
     updateCheckoutTotal();
 
@@ -756,6 +779,14 @@ function getAuthUser() {
     return JSON.parse(localStorage.getItem('toyStoreUser') || 'null');
 }
 
+function resetCustomerSessionState() {
+    currentCustomerProfile = null;
+    customerAddresses = [];
+    selectedCustomerAddressId = null;
+    appliedVoucher = null;
+    localStorage.removeItem('toyStorePendingOrder');
+}
+
 function isAdminPortalUser(user) {
     return ['admin', 'manager', 'staff'].includes(String(user?.role || '').trim().toLowerCase());
 }
@@ -776,14 +807,17 @@ async function loadCustomerProfile() {
         });
 
         if (!response.ok) {
-            currentCustomerProfile = null;
+            if (token === getAuthToken()) currentCustomerProfile = null;
             return null;
         }
 
-        currentCustomerProfile = await response.json();
-        return currentCustomerProfile;
+        const profile = await response.json();
+        if (token !== getAuthToken()) return null;
+
+        currentCustomerProfile = profile;
+        return profile;
     } catch {
-        currentCustomerProfile = null;
+        if (token === getAuthToken()) currentCustomerProfile = null;
         return null;
     }
 }
@@ -793,14 +827,285 @@ function populateCheckoutFromProfile(profile) {
 
     const fields = {
         orderFullName: profile.fullName,
-        orderPhone: profile.phone,
-        orderAddress: profile.address
+        orderPhone: profile.phone
     };
 
     Object.entries(fields).forEach(([id, value]) => {
         const input = document.getElementById(id);
         if (input && !input.value) input.value = value || '';
     });
+
+}
+
+async function getVietnamProvinces() {
+    if (!vietnamProvincesPromise) {
+        vietnamProvincesPromise = fetch(`${VIETNAM_ADDRESS_API}/p/`, {
+            cache: 'force-cache'
+        }).then(async response => {
+            if (!response.ok) throw new Error('Không thể tải danh sách tỉnh/thành.');
+            const provinces = await response.json();
+            if (!Array.isArray(provinces) || provinces.length !== 34) {
+                throw new Error('Dữ liệu tỉnh/thành chưa đúng phiên bản sau sáp nhập.');
+            }
+            return provinces.sort((a, b) => String(a.name).localeCompare(String(b.name), 'vi'));
+        }).catch(error => {
+            vietnamProvincesPromise = null;
+            throw error;
+        });
+    }
+    return vietnamProvincesPromise;
+}
+
+function composeDeliveryAddress() {
+    const detail = document.getElementById('orderAddressDetail')?.value.trim() || '';
+    const provinceSelect = document.getElementById('orderProvince');
+    const wardSelect = document.getElementById('orderWard');
+    const province = provinceSelect?.selectedOptions?.[0]?.dataset.name || '';
+    const ward = wardSelect?.selectedOptions?.[0]?.dataset.name || '';
+    const fullAddress = [detail, ward, province].filter(Boolean).join(', ');
+    const storedAddress = document.getElementById('orderAddress');
+    if (storedAddress) storedAddress.value = fullAddress;
+    return { detail, province, ward, fullAddress };
+}
+
+async function loadWardsForSelectedProvince() {
+    const provinceSelect = document.getElementById('orderProvince');
+    const wardSelect = document.getElementById('orderWard');
+    if (!provinceSelect || !wardSelect) return;
+
+    const provinceCode = provinceSelect.value;
+    wardSelect.innerHTML = '<option value="">Đang tải phường/xã...</option>';
+    wardSelect.disabled = true;
+    composeDeliveryAddress();
+    if (!provinceCode) {
+        wardSelect.innerHTML = '<option value="">Chọn phường/xã/đặc khu</option>';
+        return;
+    }
+
+    try {
+        const response = await fetch(`${VIETNAM_ADDRESS_API}/p/${encodeURIComponent(provinceCode)}?depth=2`, {
+            cache: 'force-cache'
+        });
+        if (!response.ok) throw new Error('Không thể tải phường/xã.');
+        const province = await response.json();
+        const wards = Array.isArray(province.wards) ? province.wards : [];
+        wardSelect.innerHTML = '<option value="">Chọn phường/xã/đặc khu</option>'
+            + wards
+                .sort((a, b) => String(a.name).localeCompare(String(b.name), 'vi'))
+                .map(ward => `<option value="${escapeHtml(ward.code)}" data-name="${escapeHtml(ward.name)}">${escapeHtml(ward.name)}</option>`)
+                .join('');
+        wardSelect.disabled = false;
+    } catch (error) {
+        wardSelect.innerHTML = '<option value="">Không tải được phường/xã</option>';
+        showToast('Không thể tải phường/xã. Vui lòng thử lại.', 'error');
+    }
+}
+
+function ensureVietnamDeliveryAddressFields() {
+    const storedAddress = document.getElementById('orderAddress');
+    if (!storedAddress) return null;
+
+    storedAddress.type = 'hidden';
+    storedAddress.required = false;
+
+    if (!document.getElementById('deliveryAddressPicker')) {
+        // Tương thích với các trang cũ trong thời gian triển khai cập nhật giao diện.
+        storedAddress.insertAdjacentHTML('beforebegin', `
+            <div id="deliveryAddressPicker" style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:10px;">
+                <div><label for="orderProvince" style="display:block;font-size:12px;font-weight:700;margin-bottom:5px;">Tỉnh / thành phố *</label><select id="orderProvince" required disabled><option value="">Đang tải tỉnh/thành...</option></select></div>
+                <div><label for="orderWard" style="display:block;font-size:12px;font-weight:700;margin-bottom:5px;">Phường / xã / đặc khu *</label><select id="orderWard" required disabled><option value="">Chọn tỉnh/thành trước</option></select></div>
+            </div>
+            <input type="text" id="orderAddressDetail" required placeholder="Số nhà, tên đường, tòa nhà...">
+            <small style="display:block;margin-top:5px;color:var(--text-muted);">Chọn tỉnh/thành và phường/xã trước khi nhập địa chỉ chi tiết.</small>`);
+    }
+
+    const picker = document.getElementById('deliveryAddressPicker');
+    if (picker && !document.getElementById('checkoutAddressBook')) {
+        picker.insertAdjacentHTML('beforebegin', `
+            <div id="checkoutAddressBook" class="cust-form-group" style="padding:10px;border:1px solid var(--border-color);border-radius:9px;background:var(--slate-50);">
+                <label for="orderSavedAddress">Địa chỉ đã lưu</label>
+                <select id="orderSavedAddress"><option value="">Nhập địa chỉ mới</option></select>
+                <div id="checkoutDeliveryEstimate" style="font-size:12px;color:var(--text-muted);margin:7px 0;"></div>
+                <button type="button" id="saveCheckoutAddressBtn" class="add-cart" style="width:auto;margin:0;padding:7px 11px;">Lưu địa chỉ này</button>
+            </div>`);
+    }
+
+    return {
+        provinceSelect: document.getElementById('orderProvince'),
+        wardSelect: document.getElementById('orderWard')
+    };
+}
+
+function getCheckoutAddressInput() {
+    const provinceSelect = document.getElementById('orderProvince');
+    const wardSelect = document.getElementById('orderWard');
+    return {
+        receiverName: document.getElementById('orderFullName')?.value.trim() || '',
+        receiverPhone: document.getElementById('orderPhone')?.value.trim() || '',
+        addressDetail: document.getElementById('orderAddressDetail')?.value.trim() || '',
+        provinceCode: provinceSelect?.value || '',
+        provinceName: provinceSelect?.selectedOptions?.[0]?.dataset.name || '',
+        wardCode: wardSelect?.value || '',
+        wardName: wardSelect?.selectedOptions?.[0]?.dataset.name || ''
+    };
+}
+
+function renderCheckoutAddressBook() {
+    const select = document.getElementById('orderSavedAddress');
+    const estimate = document.getElementById('checkoutDeliveryEstimate');
+    if (!select) return;
+
+    select.innerHTML = '<option value="">Nhập địa chỉ mới</option>'
+        + customerAddresses.map(address => {
+            const label = `${address.receiverName} — ${address.fullAddress || [address.addressDetail, address.wardName, address.provinceName].filter(Boolean).join(', ')}`;
+            return `<option value="${address.customerAddressId}">${escapeHtml(label)}${address.isDefault ? ' (Mặc định)' : ''}</option>`;
+        }).join('');
+    select.value = selectedCustomerAddressId ? String(selectedCustomerAddressId) : '';
+
+    const selected = customerAddresses.find(address => Number(address.customerAddressId) === Number(selectedCustomerAddressId));
+    if (estimate) {
+        estimate.textContent = selected
+            ? `Giao dự kiến: ${formatDeliveryWindow(selected.estimatedDeliveryFromDate, selected.estimatedDeliveryToDate)}`
+            : 'Chọn hoặc nhập một địa chỉ giao hàng.';
+    }
+}
+
+function clearSavedAddressSelection() {
+    if (!selectedCustomerAddressId) return;
+    selectedCustomerAddressId = null;
+    const select = document.getElementById('orderSavedAddress');
+    if (select) select.value = '';
+    const estimate = document.getElementById('checkoutDeliveryEstimate');
+    if (estimate) estimate.textContent = 'Chọn hoặc nhập một địa chỉ giao hàng.';
+}
+
+async function applyCheckoutAddress(address) {
+    if (!address) return;
+    selectedCustomerAddressId = Number(address.customerAddressId);
+
+    const setValue = (id, value) => {
+        const input = document.getElementById(id);
+        if (input) input.value = value || '';
+    };
+    setValue('orderFullName', address.receiverName);
+    setValue('orderPhone', address.receiverPhone);
+    setValue('orderAddressDetail', address.addressDetail);
+
+    const provinceSelect = document.getElementById('orderProvince');
+    if (provinceSelect) {
+        provinceSelect.value = String(address.provinceCode || '');
+        await loadWardsForSelectedProvince();
+    }
+    const wardSelect = document.getElementById('orderWard');
+    if (wardSelect) wardSelect.value = String(address.wardCode || '');
+    composeDeliveryAddress();
+    renderCheckoutAddressBook();
+}
+
+async function loadCheckoutAddresses() {
+    const token = getAuthToken();
+    if (!token) {
+        customerAddresses = [];
+        selectedCustomerAddressId = null;
+        renderCheckoutAddressBook();
+        return;
+    }
+
+    try {
+        const response = await fetch(`${API_BASE}/api/Customer/profile/addresses`, {
+            headers: { 'Authorization': `Bearer ${token}` }
+        });
+        if (!response.ok) throw new Error('Không thể tải sổ địa chỉ.');
+        const addresses = await response.json();
+        if (token !== getAuthToken()) return;
+
+        customerAddresses = addresses;
+        const selected = customerAddresses.find(address => address.isDefault) || customerAddresses[0];
+        if (selected) await applyCheckoutAddress(selected);
+        else {
+            selectedCustomerAddressId = null;
+            renderCheckoutAddressBook();
+        }
+    } catch (error) {
+        if (token !== getAuthToken()) return;
+        customerAddresses = [];
+        selectedCustomerAddressId = null;
+        renderCheckoutAddressBook();
+    }
+}
+
+async function saveCheckoutAddress() {
+    const token = getAuthToken();
+    if (!token) {
+        showToast('Vui lòng đăng nhập và hoàn thiện hồ sơ trước khi lưu địa chỉ.', 'error');
+        return;
+    }
+
+    const addressInput = getCheckoutAddressInput();
+    if (Object.values(addressInput).some(value => !value)) {
+        showToast('Vui lòng nhập đủ người nhận và địa chỉ để lưu.', 'error');
+        return;
+    }
+
+    const existing = customerAddresses.find(address => Number(address.customerAddressId) === Number(selectedCustomerAddressId));
+    const payload = {
+        ...addressInput,
+        isDefault: existing?.isDefault || customerAddresses.length === 0
+    };
+    const isUpdate = Boolean(existing);
+
+    try {
+        const response = await fetch(
+            `${API_BASE}/api/Customer/profile/addresses${isUpdate ? `/${existing.customerAddressId}` : ''}`,
+            {
+                method: isUpdate ? 'PUT' : 'POST',
+                headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+                body: JSON.stringify(payload)
+            });
+        const saved = await response.json().catch(() => ({}));
+        if (!response.ok) throw new Error(saved.message || 'Không thể lưu địa chỉ.');
+
+        if (isUpdate) {
+            customerAddresses = customerAddresses.map(address =>
+                Number(address.customerAddressId) === Number(saved.customerAddressId) ? saved : address);
+        } else {
+            customerAddresses = [saved, ...customerAddresses];
+        }
+        await applyCheckoutAddress(saved);
+        showToast(isUpdate ? 'Đã cập nhật địa chỉ giao hàng.' : 'Đã lưu địa chỉ giao hàng.', 'success');
+    } catch (error) {
+        showToast(error.message || 'Không thể lưu địa chỉ.', 'error');
+    }
+}
+
+async function initializeVietnamDeliveryAddress() {
+    const fields = ensureVietnamDeliveryAddressFields();
+    if (!fields?.provinceSelect || !fields.wardSelect) return;
+
+    // Không tải lại nếu danh sách đã hoàn tất; các lần mở drawer đồng thời cùng
+    // chờ một Promise để không tạo trạng thái giao diện chập chờn.
+    if (fields.provinceSelect.options.length > 1 && !fields.provinceSelect.disabled) return;
+    if (vietnamAddressInitializationPromise) return vietnamAddressInitializationPromise;
+
+    vietnamAddressInitializationPromise = (async () => {
+        const { provinceSelect } = ensureVietnamDeliveryAddressFields() || {};
+        if (!provinceSelect) return;
+
+        try {
+            const provinces = await getVietnamProvinces();
+            provinceSelect.innerHTML = '<option value="">Chọn tỉnh/thành phố</option>'
+                + provinces.map(province => `<option value="${escapeHtml(province.code)}" data-name="${escapeHtml(province.name)}">${escapeHtml(province.name)}</option>`).join('');
+            provinceSelect.disabled = false;
+        } catch (error) {
+            provinceSelect.innerHTML = '<option value="">Không tải được tỉnh/thành</option>';
+            provinceSelect.disabled = false;
+            showToast('Không thể tải danh sách tỉnh/thành. Vui lòng thử lại.', 'error');
+        } finally {
+            vietnamAddressInitializationPromise = null;
+        }
+    })();
+
+    return vietnamAddressInitializationPromise;
 }
 
 function renderCustomerProfileForm(profile) {
@@ -816,7 +1121,6 @@ function renderCustomerProfileForm(profile) {
                 <form id="customerProfileForm">
                     <div class="cust-form-group"><label>Họ và tên *</label><input id="profileFullName" required></div>
                     <div class="cust-form-group"><label>Số điện thoại *</label><input id="profilePhone" type="tel" required placeholder="0901234567"></div>
-                    <div class="cust-form-group"><label>Địa chỉ nhận hàng *</label><textarea id="profileAddress" rows="2" required placeholder="Số nhà, đường, phường/xã, quận/huyện, tỉnh/thành"></textarea></div>
                     <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">
                         <div class="cust-form-group"><label>Ngày sinh</label><input id="profileDateOfBirth" type="date"></div>
                         <div class="cust-form-group"><label>Giới tính</label><select id="profileGender"><option value="">Không chọn</option><option value="0">Nam</option><option value="1">Nữ</option><option value="2">Khác</option></select></div>
@@ -838,7 +1142,6 @@ function renderCustomerProfileForm(profile) {
 
     setValue('profileFullName', profile?.fullName || getAuthUser()?.fullName || '');
     setValue('profilePhone', profile?.phone || '');
-    setValue('profileAddress', profile?.address || '');
     setValue('profileDateOfBirth', profile?.dateOfBirth ? String(profile.dateOfBirth).slice(0, 10) : '');
     setValue('profileGender', profile?.gender ?? '');
 
@@ -847,7 +1150,7 @@ function renderCustomerProfileForm(profile) {
     const hint = document.getElementById('customerProfileHint');
     if (heading) heading.textContent = exists ? 'Hồ sơ xác nhận đơn hàng' : 'Hoàn thiện hồ sơ khách hàng';
     if (hint) hint.textContent = exists
-        ? 'Thông tin này được tự động điền khi bạn xác nhận đơn hàng.'
+        ? 'Thông tin liên hệ được tự động điền khi bạn xác nhận đơn hàng. Địa chỉ được quản lý riêng ở bước đặt hàng.'
         : 'Hãy lưu hồ sơ một lần để đặt hàng và nhận điểm thưởng.';
 }
 
@@ -865,7 +1168,6 @@ async function handleCustomerProfileSubmit(event) {
     const payload = {
         fullName: document.getElementById('profileFullName')?.value.trim(),
         phone: document.getElementById('profilePhone')?.value.trim(),
-        address: document.getElementById('profileAddress')?.value.trim(),
         dateOfBirth: document.getElementById('profileDateOfBirth')?.value || null,
         gender: document.getElementById('profileGender')?.value === ''
             ? null
@@ -1097,9 +1399,12 @@ function renderOrderDetailContent(order, container) {
     const isCancelled = Number(order.status) === 5;
     const earnedPoints = Math.floor(Number(order.totalAmount || 0) / 10000);
 
-    const paymentText = order.payment?.paymentMethod === 1 || order.paymentMethod === 1 || order.paymentMethod === 'Banking'
-        ? 'Chuyển khoản ngân hàng'
-        : 'Thanh toán khi nhận hàng (COD)';
+    const paymentMethod = order.payment?.paymentMethod ?? order.paymentMethod;
+    const paymentText = Number(paymentMethod) === 2 || paymentMethod === 'ZaloPay'
+        ? 'Thanh toán online qua ZaloPay'
+        : Number(paymentMethod) === 1 || paymentMethod === 'Banking'
+            ? 'Chuyển khoản ngân hàng'
+            : 'Thanh toán khi nhận hàng (COD)';
     const paymentStatusText = order.payment?.status === 1 || order.status === 4
         ? '<span class="order-badge completed">Đã thanh toán</span>'
         : '<span class="order-badge pending">Chưa thanh toán</span>';
@@ -1256,6 +1561,7 @@ async function loadCustomerOrders() {
         }
 
         if (!profile?.customerId) {
+            if (token !== getAuthToken()) return;
             listContainer.innerHTML = `<div class="customer-orders-empty"><p>Chưa có thông tin hồ sơ khách hàng.</p></div>`;
             return;
         }
@@ -1267,6 +1573,7 @@ async function loadCustomerOrders() {
         if (!res.ok) throw new Error('Không thể tải danh sách đơn hàng.');
 
         const orders = await res.json();
+        if (token !== getAuthToken()) return;
         if (!Array.isArray(orders) || !orders.length) {
             listContainer.innerHTML = `
                 <div class="customer-orders-empty">
@@ -1305,6 +1612,10 @@ async function loadCustomerOrders() {
                         <span>Tổng thanh toán:</span>
                         <strong>${money(o.totalAmount)}</strong>
                     </div>
+                    <div style="display:flex;justify-content:space-between;margin-top:4px;gap:10px;">
+                        <span>Giao dự kiến:</span>
+                        <strong>${formatDeliveryWindow(o.shipping?.estimatedDeliveryFromDate || o.shipping?.estimatedDeliveryAt, o.shipping?.estimatedDeliveryToDate)}</strong>
+                    </div>
                 </div>
                 <div class="customer-order-actions">
                     <button type="button" class="btn-view-order" onclick="window.showOrderDetailModal(${o.orderId})">👁 Xem chi tiết</button>
@@ -1312,6 +1623,7 @@ async function loadCustomerOrders() {
             </div>`;
         }).join('');
     } catch (err) {
+        if (token !== getAuthToken()) return;
         listContainer.innerHTML = `<div style="color:var(--danger);font-size:13px;padding:12px;">⚠️ ${err.message}</div>`;
     }
 }
@@ -1472,6 +1784,7 @@ async function syncAccountDrawerView() {
     // Fetch customer loyalty points & profile from API
     try {
         const customerData = await loadCustomerProfile();
+        if (token !== getAuthToken()) return;
         renderCustomerProfileForm(customerData);
 
         if (customerData && nameNode) nameNode.textContent = customerData.fullName || nameNode.textContent;
@@ -1526,6 +1839,7 @@ async function handleCustomerLogin(e) {
         }
 
         const data = await response.json();
+        resetCustomerSessionState();
         localStorage.setItem('toyStoreToken', data.token);
         localStorage.setItem('toyStoreUser', JSON.stringify({
             userId: data.userId,
@@ -1566,6 +1880,7 @@ async function handleCustomerRegister(e) {
         }
 
         const data = await response.json();
+        resetCustomerSessionState();
         localStorage.setItem('toyStoreToken', data.token);
         localStorage.setItem('toyStoreUser', JSON.stringify({
             userId: data.userId,
@@ -1624,9 +1939,9 @@ async function handleCustomerChangePassword(e) {
 }
 
 function handleCustomerLogout() {
+    resetCustomerSessionState();
     localStorage.removeItem('toyStoreToken');
     localStorage.removeItem('toyStoreUser');
-    currentCustomerProfile = null;
     syncAccountDrawerView();
     renderPersonalizedRecommendations();
     showToast('Đã đăng xuất tài khoản.');
@@ -1646,16 +1961,18 @@ async function handleCheckoutSubmit(e) {
 
     const fullName = document.getElementById('orderFullName')?.value.trim();
     const phone = document.getElementById('orderPhone')?.value.trim();
-    const address = document.getElementById('orderAddress')?.value.trim();
+    const deliveryAddress = composeDeliveryAddress();
+    const address = deliveryAddress.fullAddress;
     const note = document.getElementById('orderNote')?.value.trim();
 
-    if (!fullName || !phone || !address) {
-        showToast('Vui lòng điền đủ thông tin giao hàng.', 'error');
+    if (!fullName || !phone || !deliveryAddress.detail || !deliveryAddress.ward || !deliveryAddress.province) {
+        showToast('Vui lòng nhập số nhà/đường và chọn đủ phường/xã, tỉnh/thành.', 'error');
         return;
     }
 
     const token = getAuthToken();
-    if (!token || !getAuthUser()) {
+    const sessionUser = getAuthUser();
+    if (!token || !sessionUser?.userId) {
         closeCheckoutDrawer();
         openAccountDrawer();
         showToast('Vui lòng đăng nhập và tạo hồ sơ khách hàng trước khi đặt hàng.', 'error');
@@ -1670,7 +1987,9 @@ async function handleCheckoutSubmit(e) {
         return;
     }
 
-    if (!customerProfile?.customerId || !customerProfile.phone || !customerProfile.address) {
+    if (token !== getAuthToken() || getAuthUser()?.userId !== sessionUser.userId
+        || customerProfile?.userId !== sessionUser.userId
+        || !customerProfile?.customerId || !customerProfile.phone) {
         closeCheckoutDrawer();
         openAccountDrawer();
         showToast('Vui lòng hoàn thiện hồ sơ khách hàng trước khi xác nhận đơn.', 'error');
@@ -1685,6 +2004,7 @@ async function handleCheckoutSubmit(e) {
     const paymentMethod = document.getElementById('orderPaymentMethod')?.value || 'COD';
     const pricing = updateCheckoutTotal();
     const pendingOrder = {
+        accountUserId: sessionUser.userId,
         customerId: customerProfile.customerId,
         customer: { fullName, phone, address },
         note: note || '',
@@ -1750,6 +2070,11 @@ document.addEventListener('click', e => {
 
     if (e.target.closest('#applyVoucherBtn')) {
         applyVoucher();
+        return;
+    }
+
+    if (e.target.closest('#saveCheckoutAddressBtn')) {
+        saveCheckoutAddress();
         return;
     }
 
@@ -1838,6 +2163,30 @@ document.addEventListener('change', e => {
     renderProducts();
 });
 
+document.addEventListener('change', event => {
+    if (event.target.id === 'orderSavedAddress') {
+        const address = customerAddresses.find(item => Number(item.customerAddressId) === Number(event.target.value));
+        if (address) applyCheckoutAddress(address);
+        else {
+            selectedCustomerAddressId = null;
+            renderCheckoutAddressBook();
+        }
+    } else if (event.target.id === 'orderProvince') {
+        clearSavedAddressSelection();
+        loadWardsForSelectedProvince();
+    } else if (event.target.id === 'orderWard') {
+        clearSavedAddressSelection();
+        composeDeliveryAddress();
+    }
+});
+
+document.addEventListener('input', event => {
+    if (['orderAddressDetail', 'orderFullName', 'orderPhone'].includes(event.target.id)) {
+        clearSavedAddressSelection();
+        composeDeliveryAddress();
+    }
+});
+
 document.getElementById('checkoutDrawerForm')?.addEventListener('submit', handleCheckoutSubmit);
 document.getElementById('orderVoucherCode')?.addEventListener('input', event => {
     if (!appliedVoucher) return;
@@ -1894,6 +2243,7 @@ document.getElementById('clearFilters')?.addEventListener('click', () => {
    INITIALIZATION
    ========================================================= */
 if (!redirectAdminPortalUser()) {
+    initializeVietnamDeliveryAddress();
     updateCartCountBadge();
     checkApi();
     loadData();

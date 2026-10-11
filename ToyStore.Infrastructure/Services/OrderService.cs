@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Globalization;
 using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
@@ -76,6 +77,9 @@ namespace ToyStoreManagement.Infrastructure.Services
         {
             if (dto.OrderDetails == null || !dto.OrderDetails.Any())
                 throw new Exception("Đơn hàng phải có ít nhất một sản phẩm.");
+
+            if (dto.PaymentMethod is < 0 or > 2)
+                throw new Exception("Phương thức thanh toán không hợp lệ.");
 
             if (dto.Shipping == null
                 || string.IsNullOrWhiteSpace(dto.Shipping.ReceiverName)
@@ -245,9 +249,16 @@ namespace ToyStoreManagement.Infrastructure.Services
                     DiscountAmount = voucherDiscount,
                     UsedAt = DateTime.UtcNow
                 });
-                voucher.UsedCount++;
+                // Lượt của voucher đổi điểm đã được giữ chỗ từ lúc khách đổi điểm.
+                if (voucher.RequiredPoints <= 0)
+                    voucher.UsedCount++;
                 voucher.UpdatedAt = DateTime.UtcNow;
             }
+
+            var deliveryPlan = await ResolveDeliveryPlanAsync(
+                dto.Shipping.ReceiverName,
+                dto.Shipping.ReceiverPhone,
+                dto.Shipping.Address);
 
             _context.Shippings.Add(new Shipping
             {
@@ -258,6 +269,11 @@ namespace ToyStoreManagement.Infrastructure.Services
                 ShippingMethod = dto.Shipping.ShippingMethod,
                 TrackingCode = !string.IsNullOrWhiteSpace(dto.Shipping.TrackingCode) ? dto.Shipping.TrackingCode.Trim() : $"TRK-{order.OrderCode}",
                 ShippingFee = order.ShippingFee,
+                DeliveryBatchCode = deliveryPlan.BatchCode,
+                // Trường cũ được giữ để tương thích dữ liệu, giao diện sử dụng khoảng ngày.
+                EstimatedDeliveryAt = deliveryPlan.EstimatedDeliveryFromDate,
+                EstimatedDeliveryFromDate = deliveryPlan.EstimatedDeliveryFromDate,
+                EstimatedDeliveryToDate = deliveryPlan.EstimatedDeliveryToDate,
                 Status = 0
             });
 
@@ -340,6 +356,7 @@ namespace ToyStoreManagement.Infrastructure.Services
                 throw new Exception("Số tiền giảm giá không được lớn hơn tổng tiền sản phẩm.");
 
             int oldStatus = order.Status;
+            ValidateStatusTransition(oldStatus, dto.Status);
             order.Status = dto.Status;
             if (dto.DiscountAmount.HasValue) order.DiscountAmount = dto.DiscountAmount.Value;
             if (dto.ShippingFee.HasValue) order.ShippingFee = dto.ShippingFee.Value;
@@ -387,21 +404,9 @@ namespace ToyStoreManagement.Infrastructure.Services
                     shipping.DeliveredAt = DateTime.UtcNow;
                 }
 
-                // Xác định khách hàng nhận điểm tích lũy
+                // Điểm chỉ thuộc về khách hàng đã gắn sẵn với đơn hàng. Không tự
+                // ghép theo số điện thoại người nhận vì số này có thể dùng chung.
                 int? targetCustomerId = order.CustomerId;
-                if (!targetCustomerId.HasValue || targetCustomerId.Value <= 0)
-                {
-                    if (shipping != null && !string.IsNullOrWhiteSpace(shipping.ReceiverPhone))
-                    {
-                        var custByPhone = await _context.Customers
-                            .FirstOrDefaultAsync(c => c.Phone == shipping.ReceiverPhone);
-                        if (custByPhone != null)
-                        {
-                            targetCustomerId = custByPhone.CustomerId;
-                            order.CustomerId = targetCustomerId;
-                        }
-                    }
-                }
 
                 if (targetCustomerId.HasValue && targetCustomerId.Value > 0)
                 {
@@ -488,6 +493,36 @@ namespace ToyStoreManagement.Infrastructure.Services
             await transaction.CommitAsync();
 
             return MapToDto(order);
+        }
+
+        private static void ValidateStatusTransition(int currentStatus, int nextStatus)
+        {
+            const int pendingConfirmation = 0;
+            const int completed = 4;
+            const int cancelled = 5;
+
+            if (nextStatus < pendingConfirmation || nextStatus > cancelled)
+                throw new Exception("Trạng thái đơn hàng không hợp lệ.");
+
+            // Giữ nguyên trạng thái khi nhân viên chỉ thay đổi thông tin khác của đơn hàng.
+            if (nextStatus == currentStatus)
+                return;
+
+            if (currentStatus < pendingConfirmation || currentStatus > cancelled)
+                throw new Exception("Trạng thái hiện tại của đơn hàng không hợp lệ.");
+
+            if (currentStatus == completed || currentStatus == cancelled)
+                throw new Exception("Đơn hàng đã hoàn tất hoặc đã hủy nên không thể đổi trạng thái.");
+
+            // Đơn còn hiệu lực có thể hủy, nhưng không thể bỏ qua giai đoạn giao hàng.
+            if (nextStatus == cancelled)
+                return;
+
+            if (nextStatus != currentStatus + 1)
+            {
+                throw new Exception(
+                    "Đơn hàng phải đi lần lượt qua các bước: Chờ xác nhận → Đã xác nhận → Đang xử lý → Đang giao → Hoàn tất.");
+            }
         }
 
         public async Task<bool> DeleteAsync(int orderId)
@@ -594,6 +629,12 @@ namespace ToyStoreManagement.Infrastructure.Services
                 throw new Exception(
                     "Đơn hàng đã có thông tin giao hàng.");
 
+            var deliveryPlan = await ResolveDeliveryPlanAsync(
+                dto.ReceiverName,
+                dto.ReceiverPhone,
+                dto.Address,
+                dto.EstimatedDeliveryAt);
+
             var shipping = new Shipping
             {
                 OrderId = orderId,
@@ -603,6 +644,11 @@ namespace ToyStoreManagement.Infrastructure.Services
                 ShippingMethod = dto.ShippingMethod,
                 TrackingCode = !string.IsNullOrWhiteSpace(dto.TrackingCode) ? dto.TrackingCode.Trim() : $"TRK-{order.OrderCode}",
                 ShippingFee = dto.ShippingFee,
+                DeliveryBatchCode = deliveryPlan.BatchCode,
+                // Trường cũ được giữ để tương thích dữ liệu, giao diện sử dụng khoảng ngày.
+                EstimatedDeliveryAt = deliveryPlan.EstimatedDeliveryFromDate,
+                EstimatedDeliveryFromDate = deliveryPlan.EstimatedDeliveryFromDate,
+                EstimatedDeliveryToDate = deliveryPlan.EstimatedDeliveryToDate,
                 Status = 0
             };
 
@@ -626,6 +672,151 @@ namespace ToyStoreManagement.Infrastructure.Services
         {
             return "ORD-" +
                    DateTime.UtcNow.ToString("yyyyMMddHHmmssfff");
+        }
+
+        private async Task<DeliveryPlan> ResolveDeliveryPlanAsync(
+            string receiverName,
+            string receiverPhone,
+            string address,
+            DateTime? requestedEstimatedDeliveryAt = null)
+        {
+            var normalizedReceiver = NormalizeDeliveryText(receiverName);
+            var normalizedPhone = NormalizePhone(receiverPhone);
+            var now = DateTime.UtcNow;
+            var defaultWindow = requestedEstimatedDeliveryAt.HasValue
+                ? CreateDeliveryWindow(requestedEstimatedDeliveryAt.Value, 1)
+                : GetDefaultDeliveryWindow(now, address);
+
+            // Chỉ gộp các đơn chưa xuất kho, phát sinh trong 24 giờ gần đây;
+            // nhờ vậy lô giao luôn có thể điều phối lại trước khi bàn giao.
+            var candidates = await _context.Shippings
+                .Include(shipping => shipping.Order)
+                .Where(shipping => shipping.Status == 0
+                    && shipping.ShippedAt == null
+                    && shipping.Order.OrderDate >= now.AddHours(-24)
+                    && shipping.Order.Status != 5)
+                .ToListAsync();
+
+            var matchingShipping = candidates.FirstOrDefault(shipping =>
+            {
+                var sameRecipient =
+                    (!string.IsNullOrEmpty(normalizedPhone)
+                        && normalizedPhone == NormalizePhone(shipping.ReceiverPhone))
+                    || (!string.IsNullOrEmpty(normalizedReceiver)
+                        && normalizedReceiver == NormalizeDeliveryText(shipping.ReceiverName));
+
+                return sameRecipient
+                    || IsNearbyDeliveryAddress(address, shipping.Address);
+            });
+
+            if (matchingShipping != null)
+            {
+                var batchCode = matchingShipping.DeliveryBatchCode;
+                if (string.IsNullOrWhiteSpace(batchCode))
+                {
+                    batchCode = GenerateDeliveryBatchCode(now);
+                    matchingShipping.DeliveryBatchCode = batchCode;
+                }
+
+                var estimatedDeliveryFromDate = requestedEstimatedDeliveryAt.HasValue
+                    ? defaultWindow.FromDate
+                    : matchingShipping.EstimatedDeliveryFromDate
+                        ?? matchingShipping.EstimatedDeliveryAt?.Date
+                        ?? defaultWindow.FromDate;
+                var estimatedDeliveryToDate = requestedEstimatedDeliveryAt.HasValue
+                    ? defaultWindow.ToDate
+                    : matchingShipping.EstimatedDeliveryToDate
+                        ?? matchingShipping.EstimatedDeliveryAt?.Date.AddDays(1)
+                        ?? defaultWindow.ToDate;
+
+                matchingShipping.EstimatedDeliveryFromDate ??= estimatedDeliveryFromDate;
+                matchingShipping.EstimatedDeliveryToDate ??= estimatedDeliveryToDate;
+                matchingShipping.EstimatedDeliveryAt ??= estimatedDeliveryFromDate;
+
+                return new DeliveryPlan(
+                    batchCode,
+                    estimatedDeliveryFromDate,
+                    estimatedDeliveryToDate);
+            }
+
+            return new DeliveryPlan(
+                GenerateDeliveryBatchCode(now),
+                defaultWindow.FromDate,
+                defaultWindow.ToDate);
+        }
+
+        private static DeliveryWindow GetDefaultDeliveryWindow(DateTime now, string address)
+        {
+            var vietnamOffset = TimeSpan.FromHours(7);
+            var localNow = new DateTimeOffset(now, TimeSpan.Zero)
+                .ToOffset(vietnamOffset);
+            var normalizedAddress = NormalizeDeliveryText(address);
+            var isInnerCity = normalizedAddress.Contains("hanoi")
+                || normalizedAddress.Contains("hochiminh")
+                || normalizedAddress.Contains("saigon")
+                || normalizedAddress.Contains("danang");
+            var deliveryDays = (localNow.Hour >= 14 ? 3 : 2) + (isInnerCity ? 0 : 1);
+            return CreateDeliveryWindow(localNow.Date.AddDays(deliveryDays), isInnerCity ? 1 : 2);
+        }
+
+        private static DeliveryWindow CreateDeliveryWindow(DateTime fromDate, int rangeDays)
+        {
+            var normalizedFromDate = DateTime.SpecifyKind(fromDate.Date, DateTimeKind.Utc);
+            return new DeliveryWindow(
+                normalizedFromDate,
+                normalizedFromDate.AddDays(Math.Max(1, rangeDays)));
+        }
+
+        private static string GenerateDeliveryBatchCode(DateTime now)
+        {
+            return $"DLV-{now:yyyyMMdd}-{Guid.NewGuid():N}"[..22].ToUpperInvariant();
+        }
+
+        private static string NormalizePhone(string? value)
+        {
+            return string.Concat((value ?? string.Empty)
+                .Where(char.IsDigit));
+        }
+
+        private static string NormalizeDeliveryText(string? value)
+        {
+            var normalized = (value ?? string.Empty)
+                .Trim()
+                .ToLowerInvariant()
+                .Replace('đ', 'd')
+                .Normalize(NormalizationForm.FormD);
+
+            return string.Concat(normalized.Where(character =>
+                char.IsLetterOrDigit(character)
+                && CharUnicodeInfo.GetUnicodeCategory(character)
+                    != UnicodeCategory.NonSpacingMark));
+        }
+
+        private static bool IsNearbyDeliveryAddress(
+            string address,
+            string candidateAddress)
+        {
+            if (string.IsNullOrWhiteSpace(address))
+                return false;
+
+            var requestedAreas = GetAddressAreaParts(address);
+            var candidateAreas = GetAddressAreaParts(candidateAddress);
+
+            return requestedAreas.Count >= 2
+                && candidateAreas.Count >= 2
+                && requestedAreas.Intersect(candidateAreas).Count() >= 2;
+        }
+
+        private static HashSet<string> GetAddressAreaParts(string address)
+        {
+            // So sánh hai thành phần địa lý cuối (thường là quận/huyện và
+            // tỉnh/thành), không so sánh số nhà để tránh gom nhầm theo tên phố.
+            return address
+                .Split(',', StringSplitOptions.RemoveEmptyEntries)
+                .Select(NormalizeDeliveryText)
+                .Where(part => part.Length >= 3)
+                .TakeLast(2)
+                .ToHashSet();
         }
 
         private async Task<List<Promotion>> GetActivePromotionsAsync()
@@ -652,8 +843,7 @@ namespace ToyStoreManagement.Infrastructure.Services
         {
             return promotions
                 .Where(promotion =>
-                    (!promotion.PromotionProducts.Any()
-                        || promotion.PromotionProducts.Any(product =>
+                    (promotion.PromotionProducts.Any(product =>
                             product.VariantId == variantId))
                     && promotion.PromotionConditions.All(condition =>
                         (!condition.MinimumOrderValue.HasValue
@@ -711,7 +901,8 @@ namespace ToyStoreManagement.Infrastructure.Services
                 throw new Exception("Voucher không còn hiệu lực.");
             }
 
-            if (voucher.UsageLimit > 0
+            var isRewardVoucher = voucher.RequiredPoints > 0;
+            if (!isRewardVoucher && voucher.UsageLimit > 0
                 && voucher.UsedCount >= voucher.UsageLimit)
             {
                 throw new Exception("Voucher đã hết lượt sử dụng.");
@@ -724,7 +915,26 @@ namespace ToyStoreManagement.Infrastructure.Services
                     "Đơn hàng chưa đạt giá trị tối thiểu để sử dụng voucher.");
             }
 
-            if (customerId.HasValue
+            if (isRewardVoucher)
+            {
+                if (!customerId.HasValue)
+                    throw new Exception("Voucher đổi điểm chỉ áp dụng cho tài khoản đã đổi voucher.");
+
+                var hasRedeemed = await _context.LoyaltyTransactions.AnyAsync(transaction =>
+                    transaction.CustomerId == customerId.Value
+                    && transaction.VoucherId == voucher.VoucherId
+                    && transaction.TransactionType == 2);
+                if (!hasRedeemed)
+                    throw new Exception("Bạn cần đổi voucher này bằng điểm trước khi sử dụng.");
+
+                var hasUsedReward = await _context.VoucherUsages.AnyAsync(usage =>
+                    usage.VoucherId == voucher.VoucherId
+                    && usage.CustomerId == customerId.Value);
+                if (hasUsedReward)
+                    throw new Exception("Voucher đổi điểm này đã được sử dụng.");
+            }
+
+            if (!isRewardVoucher && customerId.HasValue
                 && voucher.UsageLimitPerCustomer.HasValue)
             {
                 var usageCount = await _context.VoucherUsages.CountAsync(usage =>
@@ -809,6 +1019,7 @@ namespace ToyStoreManagement.Infrastructure.Services
                 OrderId = payment.OrderId,
                 PaymentMethod = payment.PaymentMethod,
                 TransactionCode = payment.TransactionCode,
+                GatewayTransactionCode = payment.GatewayTransactionCode,
                 Amount = payment.Amount,
                 Status = payment.Status,
                 PaidAt = payment.PaidAt,
@@ -828,10 +1039,25 @@ namespace ToyStoreManagement.Infrastructure.Services
                 ShippingMethod = shipping.ShippingMethod,
                 TrackingCode = shipping.TrackingCode,
                 ShippingFee = shipping.ShippingFee,
+                DeliveryBatchCode = shipping.DeliveryBatchCode,
+                EstimatedDeliveryAt = shipping.EstimatedDeliveryAt,
+                EstimatedDeliveryFromDate = shipping.EstimatedDeliveryFromDate
+                    ?? shipping.EstimatedDeliveryAt?.Date,
+                EstimatedDeliveryToDate = shipping.EstimatedDeliveryToDate
+                    ?? shipping.EstimatedDeliveryAt?.Date.AddDays(1),
                 Status = shipping.Status,
                 ShippedAt = shipping.ShippedAt,
                 DeliveredAt = shipping.DeliveredAt
             };
         }
+
+        private sealed record DeliveryPlan(
+            string BatchCode,
+            DateTime EstimatedDeliveryFromDate,
+            DateTime EstimatedDeliveryToDate);
+
+        private sealed record DeliveryWindow(
+            DateTime FromDate,
+            DateTime ToDate);
     }
 }

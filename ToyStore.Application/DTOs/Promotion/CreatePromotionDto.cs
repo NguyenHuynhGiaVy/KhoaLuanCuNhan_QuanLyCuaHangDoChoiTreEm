@@ -26,6 +26,9 @@ namespace ToyStoreManagement.Application.DTOs.Promotion
 
         public bool CanCombine { get; set; }
 
+        // Khuyến mãi chỉ tự áp dụng cho các biến thể được chọn.
+        public List<int> VariantIds { get; set; } = new();
+
         // Mặc định chương trình mới được kích hoạt.
         public int Status { get; set; } = 1;
     }
