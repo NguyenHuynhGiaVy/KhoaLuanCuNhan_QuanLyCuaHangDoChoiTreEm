@@ -69,6 +69,10 @@
       showEmpty('Phiên xác nhận đơn không còn hiệu lực.');
       return;
     }
+    if (pending.paymentMethod === 'ZaloPay' && pending.createdOrderId && pending.zaloPaymentUrl) {
+      renderZaloPaySandboxPayment(pending);
+      return;
+    }
 
     const originalSubtotal = pending.items.reduce((sum, item) =>
       sum + Number(item.originalPrice ?? item.price ?? 0) * Number(item.quantity || 1), 0);
@@ -80,7 +84,7 @@
     const total = Math.max(0, subtotal - voucherDiscount + shippingFee);
     const isZaloPay = pending.paymentMethod === 'ZaloPay';
     const paymentName = isZaloPay
-      ? 'ZaloPay (thanh toán online)'
+      ? 'ZaloPay Sandbox'
       : pending.paymentMethod === 'Banking'
         ? 'Chuyển khoản ngân hàng'
         : 'Thanh toán khi nhận hàng (COD)';
@@ -115,7 +119,7 @@
           <div class="review-total-row"><span>Thanh toán</span><strong>${escapeHtml(paymentName)}</strong></div>
           <div class="review-total-row total"><span>Tổng cộng</span><strong>${money(total)}</strong></div>
           <div class="review-reward-note">🎁 Điểm thưởng dự kiến: <strong>+${points} điểm</strong>. Điểm chỉ được cộng khi đơn hàng hoàn tất.</div>
-          <button class="review-primary" id="placeOrderBtn">${isZaloPay ? 'Tiếp tục thanh toán ZaloPay' : 'Đặt hàng'}</button>
+          <button class="review-primary" id="placeOrderBtn">${isZaloPay ? 'Tạo đơn & mở ZaloPay Sandbox' : 'Đặt hàng'}</button>
           <button class="review-secondary" id="backToCheckoutBtn">Quay lại chỉnh sửa</button>
         </aside>
       </div>`;
@@ -133,6 +137,10 @@
       return;
     }
 
+    const isZaloPay = pending.paymentMethod === 'ZaloPay';
+    // Mở cửa sổ ngay trong lần nhấn của khách để trình duyệt không chặn popup;
+    // sau khi API tạo giao dịch xong, cửa sổ này sẽ được điều hướng đến ZaloPay.
+    const zaloPayWindow = isZaloPay ? window.open('', 'zalopaySandbox') : null;
     const button = document.getElementById('placeOrderBtn');
     if (button) { button.disabled = true; button.textContent = 'Đang tạo đơn...'; }
 
@@ -145,7 +153,6 @@
         throw new Error('Phiên tài khoản đã thay đổi. Vui lòng tạo lại đơn hàng.');
       }
 
-      const isZaloPay = pending.paymentMethod === 'ZaloPay';
       let result;
       if (isZaloPay && pending.createdOrderId) {
         result = { orderId: pending.createdOrderId, orderCode: pending.createdOrderCode };
@@ -181,10 +188,13 @@
       if (isZaloPay) {
         if (!result.orderId) throw new Error('Không xác định được đơn hàng để thanh toán ZaloPay.');
         if (pending.zaloPaymentUrl) {
-          window.location.assign(pending.zaloPaymentUrl);
+          if (zaloPayWindow && !zaloPayWindow.closed) {
+            zaloPayWindow.location.href = pending.zaloPaymentUrl;
+          }
+          renderZaloPaySandboxPayment(pending);
           return;
         }
-        if (button) button.textContent = 'Đang chuyển đến ZaloPay...';
+        if (button) button.textContent = 'Đang tạo phiên ZaloPay...';
 
         const zaloResponse = await fetch(`${API_BASE}/api/ZaloPay/orders/${encodeURIComponent(result.orderId)}/create`, {
           method: 'POST',
@@ -192,24 +202,29 @@
         });
         const zaloPayment = await zaloResponse.json().catch(() => ({}));
         if (zaloPayment.isPaid) {
+          zaloPayWindow?.close();
           recordPurchasedProducts(pending.items);
           localStorage.removeItem('toyStorePendingOrder');
           localStorage.removeItem('toyStoreCart');
-          window.location.assign(`/order-review.html?zalopay=return&orderId=${encodeURIComponent(result.orderId)}`);
+          renderPaymentSuccess(result.orderId, result.orderCode);
           return;
         }
         if (zaloResponse.status === 409) {
-          window.location.assign(`/order-review.html?zalopay=return&orderId=${encodeURIComponent(result.orderId)}`);
+          zaloPayWindow?.close();
+          renderZaloPaySandboxPayment(pending, { orderId: result.orderId, orderCode: result.orderCode });
           return;
         }
         if (!zaloResponse.ok || !zaloPayment.orderUrl) {
           throw new Error(zaloPayment.message || 'Không thể khởi tạo thanh toán ZaloPay.');
         }
 
-        // Chỉ xoá giỏ sau khi ZaloPay xác nhận thành công, để khách có thể quay lại thử lại.
+        // Chỉ xoá giỏ sau khi khách bấm xác nhận thanh toán mô phỏng.
         pending.zaloPaymentUrl = zaloPayment.orderUrl;
         localStorage.setItem('toyStorePendingOrder', JSON.stringify(pending));
-        window.location.assign(zaloPayment.orderUrl);
+        if (zaloPayWindow && !zaloPayWindow.closed) {
+          zaloPayWindow.location.href = zaloPayment.orderUrl;
+        }
+        renderZaloPaySandboxPayment(pending, { orderId: result.orderId, orderCode: result.orderCode });
         return;
       }
 
@@ -238,8 +253,77 @@
 
       showToast('Đơn hàng đã được tạo thành công.');
     } catch (error) {
+      zaloPayWindow?.close();
       showToast(`Lỗi đặt hàng: ${error.message}`, 'error');
       if (button) { button.disabled = false; button.textContent = 'Đặt hàng'; }
+    }
+  }
+
+  function clearConfirmedPayment(pending) {
+    if (pending?.accountUserId === getCurrentUserId()) {
+      recordPurchasedProducts(pending.items);
+      localStorage.removeItem('toyStorePendingOrder');
+      localStorage.removeItem('toyStoreCart');
+    }
+  }
+
+  function renderPaymentSuccess(orderId, orderCode) {
+    root.innerHTML = `
+      <section class="review-card review-success">
+        <div class="mark">✓</div>
+        <h1>Đã xác nhận thanh toán!</h1>
+        <p style="color:var(--text-muted);margin:8px 0 20px;">Đơn hàng <strong>#${escapeHtml(orderCode || orderId)}</strong> đã được ghi nhận là đã thanh toán. Cửa hàng sẽ xử lý đơn trong thời gian sớm nhất.</p>
+        <a class="review-primary" href="/customer.html" style="display:inline-flex;align-items:center;width:auto;padding:12px 24px;text-decoration:none;">Xem đơn hàng của tôi</a>
+      </section>`;
+  }
+
+  function renderZaloPaySandboxPayment(pending, payment = {}) {
+    const orderId = Number(payment.orderId || pending?.createdOrderId);
+    const orderCode = payment.orderCode || pending?.createdOrderCode || orderId;
+    const paymentUrl = pending?.zaloPaymentUrl || '';
+    const subtotal = (pending?.items || []).reduce((sum, item) => sum + Number(item.price || 0) * Number(item.quantity || 1), 0);
+    const voucherDiscount = Math.min(subtotal, Math.max(0, Number(pending?.voucherDiscount || 0)));
+    const total = subtotal - voucherDiscount + (subtotal >= 500000 ? 0 : 30000);
+
+    root.innerHTML = `
+      <section class="review-card review-success" style="max-width:680px;margin:32px auto;">
+        <div style="font-size:42px;">💳</div>
+        <h1>Thanh toán ZaloPay Sandbox</h1>
+        <p style="color:var(--text-muted);margin:8px 0;">Đơn hàng <strong>#${escapeHtml(orderCode)}</strong> đã được tạo với tổng tiền <strong>${money(Math.max(0, total))}</strong>.</p>
+        <p style="color:var(--text-muted);margin:8px 0 20px;">Mở trang ZaloPay ở tab mới để xem QR/cổng thanh toán. Đây là luồng kiểm thử, nên sau đó bấm nút xác nhận bên dưới để giả lập khách đã thanh toán.</p>
+        ${paymentUrl ? `<a class="review-primary" href="${escapeHtml(paymentUrl)}" target="_blank" rel="noopener" style="display:inline-flex;align-items:center;width:auto;padding:12px 24px;text-decoration:none;margin:0 6px 12px;">Mở ZaloPay Sandbox ↗</a>` : ''}
+        <button type="button" class="review-primary" id="confirmSandboxPaymentBtn" style="width:auto;padding:12px 24px;margin:0 6px 12px;">✓ Xác nhận đã thanh toán</button>
+        <p style="font-size:13px;color:var(--text-muted);margin-top:14px;">Nút này chỉ hoạt động trong môi trường Sandbox, không thực hiện giao dịch tiền thật.</p>
+      </section>`;
+
+    document.getElementById('confirmSandboxPaymentBtn')?.addEventListener('click', () => confirmSandboxPayment(orderId, orderCode, pending));
+  }
+
+  async function confirmSandboxPayment(orderId, orderCode, pending) {
+    const token = localStorage.getItem('toyStoreToken');
+    const button = document.getElementById('confirmSandboxPaymentBtn');
+    if (!token || !Number.isInteger(orderId) || orderId <= 0) {
+      showToast('Không thể xác nhận thanh toán. Vui lòng đăng nhập lại.', 'error');
+      return;
+    }
+
+    if (button) { button.disabled = true; button.textContent = 'Đang xác nhận...'; }
+    try {
+      const response = await fetch(`${API_BASE}/api/ZaloPay/orders/${encodeURIComponent(orderId)}/confirm-sandbox-payment`, {
+        method: 'POST',
+        headers: { 'Authorization': `Bearer ${token}` }
+      });
+      const result = await response.json().catch(() => ({}));
+      if (!response.ok || !result.isPaid) {
+        throw new Error(result.message || 'Không thể xác nhận thanh toán mô phỏng.');
+      }
+
+      clearConfirmedPayment(pending);
+      renderPaymentSuccess(result.orderId || orderId, result.orderCode || orderCode);
+      showToast('Đơn hàng đã được đánh dấu là đã thanh toán.');
+    } catch (error) {
+      showToast(`Lỗi xác nhận thanh toán: ${error.message}`, 'error');
+      if (button) { button.disabled = false; button.textContent = '✓ Xác nhận đã thanh toán'; }
     }
   }
 
@@ -270,30 +354,12 @@
 
       if (payment.isPaid) {
         const pending = getPendingOrder();
-        if (pending?.accountUserId === getCurrentUserId()) {
-          recordPurchasedProducts(pending.items);
-          localStorage.removeItem('toyStorePendingOrder');
-          localStorage.removeItem('toyStoreCart');
-        }
-        root.innerHTML = `
-          <section class="review-card review-success">
-            <div class="mark">✓</div>
-            <h1>Thanh toán ZaloPay thành công!</h1>
-            <p style="color:var(--text-muted);margin:8px 0 20px;">Đơn hàng <strong>#${escapeHtml(payment.orderCode || orderId)}</strong> đã được ghi nhận. Cửa hàng sẽ xử lý đơn trong thời gian sớm nhất.</p>
-            <a class="review-primary" href="/customer.html" style="display:inline-flex;align-items:center;width:auto;padding:12px 24px;text-decoration:none;">Xem đơn hàng của tôi</a>
-          </section>`;
+        clearConfirmedPayment(pending);
+        renderPaymentSuccess(payment.orderId || orderId, payment.orderCode);
         return true;
       }
 
-      root.innerHTML = `
-        <section class="review-card review-empty">
-          <div style="font-size:44px;">⌛</div>
-          <h1>Thanh toán ZaloPay chưa hoàn tất</h1>
-          <p style="color:var(--text-muted);">Đơn hàng <strong>#${escapeHtml(payment.orderCode || orderId)}</strong> đang chờ ZaloPay xác nhận. Bạn có thể kiểm tra lại sau ít phút.</p>
-          <button type="button" class="review-primary" id="checkZaloPayStatusBtn" style="width:auto;padding:12px 24px;">Kiểm tra lại</button>
-          <a class="review-secondary" href="/customer.html" style="display:inline-flex;align-items:center;width:auto;padding:12px 24px;text-decoration:none;margin-top:12px;">Xem đơn hàng của tôi</a>
-        </section>`;
-      document.getElementById('checkZaloPayStatusBtn')?.addEventListener('click', renderZaloPayReturn);
+      renderZaloPaySandboxPayment(getPendingOrder(), { orderId, orderCode: payment.orderCode });
     } catch (error) {
       showEmpty(error.message || 'Không thể kiểm tra trạng thái thanh toán ZaloPay.');
     }

@@ -18,6 +18,8 @@ let currentCustomerProfile = null;
 let appliedVoucher = null;
 let customerAddresses = [];
 let selectedCustomerAddressId = null;
+let checkoutEstimateTimer = null;
+let checkoutEstimateVersion = 0;
 
 // Filter state
 let selectedPrices = [];
@@ -950,6 +952,51 @@ function getCheckoutAddressInput() {
     };
 }
 
+async function refreshCheckoutDeliveryEstimate(address) {
+    const estimate = document.getElementById('checkoutDeliveryEstimate');
+    const version = ++checkoutEstimateVersion;
+    if (!estimate) return;
+
+    const normalizedAddress = String(address || '').trim();
+    if (!normalizedAddress) {
+        estimate.textContent = 'Chọn hoặc nhập một địa chỉ giao hàng.';
+        return;
+    }
+
+    estimate.textContent = 'Đang tính quãng đường và thời gian giao hàng...';
+    try {
+        const response = await fetch(`${API_BASE}/api/Shipping/calculate-delivery-estimate`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ customerAddress: normalizedAddress })
+        });
+        const result = await response.json().catch(() => ({}));
+        if (!response.ok) throw new Error(result.message || 'Không thể tính giao hàng.');
+        if (version !== checkoutEstimateVersion) return;
+
+        const distance = result.distanceText || `${Number(result.distanceInKm || 0).toLocaleString('vi-VN')} km`;
+        const duration = result.durationText || `${result.durationInMinutes || 0} phút`;
+        const deliveryWindow = formatDeliveryWindow(result.estimatedDeliveryFromDate, result.estimatedDeliveryToDate);
+        estimate.textContent = `🛣️ ${distance} · ⏱️ ${duration} · Giao dự kiến: ${deliveryWindow}`;
+    } catch {
+        if (version !== checkoutEstimateVersion) return;
+        estimate.textContent = 'Chưa thể tính quãng đường. Vui lòng thử lại sau.';
+    }
+}
+
+function scheduleCheckoutDeliveryEstimate() {
+    if (checkoutEstimateTimer) clearTimeout(checkoutEstimateTimer);
+    const { detail, province, ward, fullAddress } = composeDeliveryAddress();
+    if (!detail || !province || !ward) {
+        checkoutEstimateVersion += 1;
+        const estimate = document.getElementById('checkoutDeliveryEstimate');
+        if (estimate) estimate.textContent = 'Chọn đủ địa chỉ để xem quãng đường và giao dự kiến.';
+        return;
+    }
+
+    checkoutEstimateTimer = setTimeout(() => refreshCheckoutDeliveryEstimate(fullAddress), 350);
+}
+
 function renderCheckoutAddressBook() {
     const select = document.getElementById('orderSavedAddress');
     const estimate = document.getElementById('checkoutDeliveryEstimate');
@@ -966,7 +1013,7 @@ function renderCheckoutAddressBook() {
     if (estimate) {
         estimate.textContent = selected
             ? `Giao dự kiến: ${formatDeliveryWindow(selected.estimatedDeliveryFromDate, selected.estimatedDeliveryToDate)}`
-            : 'Chọn hoặc nhập một địa chỉ giao hàng.';
+            : 'Chọn đủ địa chỉ để xem quãng đường và giao dự kiến.';
     }
 }
 
@@ -976,7 +1023,7 @@ function clearSavedAddressSelection() {
     const select = document.getElementById('orderSavedAddress');
     if (select) select.value = '';
     const estimate = document.getElementById('checkoutDeliveryEstimate');
-    if (estimate) estimate.textContent = 'Chọn hoặc nhập một địa chỉ giao hàng.';
+    if (estimate) estimate.textContent = 'Chọn đủ địa chỉ để xem quãng đường và giao dự kiến.';
 }
 
 async function applyCheckoutAddress(address) {
@@ -998,8 +1045,9 @@ async function applyCheckoutAddress(address) {
     }
     const wardSelect = document.getElementById('orderWard');
     if (wardSelect) wardSelect.value = String(address.wardCode || '');
-    composeDeliveryAddress();
+    const deliveryAddress = composeDeliveryAddress();
     renderCheckoutAddressBook();
+    refreshCheckoutDeliveryEstimate(deliveryAddress.fullAddress);
 }
 
 async function loadCheckoutAddresses() {
@@ -2343,6 +2391,7 @@ document.addEventListener('change', event => {
     } else if (event.target.id === 'orderWard') {
         clearSavedAddressSelection();
         composeDeliveryAddress();
+        scheduleCheckoutDeliveryEstimate();
     }
 });
 
@@ -2350,6 +2399,7 @@ document.addEventListener('input', event => {
     if (['orderAddressDetail', 'orderFullName', 'orderPhone'].includes(event.target.id)) {
         clearSavedAddressSelection();
         composeDeliveryAddress();
+        if (event.target.id === 'orderAddressDetail') scheduleCheckoutDeliveryEstimate();
     }
 });
 
