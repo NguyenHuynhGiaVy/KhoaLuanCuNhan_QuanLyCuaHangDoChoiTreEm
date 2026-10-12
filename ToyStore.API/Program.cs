@@ -22,6 +22,13 @@ using ToyStoreManagement.API.Hubs;
 
 var builder = WebApplication.CreateBuilder(args);
 
+// Tự động lắng nghe cổng được cấp phát bởi Render/Cloud nếu có PORT env
+var port = Environment.GetEnvironmentVariable("PORT");
+if (!string.IsNullOrEmpty(port))
+{
+    builder.WebHost.UseUrls($"http://0.0.0.0:{port}");
+}
+
 builder.Services.AddHttpClient();
 builder.Services.AddMemoryCache();
 
@@ -284,11 +291,16 @@ using (var scope = app.Services.CreateScope())
 }
 
 // Configure the HTTP request pipeline.
-if (app.Environment.IsDevelopment())
+if (app.Environment.IsDevelopment() || builder.Configuration.GetValue<bool>("EnableSwagger", true))
 {
     app.UseSwagger();
     app.UseSwaggerUI();
 }
+
+app.UseForwardedHeaders(new ForwardedHeadersOptions
+{
+    ForwardedHeaders = Microsoft.AspNetCore.HttpOverrides.ForwardedHeaders.XForwardedFor | Microsoft.AspNetCore.HttpOverrides.ForwardedHeaders.XForwardedProto
+});
 
 app.UseMiddleware<ExceptionMiddleware>();
 
