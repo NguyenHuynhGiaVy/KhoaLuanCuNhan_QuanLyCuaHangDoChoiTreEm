@@ -1,11 +1,10 @@
 using Microsoft.AspNetCore.Mvc;
-
 using Microsoft.AspNetCore.Authorization;
 using System;
+using System.Security.Claims;
 using System.Threading.Tasks;
 using ToyStoreManagement.Application.DTOs.Order;
 using ToyStoreManagement.Application.Interfaces.Services;
-using System.Security.Claims;
 using Microsoft.EntityFrameworkCore;
 using ToyStoreManagement.Infrastructure.Data;
 
@@ -238,6 +237,38 @@ namespace ToyStoreManagement.API.Controllers
             catch (Exception ex)
             {
                 return BadRequest(ex.Message);
+            }
+        }
+
+        // POST: api/Order/5/complete-delivery
+        [HttpPost("{orderId}/complete-delivery")]
+        public async Task<IActionResult> CompleteDelivery(int orderId)
+        {
+            if (!await CanAccessOrderAsync(orderId))
+                return Forbid();
+
+            var order = await _orderService.GetByIdAsync(orderId);
+            if (order == null)
+                return NotFound("Không tìm thấy đơn hàng.");
+
+            if (order.Status == 4)
+                return Ok(new { message = "Đơn hàng đã ở trạng thái hoàn tất." });
+
+            if (order.Status == 5)
+                return BadRequest(new { message = "Không thể hoàn tất đơn hàng đã hủy." });
+
+            try
+            {
+                var updateDto = new UpdateOrderDto
+                {
+                    Status = 4 // Hoàn tất
+                };
+                var updated = await _orderService.UpdateAsync(orderId, updateDto);
+                return Ok(new { message = "Xác nhận nhận hàng và hoàn tất đơn hàng thành công!", order = updated });
+            }
+            catch (Exception ex)
+            {
+                return BadRequest(new { message = ex.Message });
             }
         }
 

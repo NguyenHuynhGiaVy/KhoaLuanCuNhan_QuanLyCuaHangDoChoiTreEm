@@ -12,8 +12,8 @@ using ToyStoreManagement.Domain.Entities;
 using ToyStore.Application.Interfaces.Repositories;
 
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Configuration;
 using ToyStoreManagement.Infrastructure.Data;
-using ToyStoreManagement.Domain.Common;
 
 namespace ToyStoreManagement.Infrastructure.Services
 {
@@ -25,6 +25,8 @@ namespace ToyStoreManagement.Infrastructure.Services
         private readonly IGenericRepository<Shipping> _shippingRepository;
         private readonly IUnitOfWork _unitOfWork;
         private readonly ApplicationDbContext _context;
+        private readonly IDistanceMatrixService _distanceMatrixService;
+        private readonly IConfiguration _configuration;
 
         public OrderService(
             IOrderRepository orderRepository,
@@ -32,7 +34,9 @@ namespace ToyStoreManagement.Infrastructure.Services
             IGenericRepository<ProductVariant> variantRepository,
             IGenericRepository<Shipping> shippingRepository,
             IUnitOfWork unitOfWork,
-            ApplicationDbContext context)
+            ApplicationDbContext context,
+            IDistanceMatrixService distanceMatrixService,
+            IConfiguration configuration)
         {
             _orderRepository = orderRepository;
             _paymentRepository = paymentRepository;
@@ -40,6 +44,8 @@ namespace ToyStoreManagement.Infrastructure.Services
             _shippingRepository = shippingRepository;
             _unitOfWork = unitOfWork;
             _context = context;
+            _distanceMatrixService = distanceMatrixService;
+            _configuration = configuration;
         }
 
         public async Task<IEnumerable<OrderDto>> GetAllAsync()
@@ -78,9 +84,6 @@ namespace ToyStoreManagement.Infrastructure.Services
             if (dto.OrderDetails == null || !dto.OrderDetails.Any())
                 throw new Exception("Đơn hàng phải có ít nhất một sản phẩm.");
 
-            if (dto.PaymentMethod is < 0 or > 2)
-                throw new Exception("Phương thức thanh toán không hợp lệ.");
-
             if (dto.Shipping == null
                 || string.IsNullOrWhiteSpace(dto.Shipping.ReceiverName)
                 || string.IsNullOrWhiteSpace(dto.Shipping.ReceiverPhone)
@@ -93,8 +96,6 @@ namespace ToyStoreManagement.Infrastructure.Services
                 .BeginTransactionAsync(System.Data.IsolationLevel.Serializable);
 
             var affectedProductIds = new HashSet<int>();
-            decimal originalSubtotal = 0;
-            var totalItemQuantity = 0;
 
             foreach (var detail in dto.OrderDetails)
             {
@@ -129,26 +130,7 @@ namespace ToyStoreManagement.Infrastructure.Services
                     throw new Exception(
                         $"Sản phẩm (SKU: {variant.SKU}) không đủ số lượng tồn kho. Hiện chỉ còn {availableQuantity} sản phẩm.");
                 }
-
-                originalSubtotal += variant.Price * detail.Quantity;
-                totalItemQuantity += detail.Quantity;
             }
-
-            var activePromotions = await GetActivePromotionsAsync();
-            var variantIds = dto.OrderDetails
-                .Select(detail => detail.VariantId)
-                .Distinct()
-                .ToList();
-            var variantProductInfo = await _context.ProductVariants
-                .AsNoTracking()
-                .Where(variant => variantIds.Contains(variant.VariantId))
-                .Select(variant => new
-                {
-                    variant.VariantId,
-                    variant.Product.CategoryId,
-                    variant.Product.BrandId
-                })
-                .ToDictionaryAsync(variant => variant.VariantId);
 
             var order = new Order
             {
@@ -163,45 +145,26 @@ namespace ToyStoreManagement.Infrastructure.Services
             };
 
             decimal subtotal = 0;
-            decimal productPromotionDiscount = 0;
 
             foreach (var detailDto in dto.OrderDetails)
             {
                 var variant = await _variantRepository
-                    .GetByIdAsync(detailDto.VariantId)
-                    ?? throw new Exception(
-                        $"Không tìm thấy biến thể sản phẩm ID {detailDto.VariantId}.");
-                variantProductInfo.TryGetValue(
-                    detailDto.VariantId,
-                    out var productInfo);
+                    .GetByIdAsync(detailDto.VariantId);
 
-                var lineAmount = variant.Price * detailDto.Quantity;
-                var promotion = FindBestPromotion(
-                    activePromotions,
-                    detailDto.VariantId,
-                    variant.Price,
-                    originalSubtotal,
-                    totalItemQuantity,
-                    productInfo?.CategoryId,
-                    productInfo?.BrandId);
-                var unitPromotionDiscount = promotion == null
-                    ? 0
-                    : CalculatePromotionDiscount(variant.Price, promotion);
-                var lineDiscount = unitPromotionDiscount * detailDto.Quantity;
-                var totalAmount = lineAmount - lineDiscount;
+                decimal totalAmount =
+                    variant.Price * detailDto.Quantity;
 
                 var detail = new OrderDetail
                 {
                     VariantId = detailDto.VariantId,
                     Quantity = detailDto.Quantity,
                     UnitPrice = variant.Price,
-                    DiscountAmount = lineDiscount,
+                    DiscountAmount = 0,
                     TotalAmount = totalAmount
                 };
 
                 order.OrderDetails.Add(detail);
-                subtotal += lineAmount;
-                productPromotionDiscount += lineDiscount;
+                subtotal += totalAmount;
 
                 // Trừ số lượng tồn kho
                 var inventory = await _context.Inventories
@@ -218,18 +181,8 @@ namespace ToyStoreManagement.Infrastructure.Services
                 affectedProductIds.Add(variant.ProductId);
             }
 
-            var merchandiseTotal = subtotal - productPromotionDiscount;
-            var voucher = await GetVoucherForCheckoutAsync(
-                dto.VoucherCode,
-                merchandiseTotal,
-                dto.CustomerId);
-            var voucherDiscount = voucher == null
-                ? 0
-                : CalculateVoucherDiscount(merchandiseTotal, voucher);
-
             order.Subtotal = subtotal;
-            order.DiscountAmount = productPromotionDiscount + voucherDiscount;
-            order.ShippingFee = merchandiseTotal >= 500000 ? 0 : 30000;
+            order.ShippingFee = subtotal >= 500000 ? 0 : 30000;
 
             order.TotalAmount =
                 order.Subtotal
@@ -238,27 +191,6 @@ namespace ToyStoreManagement.Infrastructure.Services
 
             await _orderRepository.AddAsync(order);
             await _unitOfWork.SaveChangesAsync();
-
-            if (voucher != null)
-            {
-                _context.VoucherUsages.Add(new VoucherUsage
-                {
-                    VoucherId = voucher.VoucherId,
-                    OrderId = order.OrderId,
-                    CustomerId = dto.CustomerId,
-                    DiscountAmount = voucherDiscount,
-                    UsedAt = DateTime.UtcNow
-                });
-                // Lượt của voucher đổi điểm đã được giữ chỗ từ lúc khách đổi điểm.
-                if (voucher.RequiredPoints <= 0)
-                    voucher.UsedCount++;
-                voucher.UpdatedAt = DateTime.UtcNow;
-            }
-
-            var deliveryPlan = await ResolveDeliveryPlanAsync(
-                dto.Shipping.ReceiverName,
-                dto.Shipping.ReceiverPhone,
-                dto.Shipping.Address);
 
             _context.Shippings.Add(new Shipping
             {
@@ -269,11 +201,6 @@ namespace ToyStoreManagement.Infrastructure.Services
                 ShippingMethod = dto.Shipping.ShippingMethod,
                 TrackingCode = !string.IsNullOrWhiteSpace(dto.Shipping.TrackingCode) ? dto.Shipping.TrackingCode.Trim() : $"TRK-{order.OrderCode}",
                 ShippingFee = order.ShippingFee,
-                DeliveryBatchCode = deliveryPlan.BatchCode,
-                // Trường cũ được giữ để tương thích dữ liệu, giao diện sử dụng khoảng ngày.
-                EstimatedDeliveryAt = deliveryPlan.EstimatedDeliveryFromDate,
-                EstimatedDeliveryFromDate = deliveryPlan.EstimatedDeliveryFromDate,
-                EstimatedDeliveryToDate = deliveryPlan.EstimatedDeliveryToDate,
                 Status = 0
             });
 
@@ -287,7 +214,7 @@ namespace ToyStoreManagement.Infrastructure.Services
                     .Where(x => x.ProductVariant.ProductId == productId)
                     .SumAsync(x => (int?)x.Quantity) ?? 0;
 
-                ProductStockStatus.Synchronize(product, totalQuantity);
+                product.Status = totalQuantity > 0 ? 1 : 0;
 
                 product.UpdatedAt = DateTime.UtcNow;
             }
@@ -356,7 +283,6 @@ namespace ToyStoreManagement.Infrastructure.Services
                 throw new Exception("Số tiền giảm giá không được lớn hơn tổng tiền sản phẩm.");
 
             int oldStatus = order.Status;
-            ValidateStatusTransition(oldStatus, dto.Status);
             order.Status = dto.Status;
             if (dto.DiscountAmount.HasValue) order.DiscountAmount = dto.DiscountAmount.Value;
             if (dto.ShippingFee.HasValue) order.ShippingFee = dto.ShippingFee.Value;
@@ -404,9 +330,21 @@ namespace ToyStoreManagement.Infrastructure.Services
                     shipping.DeliveredAt = DateTime.UtcNow;
                 }
 
-                // Điểm chỉ thuộc về khách hàng đã gắn sẵn với đơn hàng. Không tự
-                // ghép theo số điện thoại người nhận vì số này có thể dùng chung.
+                // Xác định khách hàng nhận điểm tích lũy
                 int? targetCustomerId = order.CustomerId;
+                if (!targetCustomerId.HasValue || targetCustomerId.Value <= 0)
+                {
+                    if (shipping != null && !string.IsNullOrWhiteSpace(shipping.ReceiverPhone))
+                    {
+                        var custByPhone = await _context.Customers
+                            .FirstOrDefaultAsync(c => c.Phone == shipping.ReceiverPhone);
+                        if (custByPhone != null)
+                        {
+                            targetCustomerId = custByPhone.CustomerId;
+                            order.CustomerId = targetCustomerId;
+                        }
+                    }
+                }
 
                 if (targetCustomerId.HasValue && targetCustomerId.Value > 0)
                 {
@@ -484,7 +422,7 @@ namespace ToyStoreManagement.Infrastructure.Services
                     .Where(x => x.ProductVariant.ProductId == productId)
                     .SumAsync(x => (int?)x.Quantity) ?? 0;
 
-                ProductStockStatus.Synchronize(product, totalQuantity);
+                product.Status = totalQuantity > 0 ? 1 : 0;
 
                 product.UpdatedAt = DateTime.UtcNow;
             }
@@ -493,36 +431,6 @@ namespace ToyStoreManagement.Infrastructure.Services
             await transaction.CommitAsync();
 
             return MapToDto(order);
-        }
-
-        private static void ValidateStatusTransition(int currentStatus, int nextStatus)
-        {
-            const int pendingConfirmation = 0;
-            const int completed = 4;
-            const int cancelled = 5;
-
-            if (nextStatus < pendingConfirmation || nextStatus > cancelled)
-                throw new Exception("Trạng thái đơn hàng không hợp lệ.");
-
-            // Giữ nguyên trạng thái khi nhân viên chỉ thay đổi thông tin khác của đơn hàng.
-            if (nextStatus == currentStatus)
-                return;
-
-            if (currentStatus < pendingConfirmation || currentStatus > cancelled)
-                throw new Exception("Trạng thái hiện tại của đơn hàng không hợp lệ.");
-
-            if (currentStatus == completed || currentStatus == cancelled)
-                throw new Exception("Đơn hàng đã hoàn tất hoặc đã hủy nên không thể đổi trạng thái.");
-
-            // Đơn còn hiệu lực có thể hủy, nhưng không thể bỏ qua giai đoạn giao hàng.
-            if (nextStatus == cancelled)
-                return;
-
-            if (nextStatus != currentStatus + 1)
-            {
-                throw new Exception(
-                    "Đơn hàng phải đi lần lượt qua các bước: Chờ xác nhận → Đã xác nhận → Đang xử lý → Đang giao → Hoàn tất.");
-            }
         }
 
         public async Task<bool> DeleteAsync(int orderId)
@@ -629,12 +537,6 @@ namespace ToyStoreManagement.Infrastructure.Services
                 throw new Exception(
                     "Đơn hàng đã có thông tin giao hàng.");
 
-            var deliveryPlan = await ResolveDeliveryPlanAsync(
-                dto.ReceiverName,
-                dto.ReceiverPhone,
-                dto.Address,
-                dto.EstimatedDeliveryAt);
-
             var shipping = new Shipping
             {
                 OrderId = orderId,
@@ -644,11 +546,6 @@ namespace ToyStoreManagement.Infrastructure.Services
                 ShippingMethod = dto.ShippingMethod,
                 TrackingCode = !string.IsNullOrWhiteSpace(dto.TrackingCode) ? dto.TrackingCode.Trim() : $"TRK-{order.OrderCode}",
                 ShippingFee = dto.ShippingFee,
-                DeliveryBatchCode = deliveryPlan.BatchCode,
-                // Trường cũ được giữ để tương thích dữ liệu, giao diện sử dụng khoảng ngày.
-                EstimatedDeliveryAt = deliveryPlan.EstimatedDeliveryFromDate,
-                EstimatedDeliveryFromDate = deliveryPlan.EstimatedDeliveryFromDate,
-                EstimatedDeliveryToDate = deliveryPlan.EstimatedDeliveryToDate,
                 Status = 0
             };
 
@@ -683,12 +580,14 @@ namespace ToyStoreManagement.Infrastructure.Services
             var normalizedReceiver = NormalizeDeliveryText(receiverName);
             var normalizedPhone = NormalizePhone(receiverPhone);
             var now = DateTime.UtcNow;
+
+            // 1. Tính toán cự ly thực tế từ vị trí Kho Hàng
+            var distanceInfo = await _distanceMatrixService.CalculateDistanceToWarehouseAsync(address);
             var defaultWindow = requestedEstimatedDeliveryAt.HasValue
                 ? CreateDeliveryWindow(requestedEstimatedDeliveryAt.Value, 1)
-                : GetDefaultDeliveryWindow(now, address);
+                : CalculateWindowFromDistance(now, distanceInfo.DistanceInKm);
 
-            // Chỉ gộp các đơn chưa xuất kho, phát sinh trong 24 giờ gần đây;
-            // nhờ vậy lô giao luôn có thể điều phối lại trước khi bàn giao.
+            // 2. Chỉ gộp các đơn chưa xuất kho phát sinh trong 24 giờ gần đây
             var candidates = await _context.Shippings
                 .Include(shipping => shipping.Order)
                 .Where(shipping => shipping.Status == 0
@@ -697,17 +596,32 @@ namespace ToyStoreManagement.Infrastructure.Services
                     && shipping.Order.Status != 5)
                 .ToListAsync();
 
-            var matchingShipping = candidates.FirstOrDefault(shipping =>
+            var maxBatchDist = _configuration.GetValue<double?>("DistanceMatrix:MaxBatchDistanceKm") ?? 3.0;
+
+            Shipping? matchingShipping = null;
+
+            // Ưu tiên 1: Cùng người nhận (SĐT hoặc tên)
+            matchingShipping = candidates.FirstOrDefault(shipping =>
             {
-                var sameRecipient =
-                    (!string.IsNullOrEmpty(normalizedPhone)
+                return (!string.IsNullOrEmpty(normalizedPhone)
                         && normalizedPhone == NormalizePhone(shipping.ReceiverPhone))
                     || (!string.IsNullOrEmpty(normalizedReceiver)
                         && normalizedReceiver == NormalizeDeliveryText(shipping.ReceiverName));
-
-                return sameRecipient
-                    || IsNearbyDeliveryAddress(address, shipping.Address);
             });
+
+            // Ưu tiên 2: Khoảng cách đường đi thực tế giữa 2 địa chỉ <= maxBatchDist (3km)
+            if (matchingShipping == null)
+            {
+                foreach (var candidate in candidates)
+                {
+                    var distance = await _distanceMatrixService.CalculateDistanceBetweenPointsAsync(address, candidate.Address);
+                    if (distance <= maxBatchDist || IsNearbyDeliveryAddress(address, candidate.Address))
+                    {
+                        matchingShipping = candidate;
+                        break;
+                    }
+                }
+            }
 
             if (matchingShipping != null)
             {
@@ -745,18 +659,19 @@ namespace ToyStoreManagement.Infrastructure.Services
                 defaultWindow.ToDate);
         }
 
-        private static DeliveryWindow GetDefaultDeliveryWindow(DateTime now, string address)
+        private static DeliveryWindow CalculateWindowFromDistance(DateTime now, double distanceKm)
         {
             var vietnamOffset = TimeSpan.FromHours(7);
-            var localNow = new DateTimeOffset(now, TimeSpan.Zero)
-                .ToOffset(vietnamOffset);
-            var normalizedAddress = NormalizeDeliveryText(address);
-            var isInnerCity = normalizedAddress.Contains("hanoi")
-                || normalizedAddress.Contains("hochiminh")
-                || normalizedAddress.Contains("saigon")
-                || normalizedAddress.Contains("danang");
-            var deliveryDays = (localNow.Hour >= 14 ? 3 : 2) + (isInnerCity ? 0 : 1);
-            return CreateDeliveryWindow(localNow.Date.AddDays(deliveryDays), isInnerCity ? 1 : 2);
+            var localNow = new DateTimeOffset(now, TimeSpan.Zero).ToOffset(vietnamOffset);
+            
+            int deliveryDays = distanceKm <= 8.0 ? 1 : (distanceKm <= 25.0 ? 2 : 3);
+            if (localNow.Hour >= 15)
+            {
+                deliveryDays += 1;
+            }
+
+            var fromDate = DateTime.SpecifyKind(localNow.Date.AddDays(deliveryDays), DateTimeKind.Utc);
+            return new DeliveryWindow(fromDate, fromDate.AddDays(1));
         }
 
         private static DeliveryWindow CreateDeliveryWindow(DateTime fromDate, int rangeDays)
@@ -796,27 +711,57 @@ namespace ToyStoreManagement.Infrastructure.Services
             string address,
             string candidateAddress)
         {
-            if (string.IsNullOrWhiteSpace(address))
+            if (string.IsNullOrWhiteSpace(address) || string.IsNullOrWhiteSpace(candidateAddress))
                 return false;
 
-            var requestedAreas = GetAddressAreaParts(address);
-            var candidateAreas = GetAddressAreaParts(candidateAddress);
+            var normA = NormalizeDeliveryText(address);
+            var normB = NormalizeDeliveryText(candidateAddress);
 
-            return requestedAreas.Count >= 2
-                && candidateAreas.Count >= 2
-                && requestedAreas.Intersect(candidateAreas).Count() >= 2;
+            if (normA == normB) return true;
+
+            var partsA = GetCleanAddressParts(address);
+            var partsB = GetCleanAddressParts(candidateAddress);
+
+            // 1. Kiểm tra nếu cùng tên đường hoặc cùng hẻm/ngõ (ví dụ cùng hẻm 100, cùng đường Tân Chánh Hiệp 07)
+            bool sameAlleyOrStreet = partsA.Any(p => 
+                (p.Contains("hem") || p.Contains("duong") || p.Contains("ngo") || p.Length >= 6) 
+                && normB.Contains(p));
+
+            if (sameAlleyOrStreet)
+            {
+                return true;
+            }
+
+            // 2. Trùng từ 2 thành phần địa danh trở lên (ví dụ cùng Phường, cùng Quận)
+            var commonParts = partsA.Intersect(partsB).ToList();
+            if (commonParts.Count >= 2)
+            {
+                return true;
+            }
+
+            return false;
         }
 
-        private static HashSet<string> GetAddressAreaParts(string address)
+        private static List<string> GetCleanAddressParts(string address)
         {
-            // So sánh hai thành phần địa lý cuối (thường là quận/huyện và
-            // tỉnh/thành), không so sánh số nhà để tránh gom nhầm theo tên phố.
-            return address
-                .Split(',', StringSplitOptions.RemoveEmptyEntries)
-                .Select(NormalizeDeliveryText)
-                .Where(part => part.Length >= 3)
-                .TakeLast(2)
-                .ToHashSet();
+            var rawParts = address.Split(new[] { ',', '-' }, StringSplitOptions.RemoveEmptyEntries);
+            var list = new List<string>();
+
+            for (int i = 0; i < rawParts.Length; i++)
+            {
+                var norm = NormalizeDeliveryText(rawParts[i]);
+                if (string.IsNullOrWhiteSpace(norm) || norm.Length < 3) continue;
+
+                // Bỏ qua số nhà ở phần đầu nếu chỉ gồm chữ số/ký hiệu (473m, 50, 12a)
+                if (i == 0 && norm.All(c => char.IsDigit(c) || c == '/' || c == 'm' || c == 'a' || c == 'b' || c == 'c'))
+                {
+                    continue;
+                }
+
+                list.Add(norm);
+            }
+
+            return list;
         }
 
         private async Task<List<Promotion>> GetActivePromotionsAsync()
@@ -1019,7 +964,6 @@ namespace ToyStoreManagement.Infrastructure.Services
                 OrderId = payment.OrderId,
                 PaymentMethod = payment.PaymentMethod,
                 TransactionCode = payment.TransactionCode,
-                GatewayTransactionCode = payment.GatewayTransactionCode,
                 Amount = payment.Amount,
                 Status = payment.Status,
                 PaidAt = payment.PaidAt,
@@ -1049,6 +993,264 @@ namespace ToyStoreManagement.Infrastructure.Services
                 ShippedAt = shipping.ShippedAt,
                 DeliveredAt = shipping.DeliveredAt
             };
+        }
+
+        public async Task<DeliveryEstimateResponseDto> CalculateDeliveryEstimateAsync(
+            CalculateDeliveryEstimateRequestDto request)
+        {
+            var distanceInfo = await _distanceMatrixService.CalculateDistanceToWarehouseAsync(
+                request.CustomerAddress,
+                request.DestinationLat,
+                request.DestinationLng);
+
+            var now = DateTime.UtcNow;
+            var window = CalculateWindowFromDistance(now, distanceInfo.DistanceInKm);
+
+            var warehouseName = _configuration["Warehouse:Name"] ?? "Kho Tổng ToyStore";
+            var warehouseAddress = _configuration["Warehouse:Address"] ?? "123 Nguyễn Thị Minh Khai, Q.1, TP.HCM";
+
+            return new DeliveryEstimateResponseDto
+            {
+                WarehouseName = warehouseName,
+                WarehouseAddress = warehouseAddress,
+                DistanceInKm = distanceInfo.DistanceInKm,
+                DistanceText = $"{distanceInfo.DistanceInKm:0.#} km",
+                DurationInMinutes = distanceInfo.DurationInMinutes,
+                DurationText = $"{distanceInfo.DurationInMinutes} phút",
+                EstimatedDeliveryFromDate = window.FromDate,
+                EstimatedDeliveryToDate = window.ToDate,
+                IsSameDayEligible = distanceInfo.DistanceInKm <= 5.0 && DateTime.UtcNow.AddHours(7).Hour < 12
+            };
+        }
+
+        public async Task<IEnumerable<BatchSuggestionDto>> GetBatchSuggestionsAsync(
+            double maxDistanceKm = 3.0)
+        {
+            var now = DateTime.UtcNow;
+            var pendingShippings = await _context.Shippings
+                .Include(s => s.Order)
+                .Where(s => s.Status == 0
+                    && s.ShippedAt == null
+                    && s.Order.OrderDate >= now.AddHours(-48)
+                    && s.Order.Status != 5)
+                .ToListAsync();
+
+            if (pendingShippings.Count < 2)
+            {
+                return Enumerable.Empty<BatchSuggestionDto>();
+            }
+
+            int n = pendingShippings.Count;
+            var adj = new List<int>[n];
+            for (int i = 0; i < n; i++) adj[i] = new List<int>();
+
+            // Xây dựng đồ thị liên kết: nếu 2 đơn cùng SĐT hoặc cùng tuyến đường/cự ly gần thì tạo cạnh kết nối
+            for (int i = 0; i < n; i++)
+            {
+                var shipA = pendingShippings[i];
+                var phoneA = NormalizePhone(shipA.ReceiverPhone);
+
+                for (int j = i + 1; j < n; j++)
+                {
+                    var shipB = pendingShippings[j];
+                    var phoneB = NormalizePhone(shipB.ReceiverPhone);
+
+                    bool isConnected = false;
+
+                    // 1. Cùng mã lô đã gán từ trước
+                    if (!string.IsNullOrWhiteSpace(shipA.DeliveryBatchCode) &&
+                        string.Equals(shipA.DeliveryBatchCode, shipB.DeliveryBatchCode, StringComparison.OrdinalIgnoreCase))
+                    {
+                        isConnected = true;
+                    }
+                    // 2. Cùng người nhận (số điện thoại)
+                    else if (!string.IsNullOrWhiteSpace(phoneA) && string.Equals(phoneA, phoneB, StringComparison.OrdinalIgnoreCase))
+                    {
+                        isConnected = true;
+                    }
+                    // 3. Cùng tuyến đường / hẻm / địa danh lân cận
+                    else if (IsNearbyDeliveryAddress(shipA.Address, shipB.Address))
+                    {
+                        isConnected = true;
+                    }
+                    else
+                    {
+                        var dist = await _distanceMatrixService.CalculateDistanceBetweenPointsAsync(shipA.Address, shipB.Address);
+                        if (dist <= maxDistanceKm)
+                        {
+                            isConnected = true;
+                        }
+                    }
+
+                    if (isConnected)
+                    {
+                        adj[i].Add(j);
+                        adj[j].Add(i);
+                    }
+                }
+            }
+
+            var visited = new bool[n];
+            var suggestions = new List<BatchSuggestionDto>();
+
+            for (int i = 0; i < n; i++)
+            {
+                if (visited[i]) continue;
+
+                var componentIndices = new List<int>();
+                var queue = new Queue<int>();
+
+                visited[i] = true;
+                queue.Enqueue(i);
+
+                while (queue.Count > 0)
+                {
+                    var u = queue.Dequeue();
+                    componentIndices.Add(u);
+
+                    foreach (var v in adj[u])
+                    {
+                        if (!visited[v])
+                        {
+                            visited[v] = true;
+                            queue.Enqueue(v);
+                        }
+                    }
+                }
+
+                // Cụm có ít nhất 2 đơn
+                if (componentIndices.Count >= 2)
+                {
+                    var cluster = componentIndices.Select(idx => pendingShippings[idx]).ToList();
+                    var clusterIds = cluster.Select(s => s.OrderId).ToList();
+
+                    var batchCode = cluster.FirstOrDefault(s => !string.IsNullOrEmpty(s.DeliveryBatchCode))?.DeliveryBatchCode
+                        ?? GenerateDeliveryBatchCode(now);
+
+                    var uniquePhones = cluster
+                        .Where(s => !string.IsNullOrWhiteSpace(s.ReceiverPhone))
+                        .Select(s => s.ReceiverPhone.Trim())
+                        .Distinct(StringComparer.OrdinalIgnoreCase)
+                        .ToList();
+
+                    string reason;
+                    string? receiverPhone;
+                    string commonAddress;
+
+                    if (uniquePhones.Count <= 1)
+                    {
+                        reason = "Cùng người nhận & số điện thoại";
+                        receiverPhone = uniquePhones.FirstOrDefault() ?? cluster.First().ReceiverPhone;
+                        commonAddress = cluster.First().Address;
+                    }
+                    else
+                    {
+                        reason = $"Tuyến đường lân cận ({cluster.Count} đơn cùng khu vực / Bán kính <= {maxDistanceKm:0.#} km)";
+                        receiverPhone = $"{uniquePhones.Count} người nhận ({string.Join(", ", uniquePhones.Take(2))}{(uniquePhones.Count > 2 ? "..." : "")})";
+                        commonAddress = ExtractCommonAreaDescription(cluster.Select(s => s.Address).ToList());
+                    }
+
+                    suggestions.Add(new BatchSuggestionDto
+                    {
+                        Reason = reason,
+                        TargetBatchCode = batchCode,
+                        ReceiverPhone = receiverPhone,
+                        CommonAddressArea = commonAddress,
+                        OrderIds = clusterIds,
+                        OrderCodes = cluster.Select(s => s.Order.OrderCode).ToList()
+                    });
+                }
+            }
+
+            return suggestions;
+        }
+
+        private static string ExtractCommonAreaDescription(List<string> addresses)
+        {
+            if (addresses == null || addresses.Count == 0) return "Khu vực lân cận";
+            if (addresses.Count == 1) return addresses[0];
+
+            var firstParts = addresses[0].Split(new[] { ',', '-' }, StringSplitOptions.RemoveEmptyEntries)
+                .Select(p => p.Trim())
+                .ToList();
+
+            var common = new List<string>();
+            foreach (var part in firstParts)
+            {
+                var normPart = NormalizeDeliveryText(part);
+                if (normPart.Length >= 4 && addresses.All(a => NormalizeDeliveryText(a).Contains(normPart)))
+                {
+                    common.Add(part);
+                }
+            }
+
+            if (common.Count > 0)
+            {
+                return string.Join(", ", common);
+            }
+
+            return addresses[0];
+        }
+
+        public async Task<bool> MergeBatchAsync(MergeBatchRequestDto request)
+        {
+            if (request.OrderIds == null || request.OrderIds.Count < 2)
+                throw new InvalidOperationException("Cần chọn ít nhất 2 đơn hàng để gộp lô.");
+
+            var shippings = await _context.Shippings
+                .Where(s => request.OrderIds.Contains(s.OrderId))
+                .ToListAsync();
+
+            if (shippings.Count == 0) return false;
+
+            var batchCode = !string.IsNullOrWhiteSpace(request.BatchCode)
+                ? request.BatchCode.Trim()
+                : GenerateDeliveryBatchCode(DateTime.UtcNow);
+
+            var earliestDate = shippings.Min(s => s.EstimatedDeliveryFromDate);
+
+            foreach (var shipping in shippings)
+            {
+                shipping.DeliveryBatchCode = batchCode;
+                if (earliestDate.HasValue)
+                {
+                    shipping.EstimatedDeliveryFromDate = earliestDate;
+                    shipping.EstimatedDeliveryToDate = earliestDate.Value.AddDays(1);
+                    shipping.EstimatedDeliveryAt = earliestDate;
+                }
+            }
+
+            await _unitOfWork.SaveChangesAsync();
+            return true;
+        }
+
+        public async Task<bool> DispatchBatchAsync(string batchCode)
+        {
+            if (string.IsNullOrWhiteSpace(batchCode))
+                throw new ArgumentException("Mã lô không hợp lệ.");
+
+            var shippings = await _context.Shippings
+                .Include(s => s.Order)
+                .Where(s => s.DeliveryBatchCode == batchCode.Trim())
+                .ToListAsync();
+
+            if (shippings.Count == 0) return false;
+
+            var now = DateTime.UtcNow;
+            foreach (var shipping in shippings)
+            {
+                shipping.ShippedAt = now;
+                shipping.Status = 1; // 1: Đang giao hàng
+
+                if (shipping.Order != null && shipping.Order.Status != 4 && shipping.Order.Status != 5)
+                {
+                    shipping.Order.Status = 3; // 3: Đang giao
+                    shipping.Order.UpdatedAt = now;
+                }
+            }
+
+            await _unitOfWork.SaveChangesAsync();
+            return true;
         }
 
         private sealed record DeliveryPlan(

@@ -24,6 +24,22 @@ namespace ToyStoreManagement.Infrastructure.Data
 
             if (existingUser != null)
             {
+                bool needsUpdate = false;
+                if (!existingUser.IsActive)
+                {
+                    existingUser.IsActive = true;
+                    needsUpdate = true;
+                }
+
+                // Luôn cập nhật lại PasswordHash chuẩn cho Admin
+                existingUser.PasswordHash = userManager.PasswordHasher.HashPassword(existingUser, password);
+                needsUpdate = true;
+
+                if (needsUpdate)
+                {
+                    await userManager.UpdateAsync(existingUser);
+                }
+
                 if (!await userManager.IsInRoleAsync(existingUser, "Admin"))
                 {
                     await userManager.AddToRoleAsync(existingUser, "Admin");

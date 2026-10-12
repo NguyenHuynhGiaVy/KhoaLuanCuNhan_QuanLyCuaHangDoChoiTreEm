@@ -1135,6 +1135,11 @@ async function renderList(key) {
         </div>
         <div class="panel-actions">
           <input type="text" id="tableSearchInput" placeholder="Tìm kiếm ${m.title.toLowerCase()}..." class="input-control" style="width:240px;padding:8px 14px;" onkeyup="filterTableData('${key}')">
+          ${key === 'orders' ? `
+            <button class="secondary-btn" onclick="showShippingBatchModal()" style="display:inline-flex;align-items:center;gap:6px;">
+              <span>🚚</span> Gợi ý gộp đơn thông minh
+            </button>
+          ` : ''}
           ${m.canAdd ? `
             <button class="primary-btn" onclick="showForm('${key}')">
               <span>+</span> Thêm ${key === 'imports' ? 'phiếu đặt hàng' : m.title.toLowerCase()} mới
@@ -1360,6 +1365,10 @@ function getRowActions(key, r, index) {
 
 // ── 3. IN-PAGE FORM VIEWS (NO DIALOGS) ───────────────────────
 function showForm(key, index = null) {
+  if (key === 'products' && index === null) {
+    startProductWizard();
+    return;
+  }
   const m = MODULES[key];
   const isEdit = index !== null;
   const record = isEdit ? cache[key][index] : null;
@@ -1553,6 +1562,483 @@ function collectProductVariants() {
   return variants;
 }
 
+// ── PRODUCT CREATION WIZARD ENGINE (3-STEP STEPPER) ─────────
+let productWizardStep = 1;
+let productDraft = null;
+
+function startProductWizard() {
+  productWizardStep = 1;
+  productVariantRowIndex = 0;
+  productDraft = {
+    name: '',
+    categoryId: '',
+    brandId: '',
+    ageFromVal: '',
+    ageFromUnit: 'month',
+    ageToVal: '',
+    ageToUnit: 'month',
+    ageFrom: null,
+    ageTo: null,
+    gender: 3,
+    description: '',
+    imageUrl: '',
+    variants: []
+  };
+  renderProductWizardForm();
+}
+
+function renderProductWizardForm() {
+  const steps = [
+    { num: 1, label: 'Thông tin cơ bản & Phân loại' },
+    { num: 2, label: 'Cấu hình biến thể (Variants)' },
+    { num: 3, label: 'Xem lại (Review) & Tạo mới' }
+  ];
+
+  const stepperHtml = `
+    <div style="display:flex;align-items:center;justify-content:center;margin:0 0 24px;padding:16px 20px;background:var(--slate-50);border-radius:12px;border:1px solid var(--slate-200);gap:16px;flex-wrap:wrap;">
+      ${steps.map(s => `
+        <div style="display:flex;align-items:center;gap:8px;opacity:${productWizardStep === s.num ? '1' : '0.6'};font-weight:${productWizardStep === s.num ? '700' : '500'};color:${productWizardStep === s.num ? 'var(--primary)' : 'var(--slate-600)'};">
+          <span style="display:inline-flex;align-items:center;justify-content:center;width:28px;height:28px;border-radius:50%;background:${productWizardStep === s.num ? 'var(--primary)' : (productWizardStep > s.num ? 'var(--success)' : 'var(--slate-300)')};color:white;font-size:13px;font-weight:700;">
+            ${productWizardStep > s.num ? '✓' : s.num}
+          </span>
+          <span>${s.label}</span>
+        </div>
+        ${s.num < 3 ? '<span style="color:var(--slate-300);font-size:18px;">→</span>' : ''}
+      `).join('')}
+    </div>
+  `;
+
+  let stepBody = '';
+  if (productWizardStep === 1) {
+    stepBody = renderProductWizardStep1();
+  } else if (productWizardStep === 2) {
+    stepBody = renderProductWizardStep2();
+  } else if (productWizardStep === 3) {
+    stepBody = renderProductWizardStep3();
+  }
+
+  app.innerHTML = `
+    <div class="form-view-panel">
+      <div class="form-view-header">
+        <div class="form-header-title">
+          <button class="back-link-btn" onclick="renderList('products')">← Hủy & Quay lại danh sách</button>
+          <div>
+            <h2>Tạo mới sản phẩm đồ chơi</h2>
+            <p>Quy trình chuẩn hóa 3 bước: Thông tin gốc → Biến thể & Thuộc tính → Xem lại chi tiết trước khi tạo.</p>
+          </div>
+        </div>
+      </div>
+      ${stepperHtml}
+      <div class="form-body">
+        ${stepBody}
+      </div>
+    </div>
+  `;
+
+  if (productWizardStep === 2) {
+    const editor = document.getElementById('productVariantsEditor');
+    if (editor && editor.children.length === 0) {
+      if (productDraft.variants && productDraft.variants.length > 0) {
+        editor.innerHTML = productDraft.variants.map(renderProductVariantEditor).join('');
+      } else {
+        editor.innerHTML = renderProductVariantEditor({});
+      }
+    }
+  }
+}
+
+function renderProductWizardStep1() {
+  const d = productDraft || {};
+  return `
+    <div class="form-section-card" style="margin:0 0 18px;background:var(--primary-light);border-color:#c7d2fe;">
+      <strong>Lưu ý nghiệp vụ hệ thống</strong>
+      <p style="margin:6px 0 0;color:var(--slate-600);font-size:13px;">Các trường <b>Giá bán cơ sở</b> và <b>Trạng thái kinh doanh</b> được tự động gán ngầm định (Trạng thái: Chờ nhập kho (0), Giá: Mở sau khi có phiếu nhập kho). Bạn chỉ cần hoàn tất các thông tin cơ bản dưới đây trước khi cấu hình biến thể.</p>
+    </div>
+    <div class="form-grid-2">
+      <div class="form-group full">
+        <label>Tên sản phẩm đồ chơi *</label>
+        <input id="wzProdName" class="input-control" value="${esc(d.name || '')}" required placeholder="Ví dụ: Bộ Xếp Hình Lego City Cứu Hỏa">
+      </div>
+      <div class="form-group">
+        <label>Danh mục *</label>
+        <div style="display:flex;gap:8px;">
+          <select id="wzProdCat" class="input-control" required>
+            <option value="">-- Chọn danh mục --</option>
+            ${ref.categories.map(c => `<option value="${c.id || c.categoryId}" ${d.categoryId == (c.id || c.categoryId) ? 'selected' : ''}>${esc(c.name)}</option>`).join('')}
+          </select>
+          <button type="button" class="secondary-btn" title="Thêm danh mục mới" onclick="quickAddRef('category')">+</button>
+        </div>
+      </div>
+      <div class="form-group">
+        <label>Thương hiệu *</label>
+        <div style="display:flex;gap:8px;">
+          <select id="wzProdBrand" class="input-control" required>
+            <option value="">-- Chọn thương hiệu --</option>
+            ${ref.brands.map(b => `<option value="${b.id || b.brandId}" ${d.brandId == (b.id || b.brandId) ? 'selected' : ''}>${esc(b.name)}</option>`).join('')}
+          </select>
+          <button type="button" class="secondary-btn" title="Thêm thương hiệu mới" onclick="quickAddRef('brand')">+</button>
+        </div>
+      </div>
+      <div class="form-group">
+        <label>Độ tuổi phù hợp</label>
+        <div style="display:flex;gap:10px;">
+          <input id="wzAgeFromVal" type="number" min="0" step="1" class="input-control" value="${esc(d.ageFromVal || '')}" placeholder="Từ">
+          <select id="wzAgeFromUnit" class="input-control" style="max-width:100px;">
+            <option value="month" ${d.ageFromUnit === 'month' ? 'selected' : ''}>tháng</option>
+            <option value="year" ${d.ageFromUnit === 'year' ? 'selected' : ''}>năm</option>
+          </select>
+          <input id="wzAgeToVal" type="number" min="0" step="1" class="input-control" value="${esc(d.ageToVal || '')}" placeholder="Đến">
+          <select id="wzAgeToUnit" class="input-control" style="max-width:100px;">
+            <option value="month" ${d.ageToUnit === 'month' ? 'selected' : ''}>tháng</option>
+            <option value="year" ${d.ageToUnit === 'year' ? 'selected' : ''}>năm</option>
+          </select>
+        </div>
+        <small style="display:block;margin-top:5px;color:var(--slate-500);">Hệ thống lưu trữ theo tháng và tự động quy đổi đồng bộ khi chọn năm.</small>
+      </div>
+      <div class="form-group">
+        <label>Giới tính phù hợp</label>
+        <select id="wzProdGender" class="input-control">
+          <option value="3" ${d.gender === 3 ? 'selected' : ''}>Cả hai (Bé trai & Bé gái)</option>
+          <option value="1" ${d.gender === 1 ? 'selected' : ''}>Bé trai</option>
+          <option value="2" ${d.gender === 2 ? 'selected' : ''}>Bé gái</option>
+        </select>
+      </div>
+      <div class="form-group full">
+        <label>Mô tả chi tiết sản phẩm *</label>
+        <textarea id="wzProdDesc" class="input-control" rows="4" required placeholder="Nhập mô tả sản phẩm, chất liệu, tính năng...">${esc(d.description || '')}</textarea>
+      </div>
+      <div class="form-group full">
+        <label>URL hình ảnh đại diện</label>
+        <input id="wzProdImg" type="url" class="input-control" value="${esc(d.imageUrl || '')}" placeholder="https://example.com/hinh-san-pham.jpg">
+      </div>
+    </div>
+    <div class="form-footer-actions" style="margin-top:20px;display:flex;justify-content:flex-end;">
+      <button type="button" class="primary-btn" onclick="goToProductWizardStep2()">Tiếp tục: Cấu hình biến thể →</button>
+    </div>
+  `;
+}
+
+function goToProductWizardStep2() {
+  const name = document.getElementById('wzProdName')?.value.trim();
+  const catId = document.getElementById('wzProdCat')?.value;
+  const brandId = document.getElementById('wzProdBrand')?.value;
+  const desc = document.getElementById('wzProdDesc')?.value.trim();
+  const gender = Number(document.getElementById('wzProdGender')?.value || 3);
+  const imgUrl = document.getElementById('wzProdImg')?.value.trim();
+
+  if (!name) { toast('Tên sản phẩm không được để trống.', 'error'); return; }
+  if (!catId) { toast('Vui lòng chọn danh mục cho sản phẩm.', 'error'); return; }
+  if (!brandId) { toast('Vui lòng chọn thương hiệu cho sản phẩm.', 'error'); return; }
+  if (!desc) { toast('Mô tả sản phẩm không được để trống.', 'error'); return; }
+
+  const fromVal = document.getElementById('wzAgeFromVal')?.value;
+  const fromUnit = document.getElementById('wzAgeFromUnit')?.value;
+  const toVal = document.getElementById('wzAgeToVal')?.value;
+  const toUnit = document.getElementById('wzAgeToUnit')?.value;
+
+  let ageFromMonths = null;
+  let ageToMonths = null;
+  try {
+    ageFromMonths = ageToMonths(fromVal, fromUnit);
+    ageToMonths = ageToMonths(toVal, toUnit);
+    if (ageFromMonths !== null && ageToMonths !== null && ageFromMonths > ageToMonths) {
+      throw new Error('Độ tuổi bắt đầu không được lớn hơn độ tuổi kết thúc.');
+    }
+  } catch (err) {
+    toast(err.message, 'error');
+    return;
+  }
+
+  productDraft = {
+    ...productDraft,
+    name,
+    categoryId: Number(catId),
+    brandId: Number(brandId),
+    gender,
+    description: desc,
+    imageUrl: imgUrl || null,
+    ageFromVal: fromVal,
+    ageFromUnit: fromUnit,
+    ageToVal: toVal,
+    ageToUnit: toUnit,
+    ageFrom: ageFromMonths,
+    ageTo: ageToMonths
+  };
+
+  productWizardStep = 2;
+  renderProductWizardForm();
+}
+
+function renderProductWizardStep2() {
+  return `
+    <div class="form-section-card" style="margin:0 0 18px;">
+      <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:16px;">
+        <div>
+          <h3 style="margin:0;">Bước 2: Cấu hình biến thể & Thuộc tính khác biệt *</h3>
+          <p style="margin:6px 0 0;color:var(--slate-500);font-size:13px;">Mỗi biến thể cần có mã SKU riêng biệt và các thuộc tính mô tả điểm khác biệt (Màu sắc, Kích cỡ, Kiểu dáng,...). Giá bán sẽ được mở nhập sau khi lập phiếu nhập kho.</p>
+        </div>
+        <button type="button" class="secondary-btn" onclick="addProductVariantRow()">+ Thêm biến thể</button>
+      </div>
+      <div id="productVariantsEditor" style="margin-top:14px;"></div>
+    </div>
+    <div class="form-footer-actions" style="margin-top:20px;display:flex;justify-content:space-between;">
+      <button type="button" class="ghost-btn" onclick="goToProductWizardStep(1)">← Quay lại Bước 1</button>
+      <button type="button" class="primary-btn" onclick="goToProductWizardStep3()">Xem lại toàn bộ thông số (Review) →</button>
+    </div>
+  `;
+}
+
+function goToProductWizardStep3() {
+  try {
+    const variants = collectProductVariants();
+    productDraft.variants = variants;
+    productWizardStep = 3;
+    renderProductWizardForm();
+  } catch (err) {
+    toast(err.message, 'error');
+  }
+}
+
+function renderProductWizardStep3() {
+  const d = productDraft || {};
+  const catObj = ref.categories.find(c => (c.id || c.categoryId) == d.categoryId);
+  const brandObj = ref.brands.find(b => (b.id || b.brandId) == d.brandId);
+  const catName = catObj ? catObj.name : `Danh mục #${d.categoryId}`;
+  const brandName = brandObj ? brandObj.name : `Thương hiệu #${d.brandId}`;
+
+  const ageText = (d.ageFrom !== null || d.ageTo !== null)
+    ? `${d.ageFrom ?? 0} - ${d.ageTo ?? '∞'} tháng (${d.ageFrom ? (d.ageFrom/12).toFixed(1) : 0} - ${d.ageTo ? (d.ageTo/12).toFixed(1) : '∞'} tuổi)`
+    : 'Mọi lứa tuổi';
+
+  const genderText = d.gender === 1 ? 'Bé trai' : (d.gender === 2 ? 'Bé gái' : 'Cả bé trai & bé gái');
+
+  return `
+    <div class="form-section-card" style="margin:0 0 18px;background:var(--slate-50);border-color:var(--slate-300);">
+      <h3 style="margin:0 0 12px;color:var(--slate-800);">Bước 3: Xem lại toàn bộ thông số (Review Summary)</h3>
+      <p style="margin:0 0 16px;color:var(--slate-500);font-size:13px;">Vui lòng kiểm tra lại thông tin cơ bản và bảng ma trận các biến thể sản phẩm trước khi xác nhận tạo mới.</p>
+      
+      <div style="display:grid;grid-template-columns:repeat(auto-fit, minmax(220px, 1fr));gap:12px;background:white;padding:16px;border-radius:10px;border:1px solid var(--slate-200);">
+        <div><small style="color:var(--slate-500);">Tên sản phẩm:</small><br><strong>${esc(d.name)}</strong></div>
+        <div><small style="color:var(--slate-500);">Danh mục:</small><br><strong>${esc(catName)}</strong></div>
+        <div><small style="color:var(--slate-500);">Thương hiệu:</small><br><strong>${esc(brandName)}</strong></div>
+        <div><small style="color:var(--slate-500);">Độ tuổi phù hợp:</small><br><strong>${esc(ageText)}</strong></div>
+        <div><small style="color:var(--slate-500);">Giới tính:</small><br><strong>${esc(genderText)}</strong></div>
+        <div><small style="color:var(--slate-500);">Trạng thái mặc định:</small><br><span class="badge" style="background:#fef3c7;color:#92400e;font-weight:700;">Chờ nhập kho (Status: 0)</span></div>
+        <div><small style="color:var(--slate-500);">Giá bán cơ sở:</small><br><span style="color:var(--slate-600);font-style:italic;">Tự động cập nhật theo biến thể</span></div>
+      </div>
+    </div>
+
+    <div class="form-section-card" style="margin:0 0 18px;">
+      <h4 style="margin:0 0 12px;">Ma trận biến thể chi tiết (${d.variants.length} biến thể)</h4>
+      <div class="table-wrap">
+        <table class="data-table" style="width:100%;">
+          <thead>
+            <tr>
+              <th style="width:50px;">STT</th>
+              <th>Mã SKU</th>
+              <th>Ảnh riêng</th>
+              <th>Thuộc tính mô tả điểm khác biệt</th>
+              <th>Khối lượng</th>
+              <th>Giá niêm yết</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${d.variants.map((v, i) => `
+              <tr>
+                <td><strong>${i + 1}</strong></td>
+                <td><code style="background:var(--slate-100);padding:3px 6px;border-radius:4px;font-weight:700;color:var(--primary);">${esc(v.sku)}</code></td>
+                <td>${v.imageUrl ? `<img src="${v.imageUrl}" style="width:40px;height:40px;border-radius:6px;object-fit:cover;border:1px solid var(--slate-200);">` : '<span style="color:var(--slate-400);">Dùng ảnh chung</span>'}</td>
+                <td>
+                  ${v.attributes && v.attributes.length > 0
+                    ? v.attributes.map(a => `<span class="badge" style="background:#e0e7ff;color:#3730a3;margin-right:4px;">${esc(a.attributeName)}: ${esc(a.attributeValue)}</span>`).join('')
+                    : '<em style="color:var(--slate-400);">Không có</em>'}
+                </td>
+                <td>${v.weight ? `${v.weight} g` : '<span style="color:var(--slate-400);">—</span>'}</td>
+                <td><em style="color:var(--slate-500);font-size:12px;">Chờ nhập kho để mở giá</em></td>
+              </tr>
+            `).join('')}
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <div class="form-footer-actions" style="margin-top:20px;display:flex;justify-content:space-between;">
+      <button type="button" class="ghost-btn" onclick="goToProductWizardStep(2)">← Quay lại sửa biến thể</button>
+      <button type="button" class="primary-btn" style="background:#16a34a;border-color:#15803d;" onclick="submitNewProduct()">✓ Xác Nhận & Tạo Sản Phẩm</button>
+    </div>
+  `;
+}
+
+function goToProductWizardStep(step) {
+  productWizardStep = step;
+  renderProductWizardForm();
+}
+
+async function submitNewProduct() {
+  if (!productDraft) return;
+
+  const payload = {
+    categoryId: Number(productDraft.categoryId),
+    brandId: Number(productDraft.brandId),
+    name: productDraft.name,
+    description: productDraft.description,
+    ageFrom: productDraft.ageFrom,
+    ageTo: productDraft.ageTo,
+    gender: Number(productDraft.gender || 3),
+    imageUrl: productDraft.imageUrl || null,
+    isNew: true,
+    variants: productDraft.variants
+    // Không gửi BasePrice và Status, Backend tự động gán ngầm định
+  };
+
+  try {
+    await api('Product', {
+      method: 'POST',
+      body: JSON.stringify(payload)
+    });
+    toast('Tạo sản phẩm và các biến thể thành công! Trạng thái: Chờ nhập kho.', 'success');
+    productDraft = null;
+    productWizardStep = 1;
+    renderList('products');
+  } catch (err) {
+    toast(`Lỗi khi tạo sản phẩm: ${err.message}`, 'error');
+  }
+}
+
+// ── SHIPPING BATCH DISPATCHING MODAL ─────────────────────────
+async function showShippingBatchModal() {
+  const modalId = 'shippingBatchModalOverlay';
+  let existing = document.getElementById(modalId);
+  if (existing) existing.remove();
+
+  const overlay = document.createElement('div');
+  overlay.id = modalId;
+  overlay.style.cssText = 'position:fixed;inset:0;background:rgba(15,23,42,0.6);backdrop-filter:blur(4px);z-index:9999;display:flex;align-items:center;justify-content:center;padding:20px;';
+  
+  overlay.innerHTML = `
+    <div style="background:white;border-radius:16px;width:100%;max-width:850px;max-height:90vh;display:flex;flex-direction:column;box-shadow:0 25px 50px -12px rgba(0,0,0,0.25);">
+      <div style="padding:20px 24px;border-bottom:1px solid var(--slate-200);display:flex;justify-content:space-between;align-items:center;">
+        <div>
+          <h3 style="margin:0;font-size:18px;">🚚 Đề Xuất Gộp Đơn Hàng Thông Minh (Smart Batching)</h3>
+          <p style="margin:4px 0 0;font-size:13px;color:var(--slate-500);">Phân tích cự ly địa lý (Distance Matrix) và thông tin người nhận để gom chuyến tối ưu chi phí vận chuyển.</p>
+        </div>
+        <button type="button" class="icon-action-btn del" onclick="document.getElementById('${modalId}').remove()" style="font-size:18px;">✕</button>
+      </div>
+      <div id="shippingBatchModalBody" style="padding:24px;overflow-y:auto;flex:1;">
+        <div style="text-align:center;padding:30px;color:var(--slate-400);">Đang tải các đề xuất gộp đơn từ máy chủ...</div>
+      </div>
+    </div>
+  `;
+  document.body.appendChild(overlay);
+
+  try {
+    const suggestions = await api('Shipping/batch-suggestions?maxDistanceKm=3.0');
+    const container = document.getElementById('shippingBatchModalBody');
+    if (!suggestions || suggestions.length === 0) {
+      container.innerHTML = `
+        <div style="text-align:center;padding:40px 20px;">
+          <div style="font-size:40px;margin-bottom:12px;">📦</div>
+          <h4>Hiện chưa có đơn hàng nào cần gộp</h4>
+          <p style="color:var(--slate-500);font-size:13px;">Tất cả các đơn chờ giao hiện tại đều có lộ trình riêng biệt hoặc đã được phân bổ mã lô.</p>
+        </div>
+      `;
+      return;
+    }
+
+    container.innerHTML = suggestions.map((group, idx) => `
+      <div style="border:1px solid var(--slate-200);border-radius:12px;padding:18px;margin-bottom:16px;background:var(--slate-50);">
+        <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:12px;margin-bottom:12px;">
+          <div>
+            <div style="display:flex;align-items:center;gap:8px;">
+              <span class="badge" style="background:#e0e7ff;color:#3730a3;font-weight:700;">Nhóm #${idx + 1}</span>
+              <strong>${esc(group.reason)}</strong>
+            </div>
+            <div style="font-size:13px;color:var(--slate-600);margin-top:5px;">
+              ${group.receiverPhone ? `SĐT: <b>${esc(group.receiverPhone)}</b> · ` : ''}
+              Khu vực: <b>${esc(group.commonAddressArea || 'Lân cận')}</b>
+            </div>
+          </div>
+          <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
+            <button class="secondary-btn" style="padding:8px 12px;font-size:13px;" onclick="executeMergeBatch(${JSON.stringify(group.orderIds).replace(/"/g, '&quot;')}, '${esc(group.targetBatchCode)}')">
+              Gộp ${group.totalOrders} đơn
+            </button>
+            <button class="primary-btn" style="padding:8px 14px;font-size:13px;" onclick="executeMergeAndDispatchBatch(${JSON.stringify(group.orderIds).replace(/"/g, '&quot;')}, '${esc(group.targetBatchCode)}')">
+              Gộp & Xuất giao ngay 🚚
+            </button>
+          </div>
+        </div>
+        <div style="background:white;border-radius:8px;padding:10px 14px;border:1px solid var(--slate-200);">
+          <small style="color:var(--slate-500);display:block;margin-bottom:4px;">Danh sách đơn hàng (${group.totalOrders} đơn):</small>
+          <div style="display:flex;gap:8px;flex-wrap:wrap;">
+            ${(group.orderCodes || []).map(code => `<code style="background:var(--slate-100);padding:2px 8px;border-radius:4px;font-size:12px;font-weight:600;">#${esc(code)}</code>`).join('')}
+          </div>
+        </div>
+      </div>
+    `).join('');
+  } catch (err) {
+    const container = document.getElementById('shippingBatchModalBody');
+    if (container) {
+      container.innerHTML = `<div style="color:var(--danger);text-align:center;padding:30px;">Không thể tải đề xuất: ${esc(err.message)}</div>`;
+    }
+  }
+}
+
+async function executeMergeBatch(orderIds, batchCode) {
+  try {
+    await api('Shipping/merge-batch', {
+      method: 'POST',
+      body: JSON.stringify({ orderIds, batchCode })
+    });
+    toast(`Đã gộp ${orderIds.length} đơn hàng vào mã lô ${batchCode} thành công!`, 'success');
+    document.getElementById('shippingBatchModalOverlay')?.remove();
+    renderList('orders');
+  } catch (err) {
+    toast(`Lỗi gộp đơn: ${err.message}`, 'error');
+  }
+}
+
+async function executeMergeAndDispatchBatch(orderIds, batchCode) {
+  try {
+    await api('Shipping/merge-batch', {
+      method: 'POST',
+      body: JSON.stringify({ orderIds, batchCode })
+    });
+    await api(`Shipping/dispatch-batch/${encodeURIComponent(batchCode)}`, {
+      method: 'POST'
+    });
+    toast(`Đã gộp và xuất kho ${orderIds.length} đơn sang trạng thái "Đang giao" (Lô ${batchCode})!`, 'success');
+    document.getElementById('shippingBatchModalOverlay')?.remove();
+    renderList('orders');
+  } catch (err) {
+    toast(`Lỗi xuất giao lô: ${err.message}`, 'error');
+  }
+}
+
+async function dispatchShippingBatch(batchCode, currentOrderId) {
+  if (!confirm(`Xác nhận xuất kho và chuyển toàn bộ đơn hàng thuộc lô ${batchCode} sang trạng thái "Đang giao"?`)) return;
+  try {
+    await api(`Shipping/dispatch-batch/${encodeURIComponent(batchCode)}`, {
+      method: 'POST'
+    });
+    toast(`Đã xuất kho lô ${batchCode} thành công!`, 'success');
+    if (currentOrderId) {
+      showOrderDetail(currentOrderId);
+    } else {
+      renderList('orders');
+    }
+  } catch (err) {
+    toast(`Lỗi: ${err.message}`, 'error');
+  }
+}
+
+window.goToProductWizardStep = goToProductWizardStep;
+window.goToProductWizardStep2 = goToProductWizardStep2;
+window.goToProductWizardStep3 = goToProductWizardStep3;
+window.submitNewProduct = submitNewProduct;
+window.showShippingBatchModal = showShippingBatchModal;
+window.executeMergeBatch = executeMergeBatch;
+window.executeMergeAndDispatchBatch = executeMergeAndDispatchBatch;
+window.dispatchShippingBatch = dispatchShippingBatch;
 function productAgeInputValue(months) {
   if (months === null || months === undefined || months === '') return '';
   const value = Number(months);
@@ -2439,9 +2925,31 @@ async function showOrderDetail(id) {
               <p><strong>Người nhận:</strong> ${esc(order.shipping?.receiverName || order.customerName || '—')}</p>
               <p><strong>SĐT nhận hàng:</strong> ${esc(order.shipping?.receiverPhone || order.phoneNumber || '—')}</p>
               <p>${esc(order.shipping?.address || 'Chưa có địa chỉ giao hàng')}</p>
-              <p><strong>Lô giao:</strong> ${esc(order.shipping?.deliveryBatchCode || 'Chưa phân lô')}</p>
+              <p>
+                <strong>Lô giao:</strong> 
+                <span style="font-weight:700;color:var(--primary);">${esc(order.shipping?.deliveryBatchCode || 'Chưa phân lô')}</span>
+                ${order.shipping?.deliveryBatchCode && currentStatus < 3 ? `
+                  <button class="secondary-btn" style="padding:2px 8px;font-size:11px;margin-left:8px;" onclick="dispatchShippingBatch('${esc(order.shipping.deliveryBatchCode)}', ${order.orderId})" title="Chuyển toàn bộ các đơn cùng mã lô này sang Đang giao">
+                    🚚 Xuất giao cả lô
+                  </button>
+                ` : ''}
+              </p>
               <p><strong>Giao dự kiến:</strong> ${fmtDeliveryWindow(order.shipping?.estimatedDeliveryFromDate || order.shipping?.estimatedDeliveryAt, order.shipping?.estimatedDeliveryToDate)}</p>
               <p><strong>Ghi chú đơn hàng:</strong> ${esc(order.note || 'Không có ghi chú.')}</p>
+              ${order.shipping?.address ? `
+                <div style="margin-top:12px;padding-top:10px;border-top:1px dashed var(--slate-200);">
+                  <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;">
+                    <strong style="font-size:12px;color:var(--slate-700);">🗺️ Lộ trình Google Maps:</strong>
+                    <a href="https://www.google.com/maps/dir/?api=1&origin=${encodeURIComponent('123 Nguyễn Thị Minh Khai, Phường Bến Thành, Quận 1, TP. Hồ Chí Minh')}&destination=${encodeURIComponent(order.shipping.address)}" target="_blank" style="font-size:11.5px;color:var(--primary);text-decoration:none;font-weight:700;">Mở Maps ↗</a>
+                  </div>
+                  <div style="border-radius:8px;overflow:hidden;border:1px solid var(--slate-200);height:140px;background:#f1f5f9;">
+                    <iframe width="100%" height="100%" frameborder="0" style="border:0;" src="https://maps.google.com/maps?saddr=${encodeURIComponent('123 Nguyễn Thị Minh Khai, Phường Bến Thành, Quận 1, TP. Hồ Chí Minh')}&daddr=${encodeURIComponent(order.shipping.address)}&output=embed" loading="lazy"></iframe>
+                  </div>
+                  <div id="adminOrderEtaInfo" style="margin-top:6px;font-size:12px;background:#f8fafc;padding:6px 10px;border-radius:6px;border:1px solid #e2e8f0;">
+                    Đang tính cự ly & thời gian di chuyển...
+                  </div>
+                </div>
+              ` : ''}
             </div>
             <div class="form-section-card" style="margin:0;">
               <h4>Cập nhật trạng thái đơn</h4>
@@ -2491,6 +2999,25 @@ async function showOrderDetail(id) {
         </div>
       </div>
     `;
+
+    if (order.shipping?.address) {
+      api('Shipping/calculate-delivery-estimate', {
+        method: 'POST',
+        body: JSON.stringify({ customerAddress: order.shipping.address })
+      }).then(est => {
+        const infoEl = document.getElementById('adminOrderEtaInfo');
+        if (infoEl && est) {
+          infoEl.innerHTML = `
+            🛣️ Quãng đường: <b>${esc(est.distanceText || `${est.distanceInKm} km`)}</b> · 
+            ⏱️ Di chuyển: <b>${esc(est.durationText || `${est.durationInMinutes} phút`)}</b>
+            ${order.status === 3 ? '<br><span style="color:#059669;font-weight:700;">⚡ Shipper đang trên lộ trình giao hàng</span>' : ''}
+          `;
+        }
+      }).catch(e => {
+        const infoEl = document.getElementById('adminOrderEtaInfo');
+        if (infoEl) infoEl.textContent = 'Không tính được cự ly tự động.';
+      });
+    }
   } catch (err) {
     toast(`Lỗi tải đơn hàng: ${err.message}`, 'error');
   }

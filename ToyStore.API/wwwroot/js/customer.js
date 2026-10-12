@@ -1480,6 +1480,8 @@ function renderOrderDetailContent(order, container) {
 
         ${timelineHtml}
 
+        <div id="orderDeliveryTrackingSlot"></div>
+
         <div class="order-section-box">
             <div class="order-section-title">📍 Thông tin giao nhận hàng</div>
             <div class="order-info-grid">
@@ -1536,6 +1538,170 @@ function renderOrderDetailContent(order, container) {
             <button type="button" class="btn-view-order" onclick="closeOrderDetailModal()" style="padding:8px 18px;">Đóng</button>
         </div>
     `;
+
+    const trackingSlot = document.getElementById('orderDeliveryTrackingSlot');
+    if (trackingSlot) {
+        loadAndRenderDeliveryTracking(order, trackingSlot);
+    }
+}
+
+async function loadAndRenderDeliveryTracking(order, targetContainer) {
+    if (!order.shipping?.address) return;
+    const currentStatus = Number(order.status);
+    const isShipping = currentStatus === 3;
+    const isCompleted = currentStatus === 4;
+
+    const warehouseAddress = '123 Nguyễn Thị Minh Khai, Phường Bến Thành, Quận 1, TP. Hồ Chí Minh';
+    const receiverAddress = order.shipping.address;
+
+    targetContainer.innerHTML = `
+        <div class="order-section-box" style="background:#f8fafc;border:1px solid #cbd5e1;padding:16px;">
+            <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;margin-bottom:12px;">
+                <div style="font-weight:700;font-size:15px;color:#0f172a;display:flex;align-items:center;gap:6px;">
+                    <span>${isShipping ? '🚚' : '📍'}</span> Lộ trình giao hàng & Thời gian dự kiến (ETA)
+                </div>
+                <span id="trackingLiveBadge" class="order-badge ${isShipping ? 'shipping' : (isCompleted ? 'completed' : 'confirmed')}" style="font-size:12px;">
+                    ${isShipping ? '⚡ Đang trên đường giao' : (isCompleted ? '✓ Đã giao thành công' : 'Đang chuẩn bị hàng')}
+                </span>
+            </div>
+
+            <!-- Google Maps Embed Route -->
+            <div style="position:relative;width:100%;height:240px;border-radius:10px;overflow:hidden;border:1px solid #cbd5e1;background:#e2e8f0;margin-bottom:12px;">
+                <iframe width="100%" height="100%" frameborder="0" style="border:0;" 
+                    src="https://maps.google.com/maps?saddr=${encodeURIComponent(warehouseAddress)}&daddr=${encodeURIComponent(receiverAddress)}&output=embed" 
+                    allowfullscreen loading="lazy" referrerpolicy="no-referrer-when-downgrade">
+                </iframe>
+            </div>
+
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">
+                <div style="background:white;padding:10px 14px;border-radius:8px;border:1px solid #e2e8f0;">
+                    <div style="font-size:11.5px;color:var(--text-muted);margin-bottom:2px;">🛣️ Quãng đường từ kho</div>
+                    <div id="trackDistanceVal" style="font-size:16px;font-weight:800;color:var(--primary);">Đang tính...</div>
+                </div>
+                <div style="background:white;padding:10px 14px;border-radius:8px;border:1px solid #e2e8f0;">
+                    <div style="font-size:11.5px;color:var(--text-muted);margin-bottom:2px;">⏱️ Thời gian di chuyển</div>
+                    <div id="trackDurationVal" style="font-size:16px;font-weight:800;color:#d97706;">Đang tính...</div>
+                </div>
+            </div>
+
+            <div id="trackEtaBox" style="margin-top:10px;background:#eef2ff;padding:10px 14px;border-radius:8px;font-size:13px;color:#3730a3;font-weight:600;">
+                Đang kết nối tính toán thời gian đến nơi...
+            </div>
+
+            ${isShipping ? `
+                <div id="liveProgressWrapper" style="margin-top:12px;background:white;padding:12px;border-radius:8px;border:1px solid #e2e8f0;">
+                    <div style="display:flex;justify-content:space-between;font-size:12.5px;font-weight:700;margin-bottom:6px;">
+                        <span>Tiến trình giao hàng:</span>
+                        <span id="liveProgressPercent" style="color:#059669;">Đang di chuyển...</span>
+                    </div>
+                    <div style="background:#e2e8f0;border-radius:999px;height:10px;overflow:hidden;margin-bottom:8px;">
+                        <div id="liveProgressBar" style="background:linear-gradient(90deg, #3b82f6, #10b981);width:30%;height:100%;transition:width 1s ease;"></div>
+                    </div>
+                    <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;">
+                        <small style="color:var(--text-muted);font-size:11.5px;">Tự động cập nhật hoàn tất khi hàng đến nơi.</small>
+                        <button type="button" class="btn-view-order" onclick="confirmCustomerReceivedOrder(${order.orderId})" style="padding:6px 14px;font-size:12px;background:#10b981;color:white;border:none;font-weight:700;border-radius:6px;cursor:pointer;">
+                            ✓ Tôi đã nhận được hàng
+                        </button>
+                    </div>
+                </div>
+            ` : ''}
+
+            <div style="margin-top:10px;display:flex;justify-content:space-between;align-items:center;">
+                <small style="color:var(--text-muted);">Kho xuất phát: 123 Nguyễn Thị Minh Khai, Q.1, TP.HCM</small>
+                <a href="https://www.google.com/maps/dir/?api=1&origin=${encodeURIComponent(warehouseAddress)}&destination=${encodeURIComponent(receiverAddress)}" 
+                   target="_blank" rel="noopener noreferrer" 
+                   style="font-size:12.5px;color:var(--primary);text-decoration:none;font-weight:700;">
+                    🗺️ Mở chỉ đường Google Maps ↗
+                </a>
+            </div>
+        </div>
+    `;
+
+    try {
+        const estRes = await fetch(`${API_BASE}/api/Shipping/calculate-delivery-estimate`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ customerAddress: receiverAddress })
+        });
+        if (estRes.ok) {
+            const est = await estRes.json();
+            const distEl = document.getElementById('trackDistanceVal');
+            const durEl = document.getElementById('trackDurationVal');
+            const etaBox = document.getElementById('trackEtaBox');
+            if (distEl) distEl.textContent = est.distanceText || `${est.distanceInKm} km`;
+            if (durEl) durEl.textContent = est.durationText || `${est.durationInMinutes} phút`;
+
+            if (isShipping) {
+                const durationMins = Number(est.durationInMinutes) || 30;
+                const shippedAt = order.shipping?.shippedAt ? new Date(order.shipping.shippedAt) : new Date(Date.now() - 5 * 60000);
+                const arrivalTime = new Date(shippedAt.getTime() + durationMins * 60000);
+                const now = new Date();
+                const remainingMins = Math.max(0, Math.ceil((arrivalTime.getTime() - now.getTime()) / 60000));
+
+                if (etaBox) {
+                    etaBox.innerHTML = `
+                        🕒 Dự kiến giao đến lúc: <b>${arrivalTime.toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' })}</b> 
+                        (còn khoảng <b>${remainingMins > 0 ? remainingMins + ' phút' : 'vài phút nữa'}</b>).
+                    `;
+                }
+
+                const elapsed = Math.max(0, (now.getTime() - shippedAt.getTime()) / 60000);
+                const pct = Math.min(100, Math.max(20, Math.round((elapsed / durationMins) * 100)));
+                const bar = document.getElementById('liveProgressBar');
+                const pctText = document.getElementById('liveProgressPercent');
+                if (bar) bar.style.width = `${pct}%`;
+                if (pctText) pctText.textContent = pct >= 100 ? 'Đã đến nơi' : `Đang di chuyển (${pct}%)`;
+
+                // Nếu đã hết thời gian (hoặc đến nơi): tự động hoàn tất
+                if (remainingMins <= 0 || pct >= 100) {
+                    setTimeout(() => {
+                        autoCompleteOrderOnArrival(order.orderId);
+                    }, 3000);
+                }
+            } else if (isCompleted) {
+                if (etaBox) {
+                    etaBox.style.background = '#dcfce7';
+                    etaBox.style.color = '#15803d';
+                    etaBox.innerHTML = `🎉 Kiện hàng đã được giao thành công tới địa chỉ nhận! Cảm ơn bạn đã mua sắm.`;
+                }
+            } else {
+                if (etaBox) {
+                    etaBox.innerHTML = `📦 Đơn hàng đang được chuẩn bị tại kho, dự kiến giao trong khoảng <b>${formatDeliveryWindow(est.estimatedDeliveryFromDate, est.estimatedDeliveryToDate)}</b>.`;
+                }
+            }
+        }
+    } catch (e) {
+        console.warn('Lỗi tính toán ETA:', e);
+    }
+}
+
+window.confirmCustomerReceivedOrder = async function(orderId) {
+    if (!confirm('Bạn xác nhận đã nhận được kiện hàng từ nhân viên giao hàng?')) return;
+    await completeOrderDeliveryApi(orderId);
+};
+
+async function autoCompleteOrderOnArrival(orderId) {
+    await completeOrderDeliveryApi(orderId, true);
+}
+
+async function completeOrderDeliveryApi(orderId, isAuto = false) {
+    const token = getAuthToken();
+    try {
+        const headers = token ? { 'Authorization': `Bearer ${token}` } : {};
+        const res = await fetch(`${API_BASE}/api/Order/${orderId}/complete-delivery`, {
+            method: 'POST',
+            headers
+        });
+        if (!res.ok) {
+            const err = await res.json().catch(() => ({}));
+            throw new Error(err.message || 'Không thể cập nhật trạng thái.');
+        }
+        showToast(isAuto ? '🎉 Shipper đã giao đến nơi! Đơn hàng đã tự động hoàn tất.' : '🎉 Xác nhận nhận hàng thành công! Đơn hàng đã hoàn tất.');
+        window.showOrderDetailModal(orderId);
+        loadCustomerOrders();
+    } catch (err) {
+        console.warn('Complete delivery:', err.message);
+    }
 }
 
 /* =========================================================

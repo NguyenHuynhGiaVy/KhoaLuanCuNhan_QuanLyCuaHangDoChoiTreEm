@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Text;
@@ -40,5 +40,16 @@ namespace ToyStoreManagement.Application.Interfaces.Services
         Task<ShippingDto> AddShippingAsync(
             int orderId,
             CreateShippingDto dto);
+
+        Task<DeliveryEstimateResponseDto> CalculateDeliveryEstimateAsync(
+            CalculateDeliveryEstimateRequestDto request);
+
+        Task<IEnumerable<BatchSuggestionDto>> GetBatchSuggestionsAsync(
+            double maxDistanceKm = 3.0);
+
+        Task<bool> MergeBatchAsync(
+            MergeBatchRequestDto request);
+
+        Task<bool> DispatchBatchAsync(string batchCode);
     }
 }

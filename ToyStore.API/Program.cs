@@ -23,6 +23,7 @@ using ToyStoreManagement.API.Hubs;
 var builder = WebApplication.CreateBuilder(args);
 
 builder.Services.AddHttpClient();
+builder.Services.AddMemoryCache();
 
 builder.Services.AddScoped(typeof(IGenericRepository<>), typeof(GenericRepository<>));
 
@@ -63,6 +64,7 @@ builder.Services.AddScoped<ILoyaltyTransactionService, LoyaltyTransactionService
 builder.Services.AddScoped<IOrderRepository, OrderRepository>();
 builder.Services.AddScoped<IPaymentRepository, PaymentRepository>();
 
+builder.Services.AddScoped<IDistanceMatrixService, GoogleDistanceMatrixService>();
 builder.Services.AddScoped<IOrderService, OrderService>();
 builder.Services.AddScoped<IPaymentService, PaymentService>();
 
@@ -266,6 +268,8 @@ using (var scope = app.Services.CreateScope())
     {
         Console.WriteLine($"[Database Migration] Warning during migration: {ex.Message}");
     }
+
+    await DatabasePatchHelper.ApplyPatchesAsync(dbContext);
 
     var roleManager =
         scope.ServiceProvider
