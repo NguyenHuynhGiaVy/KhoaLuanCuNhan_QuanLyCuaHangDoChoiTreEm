@@ -166,6 +166,54 @@ namespace ToyStoreManagement.API.Controllers
             }
         }
 
+        // Chỉ phục vụ thao tác mô phỏng trong Sandbox: khách tự xác nhận đã thanh toán
+        // sau khi đã mở trang ZaloPay. Không hoạt động khi cấu hình Production.
+        [HttpPost("orders/{orderId:int}/confirm-sandbox-payment")]
+        [Authorize(Policy = "CustomerAccess")]
+        public async Task<IActionResult> ConfirmSandboxPayment(int orderId)
+        {
+            try
+            {
+                var options = _configuration.GetSection("ZaloPay").Get<ZaloPayOptions>() ?? new ZaloPayOptions();
+                if (!options.Enabled || !options.Sandbox)
+                    return BadRequest(new { message = "Chỉ có thể xác nhận thanh toán mô phỏng khi đang dùng ZaloPay Sandbox." });
+
+                var customerId = await GetCurrentCustomerIdAsync();
+                if (!customerId.HasValue)
+                    return Forbid();
+
+                var order = await _context.Orders
+                    .Include(item => item.Payment)
+                    .FirstOrDefaultAsync(item => item.OrderId == orderId);
+                if (order == null)
+                    return NotFound(new { message = "Không tìm thấy đơn hàng." });
+                if (order.CustomerId != customerId.Value)
+                    return Forbid();
+                if (order.Payment == null || order.Payment.PaymentMethod != ZaloPayPaymentMethod)
+                    return BadRequest(new { message = "Đơn hàng không sử dụng phương thức ZaloPay." });
+
+                if (order.Payment.Status != 1)
+                {
+                    order.Payment.Status = 1;
+                    order.Payment.PaidAt = DateTime.UtcNow;
+                    order.Payment.GatewayTransactionCode = $"SANDBOX-CONFIRMED-{DateTime.UtcNow:yyyyMMddHHmmss}";
+                    await _context.SaveChangesAsync();
+                }
+
+                return Ok(new
+                {
+                    orderId = order.OrderId,
+                    orderCode = order.OrderCode,
+                    isPaid = true,
+                    message = "Đã ghi nhận thanh toán mô phỏng ZaloPay Sandbox."
+                });
+            }
+            catch (Exception ex)
+            {
+                return BadRequest(new { message = ex.Message });
+            }
+        }
+
         // Trang quay về có thể gọi API này để chủ động kiểm tra khi callback bị chậm.
         [HttpGet("orders/{orderId:int}/status")]
         [Authorize(Policy = "CustomerAccess")]

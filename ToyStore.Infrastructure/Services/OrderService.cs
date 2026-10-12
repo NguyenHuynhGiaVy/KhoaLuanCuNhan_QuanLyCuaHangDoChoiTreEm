@@ -664,14 +664,25 @@ namespace ToyStoreManagement.Infrastructure.Services
             var vietnamOffset = TimeSpan.FromHours(7);
             var localNow = new DateTimeOffset(now, TimeSpan.Zero).ToOffset(vietnamOffset);
             
-            int deliveryDays = distanceKm <= 8.0 ? 1 : (distanceKm <= 25.0 ? 2 : 3);
+            // Không dùng cùng một mốc 3 ngày cho mọi địa chỉ xa. Khoảng giao phải
+            // phản ánh cự ly thực tế từ kho, tương tự cách các sàn TMĐT hiển thị.
+            var (deliveryDays, deliveryRangeDays) = distanceKm switch
+            {
+                <= 8.0 => (1, 1),
+                <= 35.0 => (2, 1),
+                <= 150.0 => (3, 2),
+                <= 400.0 => (4, 2),
+                <= 800.0 => (5, 3),
+                <= 1200.0 => (6, 3),
+                _ => (7, 3)
+            };
             if (localNow.Hour >= 15)
             {
                 deliveryDays += 1;
             }
 
             var fromDate = DateTime.SpecifyKind(localNow.Date.AddDays(deliveryDays), DateTimeKind.Utc);
-            return new DeliveryWindow(fromDate, fromDate.AddDays(1));
+            return new DeliveryWindow(fromDate, fromDate.AddDays(deliveryRangeDays));
         }
 
         private static DeliveryWindow CreateDeliveryWindow(DateTime fromDate, int rangeDays)
@@ -1016,11 +1027,22 @@ namespace ToyStoreManagement.Infrastructure.Services
                 DistanceInKm = distanceInfo.DistanceInKm,
                 DistanceText = $"{distanceInfo.DistanceInKm:0.#} km",
                 DurationInMinutes = distanceInfo.DurationInMinutes,
-                DurationText = $"{distanceInfo.DurationInMinutes} phút",
+                DurationText = FormatTravelDuration(distanceInfo.DurationInMinutes),
                 EstimatedDeliveryFromDate = window.FromDate,
                 EstimatedDeliveryToDate = window.ToDate,
                 IsSameDayEligible = distanceInfo.DistanceInKm <= 5.0 && DateTime.UtcNow.AddHours(7).Hour < 12
             };
+        }
+
+        private static string FormatTravelDuration(int totalMinutes)
+        {
+            if (totalMinutes < 60) return $"{totalMinutes} phút";
+
+            var days = totalMinutes / (24 * 60);
+            var hours = (totalMinutes % (24 * 60)) / 60;
+            var minutes = totalMinutes % 60;
+            if (days > 0) return hours > 0 ? $"{days} ngày {hours} giờ" : $"{days} ngày";
+            return minutes > 0 ? $"{hours} giờ {minutes} phút" : $"{hours} giờ";
         }
 
         public async Task<IEnumerable<BatchSuggestionDto>> GetBatchSuggestionsAsync(
@@ -1132,6 +1154,22 @@ namespace ToyStoreManagement.Infrastructure.Services
                         .Select(s => s.ReceiverPhone.Trim())
                         .Distinct(StringComparer.OrdinalIgnoreCase)
                         .ToList();
+                    var deliveryStops = cluster
+                        .Select(shipping => new BatchDeliveryStopDto
+                        {
+                            OrderId = shipping.OrderId,
+                            OrderCode = shipping.Order.OrderCode,
+                            ReceiverName = shipping.ReceiverName,
+                            ReceiverPhone = shipping.ReceiverPhone,
+                            Address = shipping.Address
+                        })
+                        .OrderBy(stop => stop.OrderCode)
+                        .ToList();
+                    var uniqueAddresses = deliveryStops
+                        .Select(stop => stop.Address?.Trim())
+                        .Where(address => !string.IsNullOrWhiteSpace(address))
+                        .Distinct(StringComparer.OrdinalIgnoreCase)
+                        .ToList();
 
                     string reason;
                     string? receiverPhone;
@@ -1141,7 +1179,9 @@ namespace ToyStoreManagement.Infrastructure.Services
                     {
                         reason = "Cùng người nhận & số điện thoại";
                         receiverPhone = uniquePhones.FirstOrDefault() ?? cluster.First().ReceiverPhone;
-                        commonAddress = cluster.First().Address;
+                        commonAddress = uniqueAddresses.Count == 1
+                            ? uniqueAddresses[0]!
+                            : $"{uniqueAddresses.Count} điểm giao của cùng người nhận";
                     }
                     else
                     {
@@ -1157,7 +1197,8 @@ namespace ToyStoreManagement.Infrastructure.Services
                         ReceiverPhone = receiverPhone,
                         CommonAddressArea = commonAddress,
                         OrderIds = clusterIds,
-                        OrderCodes = cluster.Select(s => s.Order.OrderCode).ToList()
+                        OrderCodes = cluster.Select(s => s.Order.OrderCode).ToList(),
+                        DeliveryStops = deliveryStops
                     });
                 }
             }
@@ -1207,17 +1248,9 @@ namespace ToyStoreManagement.Infrastructure.Services
                 ? request.BatchCode.Trim()
                 : GenerateDeliveryBatchCode(DateTime.UtcNow);
 
-            var earliestDate = shippings.Min(s => s.EstimatedDeliveryFromDate);
-
             foreach (var shipping in shippings)
             {
                 shipping.DeliveryBatchCode = batchCode;
-                if (earliestDate.HasValue)
-                {
-                    shipping.EstimatedDeliveryFromDate = earliestDate;
-                    shipping.EstimatedDeliveryToDate = earliestDate.Value.AddDays(1);
-                    shipping.EstimatedDeliveryAt = earliestDate;
-                }
             }
 
             await _unitOfWork.SaveChangesAsync();

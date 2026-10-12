@@ -1737,11 +1737,11 @@ function goToProductWizardStep2() {
   const toUnit = document.getElementById('wzAgeToUnit')?.value;
 
   let ageFromMonths = null;
-  let ageToMonths = null;
+  let ageToInMonths = null;
   try {
     ageFromMonths = ageToMonths(fromVal, fromUnit);
-    ageToMonths = ageToMonths(toVal, toUnit);
-    if (ageFromMonths !== null && ageToMonths !== null && ageFromMonths > ageToMonths) {
+    ageToInMonths = ageToMonths(toVal, toUnit);
+    if (ageFromMonths !== null && ageToInMonths !== null && ageFromMonths > ageToInMonths) {
       throw new Error('Độ tuổi bắt đầu không được lớn hơn độ tuổi kết thúc.');
     }
   } catch (err) {
@@ -1762,7 +1762,7 @@ function goToProductWizardStep2() {
     ageToVal: toVal,
     ageToUnit: toUnit,
     ageFrom: ageFromMonths,
-    ageTo: ageToMonths
+    ageTo: ageToInMonths
   };
 
   productWizardStep = 2;
@@ -1945,7 +1945,20 @@ async function showShippingBatchModal() {
       return;
     }
 
-    container.innerHTML = suggestions.map((group, idx) => `
+    container.innerHTML = suggestions.map((group, idx) => {
+      const deliveryStops = Array.isArray(group.deliveryStops) ? group.deliveryStops : [];
+      const deliveryStopsHtml = deliveryStops.length
+        ? deliveryStops.map(stop => `
+            <div style="display:grid;grid-template-columns:auto 1fr;gap:7px 10px;align-items:start;padding:8px 0;border-bottom:1px dashed var(--slate-200);">
+              <code style="background:var(--slate-100);padding:2px 7px;border-radius:4px;font-size:12px;font-weight:600;white-space:nowrap;">#${esc(stop.orderCode || stop.orderId)}</code>
+              <div>
+                <div style="font-size:13px;font-weight:600;color:var(--slate-700);">${esc(stop.address || 'Chưa có địa chỉ giao')}</div>
+                <small style="color:var(--slate-500);">${esc(stop.receiverName || '')}${stop.receiverPhone ? ` · ${esc(stop.receiverPhone)}` : ''}</small>
+              </div>
+            </div>`).join('')
+        : `<div style="font-size:13px;color:var(--slate-500);">${esc(group.commonAddressArea || 'Lân cận')}</div>`;
+
+      return `
       <div style="border:1px solid var(--slate-200);border-radius:12px;padding:18px;margin-bottom:16px;background:var(--slate-50);">
         <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:12px;margin-bottom:12px;">
           <div>
@@ -1955,7 +1968,7 @@ async function showShippingBatchModal() {
             </div>
             <div style="font-size:13px;color:var(--slate-600);margin-top:5px;">
               ${group.receiverPhone ? `SĐT: <b>${esc(group.receiverPhone)}</b> · ` : ''}
-              Khu vực: <b>${esc(group.commonAddressArea || 'Lân cận')}</b>
+              Lộ trình: <b>${esc(group.commonAddressArea || 'Lân cận')}</b>
             </div>
           </div>
           <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
@@ -1968,13 +1981,12 @@ async function showShippingBatchModal() {
           </div>
         </div>
         <div style="background:white;border-radius:8px;padding:10px 14px;border:1px solid var(--slate-200);">
-          <small style="color:var(--slate-500);display:block;margin-bottom:4px;">Danh sách đơn hàng (${group.totalOrders} đơn):</small>
-          <div style="display:flex;gap:8px;flex-wrap:wrap;">
-            ${(group.orderCodes || []).map(code => `<code style="background:var(--slate-100);padding:2px 8px;border-radius:4px;font-size:12px;font-weight:600;">#${esc(code)}</code>`).join('')}
-          </div>
+          <small style="color:var(--slate-500);display:block;margin-bottom:4px;">Điểm giao theo từng đơn (${group.totalOrders} đơn):</small>
+          <div>${deliveryStopsHtml}</div>
         </div>
       </div>
-    `).join('');
+    `;
+    }).join('');
   } catch (err) {
     const container = document.getElementById('shippingBatchModalBody');
     if (container) {

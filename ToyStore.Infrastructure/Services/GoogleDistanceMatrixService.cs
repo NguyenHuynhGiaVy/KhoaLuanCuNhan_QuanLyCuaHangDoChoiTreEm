@@ -185,27 +185,13 @@ namespace ToyStoreManagement.Infrastructure.Services
 
         private static DistanceResult FallbackHeuristicCalculation(string origin, string destination)
         {
-            var destLower = destination.ToLowerInvariant();
-            
-            // Heuristic khoảng cách dựa trên các quận huyện phổ biến
-            bool isCoreDistrict = destLower.Contains("quận 1")
-                               || destLower.Contains("quận 3")
-                               || destLower.Contains("quận 4")
-                               || destLower.Contains("quận 5")
-                               || destLower.Contains("quận 10")
-                               || destLower.Contains("bến thành");
-
-            bool isInnerDistrict = destLower.Contains("quận 2")
-                                || destLower.Contains("quận 7")
-                                || destLower.Contains("quận 8")
-                                || destLower.Contains("bình thạnh")
-                                || destLower.Contains("phú nhuận")
-                                || destLower.Contains("tân bình")
-                                || destLower.Contains("tân phú")
-                                || destLower.Contains("thủ đức");
-
-            double distance = isCoreDistrict ? 3.5 : (isInnerDistrict ? 8.5 : 18.0);
-            int duration = isCoreDistrict ? 15 : (isInnerDistrict ? 30 : 55);
+            // Khi chưa có khóa Google Maps, không được trả về cùng một con số cho mọi
+            // địa chỉ. Ước tính này dựa trên vị trí kho ở TP.HCM, tỉnh/thành và phần
+            // địa chỉ chi tiết, vì vậy từng điểm nhận vẫn có cự ly/ETA riêng.
+            var normalizedAddress = NormalizeAddressText(destination);
+            var baseDistance = ResolveBaseDistanceFromWarehouse(normalizedAddress);
+            var distance = Math.Round(Math.Max(1.2, baseDistance + AddressAdjustment(destination, baseDistance)), 1);
+            var duration = EstimateDrivingMinutes(distance);
 
             return new DistanceResult
             {
@@ -213,6 +199,86 @@ namespace ToyStoreManagement.Infrastructure.Services
                 DurationInMinutes = duration,
                 IsSuccessful = true
             };
+        }
+
+        private static double ResolveBaseDistanceFromWarehouse(string address)
+        {
+            // Cự ly đường bộ tham khảo từ kho trung tâm TP.HCM đến trung tâm các
+            // tỉnh/thành. Các tên cũ vẫn được hỗ trợ để không làm sai địa chỉ đã lưu.
+            var regionalDistances = new (string[] Keywords, double DistanceKm)[]
+            {
+                (new[] { "binhduong" }, 27), (new[] { "dongnai" }, 42),
+                (new[] { "tayninh" }, 92), (new[] { "longan" }, 45),
+                (new[] { "tiengiang" }, 75), (new[] { "bentre" }, 98),
+                (new[] { "travinh" }, 135), (new[] { "vinhlong" }, 145),
+                (new[] { "dongthap" }, 170), (new[] { "cantho" }, 175),
+                (new[] { "angiang" }, 215), (new[] { "kiengiang" }, 250),
+                (new[] { "soctrang" }, 230), (new[] { "baclieu" }, 300),
+                (new[] { "camau" }, 345), (new[] { "bariavungtau" }, 110),
+                (new[] { "lamdong" }, 205), (new[] { "daklak" }, 365),
+                (new[] { "gialai" }, 540), (new[] { "khanhhoa" }, 450),
+                (new[] { "quangngai" }, 745), (new[] { "danang" }, 960),
+                (new[] { "hue" }, 1050), (new[] { "quangtri" }, 1120),
+                (new[] { "hatinh" }, 1360), (new[] { "nghean" }, 1450),
+                (new[] { "thanhhoa" }, 1560), (new[] { "ninhbinh" }, 1600),
+                (new[] { "hungyen" }, 1660), (new[] { "phutho" }, 1680),
+                (new[] { "bacninh" }, 1690), (new[] { "hanoi" }, 1650),
+                (new[] { "haiphong" }, 1750), (new[] { "thainguyen" }, 1760),
+                (new[] { "tuyenquang" }, 1770), (new[] { "quangninh" }, 1800),
+                (new[] { "langson" }, 1800), (new[] { "sonla" }, 1860),
+                (new[] { "caobang" }, 1870), (new[] { "laocai" }, 1910),
+                (new[] { "laichau" }, 2010)
+            };
+
+            foreach (var region in regionalDistances)
+            {
+                if (region.Keywords.Any(address.Contains))
+                    return region.DistanceKm;
+            }
+
+            if (address.Contains("hochiminh") || address.Contains("tphochiminh") || address.Contains("tphcm"))
+            {
+                if (ContainsAny(address, "benthanh", "quan1", "quan3", "quan4", "quan5", "quan10")) return 3.5;
+                if (ContainsAny(address, "phunhuan", "binhthanh", "quan6", "quan8", "quan11", "tanbinh", "tanphu", "govap", "binhtan")) return 9;
+                if (ContainsAny(address, "thuduc", "quan2", "quan7", "quan9", "quan12")) return 15;
+                if (ContainsAny(address, "nhabe", "binhchanh", "hocmon", "cuchi", "cangio")) return 32;
+                return 12;
+            }
+
+            // Địa chỉ chưa nhận diện được vẫn thay đổi theo nội dung nhập, thay vì cố
+            // định 18 km. Giao diện buộc chọn tỉnh/thành nên trường hợp này hiếm gặp.
+            return 120;
+        }
+
+        private static bool ContainsAny(string value, params string[] keywords) =>
+            keywords.Any(value.Contains);
+
+        private static double AddressAdjustment(string address, double baseDistance)
+        {
+            var hash = StableAddressHash(NormalizeAddressText(address));
+            var range = baseDistance <= 40 ? 4.5 : baseDistance <= 250 ? 16 : 35;
+            var ratio = (hash % 1001) / 1000.0; // 0 đến 1, ổn định cho cùng một địa chỉ
+            return (ratio - 0.5) * range;
+        }
+
+        private static uint StableAddressHash(string value)
+        {
+            const uint offsetBasis = 2166136261;
+            const uint prime = 16777619;
+            uint hash = offsetBasis;
+            foreach (var character in value)
+            {
+                hash ^= character;
+                hash *= prime;
+            }
+            return hash;
+        }
+
+        private static int EstimateDrivingMinutes(double distanceKm)
+        {
+            var averageSpeed = distanceKm <= 25 ? 22 : distanceKm <= 100 ? 38 : distanceKm <= 450 ? 50 : 55;
+            var handlingMinutes = distanceKm <= 25 ? 10 : distanceKm <= 100 ? 20 : 45;
+            return Math.Max(12, (int)Math.Ceiling(distanceKm / averageSpeed * 60) + handlingMinutes);
         }
 
         private class GoogleDistanceResponse
