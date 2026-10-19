@@ -242,7 +242,7 @@ let selectedReviewRating = 5;
 
   function stockState(variant) {
     if (!variant) {
-      return { type: 'out', quantity: 0, canPurchase: false, label: 'Tổ hợp chưa được tạo' };
+      return { type: 'out', quantity: 0, canPurchase: false, label: 'Tạm hết hàng' };
     }
 
     const rawQuantity = variant?.availableQuantity;
@@ -311,8 +311,8 @@ let selectedReviewRating = 5;
     if (metaTitle) metaTitle.textContent = stock.canPurchase ? 'Kho hàng ToyStore' : stock.label;
     if (metaHint) metaHint.textContent = stock.canPurchase
       ? `Có thể đặt tối đa ${stock.quantity} sản phẩm.`
-      : (stock.label === 'Tổ hợp chưa được tạo'
-        ? 'Hãy chọn một tổ hợp màu/kích thước đang được cửa hàng bán.'
+      : (stock.label === 'Tạm hết hàng'
+        ? 'Phiên bản này hiện đang tạm hết hàng. Quý khách vui lòng chọn phân loại khác hoặc quay lại sau.'
       : (stock.type === 'pending'
         ? (stock.label === 'Chưa cập nhật giá bán'
           ? 'Sản phẩm đang chờ cập nhật giá bán.'
@@ -363,7 +363,7 @@ let selectedReviewRating = 5;
         </div>
         <button type="button" class="buy-now-button" id="buyNow" ${stock.canPurchase ? '' : 'disabled'}><span class="purchase-action-label">${stock.canPurchase ? 'Đặt hàng ngay' : stock.label}</span></button>
         <div class="detail-meta">
-          <div><span>✓</span><p><strong id="detailStockMetaTitle">${stock.canPurchase ? 'Kho hàng ToyStore' : stock.label}</strong><small id="detailStockMetaHint">${stock.canPurchase ? `Có thể đặt tối đa ${stock.quantity} sản phẩm.` : (stock.label === 'Chưa cập nhật giá bán' ? 'Sản phẩm đang chờ cập nhật giá bán.' : (stock.type === 'pending' ? 'Sản phẩm chưa có thông tin nhập kho.' : 'Vui lòng chọn sản phẩm khác hoặc quay lại sau.'))}</small></p></div>
+          <div><span>✓</span><p><strong id="detailStockMetaTitle">${stock.canPurchase ? 'Kho hàng ToyStore' : stock.label}</strong><small id="detailStockMetaHint">${stock.canPurchase ? `Có thể đặt tối đa ${stock.quantity} sản phẩm.` : (stock.label === 'Tạm hết hàng' ? 'Phiên bản này hiện đang tạm hết hàng. Quý khách vui lòng chọn phân loại khác hoặc quay lại sau.' : (stock.label === 'Chưa cập nhật giá bán' ? 'Sản phẩm đang chờ cập nhật giá bán.' : (stock.type === 'pending' ? 'Sản phẩm chưa có thông tin nhập kho.' : 'Vui lòng chọn sản phẩm khác hoặc quay lại sau.')))}</small></p></div>
           <div><span>♧</span><p><strong>Đóng gói cẩn thận</strong><small>Kiểm tra trước khi nhận</small></p></div>
         </div>
       </div>`;
@@ -372,7 +372,7 @@ let selectedReviewRating = 5;
 
   function renderVariantChoices() {
     if (!detailVariants.length) return '';
-    return `<div class="variant-choices"><p style="margin:0 0 13px;color:var(--text-muted);font-size:12.5px;">Chọn tự do từng thuộc tính. Chỉ tổ hợp đã được tạo và còn hàng mới có thể thêm vào giỏ.</p>${variantAttributeGroups().map(([attributeKey, group]) => `<div class="variant-group"><strong>${escapeHtml(group.name)}</strong><div>${[...group.values.entries()].map(([valueKey, value]) => `<button type="button" class="variant-choice ${selectedVariantAttributes.get(attributeKey) === valueKey ? 'selected' : ''}" data-attribute-key="${escapeHtml(attributeKey)}" data-attribute-value-key="${escapeHtml(valueKey)}">${escapeHtml(value)}</button>`).join('')}</div></div>`).join('')}</div>`;
+    return `<div class="variant-choices"><p style="margin:0 0 13px;color:var(--text-muted);font-size:12.5px;">Chọn phân loại sản phẩm (màu sắc, kích cỡ, độ tuổi):</p>${variantAttributeGroups().map(([attributeKey, group]) => `<div class="variant-group"><strong>${escapeHtml(group.name)}</strong><div>${[...group.values.entries()].map(([valueKey, value]) => `<button type="button" class="variant-choice ${selectedVariantAttributes.get(attributeKey) === valueKey ? 'selected' : ''}" data-attribute-key="${escapeHtml(attributeKey)}" data-attribute-value-key="${escapeHtml(valueKey)}">${escapeHtml(value)}</button>`).join('')}</div></div>`).join('')}</div>`;
   }
 
   function updateVariantView() {
@@ -381,8 +381,10 @@ let selectedReviewRating = 5;
     const sku = document.querySelector('.detail-rating i');
     if (price) price.innerHTML = selectedVariant
       ? priceMarkup(selectedVariant, detailProduct?.basePrice)
-      : '<span style="color:var(--text-muted);font-size:16px;">Chưa có tổ hợp này</span>';
-    if (sku) sku.textContent = `SKU: ${selectedVariant?.sku || 'Chọn tổ hợp'}`;
+      : (detailProduct?.basePrice
+          ? `<span class="detail-price-main">${money(detailProduct.basePrice)}</span> <span style="color:#ef4444;font-size:13.5px;font-weight:700;margin-left:8px;background:#fef2f2;padding:3px 8px;border-radius:6px;border:1px solid #fecaca;vertical-align:middle;">Tạm hết hàng</span>`
+          : '<span style="color:#ef4444;font-size:16px;font-weight:700;">Tạm hết hàng</span>');
+    if (sku) sku.textContent = `SKU: ${selectedVariant?.sku || (detailVariants[0]?.sku || 'Tạm hết hàng')}`;
     if (image) image.src = selectedVariant?.imageUrl || imageOf(detailProduct);
     document.querySelectorAll('.variant-choice').forEach(button => {
       button.classList.toggle('selected', selectedVariantAttributes.get(button.dataset.attributeKey) === button.dataset.attributeValueKey);
@@ -396,11 +398,38 @@ let selectedReviewRating = 5;
     if (!attributeKey || !valueKey) return;
 
     if (selectedVariantAttributes.get(attributeKey) === valueKey) {
-      selectedVariantAttributes.delete(attributeKey);
-    } else {
-      selectedVariantAttributes.set(attributeKey, valueKey);
+      return;
     }
-    selectedVariant = findSelectedVariant();
+
+    selectedVariantAttributes.set(attributeKey, valueKey);
+    let matched = findSelectedVariant();
+
+    // Tự động tìm biến thể hợp lệ có chứa thuộc tính vừa bấm (ưu tiên biến thể còn hàng)
+    if (!matched && detailVariants.length) {
+      const candidate = detailVariants.find(v =>
+        variantAttributes(v).some(a =>
+          normalizedVariantAttribute(a.attributeName) === attributeKey &&
+          normalizedVariantAttribute(a.attributeValue) === valueKey
+        ) && stockState(v).canPurchase
+      ) || detailVariants.find(v =>
+        variantAttributes(v).some(a =>
+          normalizedVariantAttribute(a.attributeName) === attributeKey &&
+          normalizedVariantAttribute(a.attributeValue) === valueKey
+        )
+      );
+
+      if (candidate) {
+        variantAttributes(candidate).forEach(a => {
+          selectedVariantAttributes.set(
+            normalizedVariantAttribute(a.attributeName),
+            normalizedVariantAttribute(a.attributeValue)
+          );
+        });
+        matched = candidate;
+      }
+    }
+
+    selectedVariant = matched;
     detailQuantity = 1;
     updateVariantView();
   }
