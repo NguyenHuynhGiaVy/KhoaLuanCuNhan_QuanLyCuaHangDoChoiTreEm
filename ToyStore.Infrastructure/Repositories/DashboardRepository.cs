@@ -5,6 +5,7 @@ using System.Threading.Tasks;
 using Microsoft.EntityFrameworkCore;
 using ToyStoreManagement.Application.DTOs.Dashboard;
 using ToyStoreManagement.Application.Interfaces.Repositories;
+using ToyStoreManagement.Domain.Entities;
 using ToyStoreManagement.Infrastructure.Data;
 
 namespace ToyStoreManagement.Infrastructure.Repositories
@@ -16,6 +17,86 @@ namespace ToyStoreManagement.Infrastructure.Repositories
         public DashboardRepository(ApplicationDbContext context)
         {
             _context = context;
+        }
+
+        // Status 3 means the store has physically received the returned goods.
+        // Only then is stock restored and the refund is deducted from revenue.
+        private async Task<Dictionary<int, decimal>> GetReceivedRefundsByOrderAsync(
+            IEnumerable<int> orderIds)
+        {
+            var ids = orderIds.Distinct().ToList();
+            if (ids.Count == 0)
+            {
+                return new Dictionary<int, decimal>();
+            }
+
+            return await _context.ReturnRequests
+                .AsNoTracking()
+                .Where(x => x.Status == 3 && ids.Contains(x.OrderId))
+                .GroupBy(x => x.OrderId)
+                .Select(group => new { OrderId = group.Key, RefundAmount = group.Sum(x => x.RefundAmount) })
+                .ToDictionaryAsync(x => x.OrderId, x => x.RefundAmount);
+        }
+
+        private static decimal NetOf(decimal amount, decimal refundAmount)
+        {
+            return Math.Max(0, amount - refundAmount);
+        }
+
+        private sealed class DashboardOrder
+        {
+            public int OrderId { get; set; }
+            public DateTime OrderDate { get; set; }
+            public int Status { get; set; }
+            public decimal TotalAmount { get; set; }
+            public int PaymentMethod { get; set; }
+            public int PaymentStatus { get; set; }
+            public decimal PaymentAmount { get; set; }
+            public int CodStatus { get; set; }
+            public int ShippingStatus { get; set; }
+            public decimal RefundAmount { get; set; }
+            public decimal NetRevenue => NetOf(TotalAmount, RefundAmount);
+            public decimal NetPaymentAmount => NetOf(PaymentAmount, RefundAmount);
+        }
+
+        private async Task<List<DashboardOrder>> GetOrdersAsync(IQueryable<Order> query)
+        {
+            var orders = await query
+                .AsNoTracking()
+                .Select(x => new DashboardOrder
+                {
+                    OrderId = x.OrderId,
+                    OrderDate = x.OrderDate,
+                    Status = x.Status,
+                    TotalAmount = x.TotalAmount,
+                    PaymentMethod = x.Payment != null ? x.Payment.PaymentMethod : 0,
+                    PaymentStatus = x.Payment != null ? x.Payment.Status : 0,
+                    PaymentAmount = x.Payment != null ? x.Payment.Amount : x.TotalAmount,
+                    CodStatus = x.Payment != null ? x.Payment.CodStatus : 0,
+                    ShippingStatus = x.Shipping != null ? x.Shipping.Status : 0
+                })
+                .ToListAsync();
+
+            var refundsByOrder = await GetReceivedRefundsByOrderAsync(orders.Select(x => x.OrderId));
+            foreach (var order in orders)
+            {
+                order.RefundAmount = refundsByOrder.GetValueOrDefault(order.OrderId);
+            }
+
+            return orders;
+        }
+
+        private async Task<decimal> GetCompletedNetRevenueAsync(DateTime from, DateTime? toExclusive = null)
+        {
+            var query = _context.Orders
+                .Where(x => x.Status == 4 && x.OrderDate >= from);
+            if (toExclusive.HasValue)
+            {
+                query = query.Where(x => x.OrderDate < toExclusive.Value);
+            }
+
+            var orders = await GetOrdersAsync(query);
+            return orders.Sum(x => x.NetRevenue);
         }
 
         public async Task<DashboardSummaryDto> GetSummaryAsync(DateTime? from = null, DateTime? to = null)
@@ -34,19 +115,7 @@ namespace ToyStoreManagement.Infrastructure.Repositories
                 ordersQuery = ordersQuery.Where(x => x.OrderDate < endDate);
             }
 
-            var orders = await ordersQuery
-                .Select(x => new
-                {
-                    x.OrderId,
-                    x.Status,
-                    x.TotalAmount,
-                    PaymentMethod = x.Payment != null ? x.Payment.PaymentMethod : 0,
-                    PaymentStatus = x.Payment != null ? x.Payment.Status : 0,
-                    PaymentAmount = x.Payment != null ? x.Payment.Amount : x.TotalAmount,
-                    CodStatus = x.Payment != null ? x.Payment.CodStatus : 0,
-                    ShippingStatus = x.Shipping != null ? x.Shipping.Status : 0
-                })
-                .ToListAsync();
+            var orders = await GetOrdersAsync(ordersQuery);
 
             var totalOrders = orders.Count;
             var completedOrders = orders.Count(x => x.Status == 4);
@@ -55,19 +124,19 @@ namespace ToyStoreManagement.Infrastructure.Repositories
             var failedOrders = orders.Count(x => x.ShippingStatus == 3 || x.ShippingStatus == 5);
             var cancelledOrders = orders.Count(x => x.Status == 5);
 
-            var totalRevenue = orders.Where(x => x.Status == 4).Sum(x => x.TotalAmount);
-            var expectedRevenue = orders.Where(x => x.Status != 5).Sum(x => x.TotalAmount);
+            var totalRevenue = orders.Where(x => x.Status == 4).Sum(x => x.NetRevenue);
+            var expectedRevenue = orders.Where(x => x.Status != 5).Sum(x => x.NetRevenue);
 
             // Dòng tiền thực tế:
             // 1. Online đã thanh toán: PaymentMethod in (1, 2) and (PaymentStatus == 1 or Status == 4)
             var onlinePaidAmount = orders
                 .Where(x => (x.PaymentMethod == 1 || x.PaymentMethod == 2) && (x.PaymentStatus == 1 || x.Status == 4))
-                .Sum(x => x.PaymentAmount);
+                .Sum(x => x.NetPaymentAmount);
 
             // 2. COD đã nộp về shop: PaymentMethod == 0 and CodStatus == 2
             var codSubmittedAmount = orders
                 .Where(x => x.PaymentMethod == 0 && x.CodStatus == 2)
-                .Sum(x => x.PaymentAmount);
+                .Sum(x => x.NetPaymentAmount);
 
             // Tổng thực thu = Online đã thanh toán + COD đã nộp quỹ
             var paidAmount = onlinePaidAmount + codSubmittedAmount;
@@ -90,6 +159,12 @@ namespace ToyStoreManagement.Infrastructure.Repositories
             if (from.HasValue) orderDetailsQuery = orderDetailsQuery.Where(x => x.Order.OrderDate >= from.Value.Date);
             if (to.HasValue) orderDetailsQuery = orderDetailsQuery.Where(x => x.Order.OrderDate < to.Value.Date.AddDays(1));
             var totalSoldQuantity = await orderDetailsQuery.SumAsync(x => (int?)x.Quantity) ?? 0;
+            var returnedQuantityQuery = _context.ReturnRequestDetails
+                .Where(x => x.ReturnRequest.Status == 3 && x.ReturnRequest.Order.Status == 4);
+            if (from.HasValue) returnedQuantityQuery = returnedQuantityQuery.Where(x => x.ReturnRequest.Order.OrderDate >= from.Value.Date);
+            if (to.HasValue) returnedQuantityQuery = returnedQuantityQuery.Where(x => x.ReturnRequest.Order.OrderDate < to.Value.Date.AddDays(1));
+            var returnedQuantity = await returnedQuantityQuery.SumAsync(x => (int?)x.Quantity) ?? 0;
+            totalSoldQuantity = Math.Max(0, totalSoldQuantity - returnedQuantity);
 
             // Tồn kho hiện tại
             var currentInventoryQuantity = await _context.Inventories.SumAsync(x => (int?)x.Quantity) ?? 0;
@@ -155,33 +230,21 @@ namespace ToyStoreManagement.Infrastructure.Repositories
             }
 
             var endExclusive = endDate.AddDays(1);
-            var ordersInPeriod = await _context.Orders
-                .Where(x => x.OrderDate >= startDate && x.OrderDate < endExclusive)
-                .Select(x => new
-                {
-                    x.OrderId,
-                    x.OrderDate,
-                    x.Status,
-                    x.TotalAmount,
-                    PaymentMethod = x.Payment != null ? x.Payment.PaymentMethod : 0,
-                    PaymentStatus = x.Payment != null ? x.Payment.Status : 0,
-                    PaymentAmount = x.Payment != null ? x.Payment.Amount : x.TotalAmount,
-                    CodStatus = x.Payment != null ? x.Payment.CodStatus : 0
-                })
-                .ToListAsync();
+            var ordersInPeriod = await GetOrdersAsync(_context.Orders
+                .Where(x => x.OrderDate >= startDate && x.OrderDate < endExclusive));
 
             var report = new FinancialReportDto
             {
                 FromDate = startDate,
                 ToDate = endDate,
                 GroupBy = groupBy,
-                TotalGrossRevenue = ordersInPeriod.Where(x => x.Status == 4).Sum(x => x.TotalAmount),
+                TotalGrossRevenue = ordersInPeriod.Where(x => x.Status == 4).Sum(x => x.NetRevenue),
                 TotalOnlineAmount = ordersInPeriod
                     .Where(x => (x.PaymentMethod == 1 || x.PaymentMethod == 2) && (x.PaymentStatus == 1 || x.Status == 4))
-                    .Sum(x => x.PaymentAmount),
+                    .Sum(x => x.NetPaymentAmount),
                 TotalCodSubmittedAmount = ordersInPeriod
                     .Where(x => x.PaymentMethod == 0 && x.CodStatus == 2)
-                    .Sum(x => x.PaymentAmount),
+                    .Sum(x => x.NetPaymentAmount),
                 TotalCodHoldingAmount = ordersInPeriod
                     .Where(x => x.PaymentMethod == 0 && x.CodStatus == 1)
                     .Sum(x => x.PaymentAmount),
@@ -202,9 +265,9 @@ namespace ToyStoreManagement.Infrastructure.Repositories
                 for (var date = startDate; date <= endDate; date = date.AddDays(1))
                 {
                     var dayOrders = groupedByDay.GetValueOrDefault(date) ?? new();
-                    var grossRev = dayOrders.Where(x => x.Status == 4).Sum(x => x.TotalAmount);
-                    var online = dayOrders.Where(x => (x.PaymentMethod == 1 || x.PaymentMethod == 2) && (x.PaymentStatus == 1 || x.Status == 4)).Sum(x => x.PaymentAmount);
-                    var codSub = dayOrders.Where(x => x.PaymentMethod == 0 && x.CodStatus == 2).Sum(x => x.PaymentAmount);
+                    var grossRev = dayOrders.Where(x => x.Status == 4).Sum(x => x.NetRevenue);
+                    var online = dayOrders.Where(x => (x.PaymentMethod == 1 || x.PaymentMethod == 2) && (x.PaymentStatus == 1 || x.Status == 4)).Sum(x => x.NetPaymentAmount);
+                    var codSub = dayOrders.Where(x => x.PaymentMethod == 0 && x.CodStatus == 2).Sum(x => x.NetPaymentAmount);
                     var codHold = dayOrders.Where(x => x.PaymentMethod == 0 && x.CodStatus == 1).Sum(x => x.PaymentAmount);
                     var pend = dayOrders.Where(x => x.PaymentMethod == 0 && x.CodStatus == 0 && x.Status != 5 && x.Status != 4).Sum(x => x.PaymentAmount);
                     var paid = online + codSub;
@@ -239,9 +302,9 @@ namespace ToyStoreManagement.Infrastructure.Repositories
                 {
                     var key = (currentMonth.Year, currentMonth.Month);
                     var mOrders = groupedByMonth.GetValueOrDefault(key) ?? new();
-                    var grossRev = mOrders.Where(x => x.Status == 4).Sum(x => x.TotalAmount);
-                    var online = mOrders.Where(x => (x.PaymentMethod == 1 || x.PaymentMethod == 2) && (x.PaymentStatus == 1 || x.Status == 4)).Sum(x => x.PaymentAmount);
-                    var codSub = mOrders.Where(x => x.PaymentMethod == 0 && x.CodStatus == 2).Sum(x => x.PaymentAmount);
+                    var grossRev = mOrders.Where(x => x.Status == 4).Sum(x => x.NetRevenue);
+                    var online = mOrders.Where(x => (x.PaymentMethod == 1 || x.PaymentMethod == 2) && (x.PaymentStatus == 1 || x.Status == 4)).Sum(x => x.NetPaymentAmount);
+                    var codSub = mOrders.Where(x => x.PaymentMethod == 0 && x.CodStatus == 2).Sum(x => x.NetPaymentAmount);
                     var codHold = mOrders.Where(x => x.PaymentMethod == 0 && x.CodStatus == 1).Sum(x => x.PaymentAmount);
                     var pend = mOrders.Where(x => x.PaymentMethod == 0 && x.CodStatus == 0 && x.Status != 5 && x.Status != 4).Sum(x => x.PaymentAmount);
                     var paid = online + codSub;
@@ -274,9 +337,9 @@ namespace ToyStoreManagement.Infrastructure.Repositories
                 for (var y = startDate.Year; y <= endDate.Year; y++)
                 {
                     var yOrders = groupedByYear.GetValueOrDefault(y) ?? new();
-                    var grossRev = yOrders.Where(x => x.Status == 4).Sum(x => x.TotalAmount);
-                    var online = yOrders.Where(x => (x.PaymentMethod == 1 || x.PaymentMethod == 2) && (x.PaymentStatus == 1 || x.Status == 4)).Sum(x => x.PaymentAmount);
-                    var codSub = yOrders.Where(x => x.PaymentMethod == 0 && x.CodStatus == 2).Sum(x => x.PaymentAmount);
+                    var grossRev = yOrders.Where(x => x.Status == 4).Sum(x => x.NetRevenue);
+                    var online = yOrders.Where(x => (x.PaymentMethod == 1 || x.PaymentMethod == 2) && (x.PaymentStatus == 1 || x.Status == 4)).Sum(x => x.NetPaymentAmount);
+                    var codSub = yOrders.Where(x => x.PaymentMethod == 0 && x.CodStatus == 2).Sum(x => x.NetPaymentAmount);
                     var codHold = yOrders.Where(x => x.PaymentMethod == 0 && x.CodStatus == 1).Sum(x => x.PaymentAmount);
                     var pend = yOrders.Where(x => x.PaymentMethod == 0 && x.CodStatus == 0 && x.Status != 5 && x.Status != 4).Sum(x => x.PaymentAmount);
                     var paid = online + codSub;
@@ -300,7 +363,7 @@ namespace ToyStoreManagement.Infrastructure.Repositories
             }
 
             // Cơ cấu doanh thu theo Danh mục
-            var categoryRevenues = await _context.OrderDetails
+            var categorySales = await _context.OrderDetails
                 .Where(od => od.Order.Status == 4 && od.Order.OrderDate >= startDate && od.Order.OrderDate < endExclusive)
                 .GroupBy(od => new
                 {
@@ -314,17 +377,44 @@ namespace ToyStoreManagement.Infrastructure.Repositories
                     SoldQuantity = g.Sum(x => x.Quantity),
                     Revenue = g.Sum(x => x.TotalAmount)
                 })
-                .OrderByDescending(x => x.Revenue)
                 .ToListAsync();
 
-            var totalCatRev = categoryRevenues.Sum(x => x.Revenue);
-            report.CategoryRevenues = categoryRevenues.Select(c => new CategoryRevenueDto
+            var categoryRefunds = await _context.ReturnRequestDetails
+                .Where(detail => detail.ReturnRequest.Status == 3
+                    && detail.ReturnRequest.Order.Status == 4
+                    && detail.ReturnRequest.Order.OrderDate >= startDate
+                    && detail.ReturnRequest.Order.OrderDate < endExclusive)
+                .GroupBy(detail => detail.ProductVariant.Product.CategoryId)
+                .Select(group => new
+                {
+                    CategoryId = group.Key,
+                    ReturnedQuantity = group.Sum(x => x.Quantity),
+                    RefundAmount = group.Sum(x => x.RefundAmount)
+                })
+                .ToDictionaryAsync(x => x.CategoryId);
+
+            var netCategoryRevenues = categorySales.Select(category =>
             {
-                CategoryId = c.CategoryId,
-                CategoryName = c.CategoryName,
-                SoldQuantity = c.SoldQuantity,
-                Revenue = c.Revenue,
-                Percentage = totalCatRev > 0 ? Math.Round((double)(c.Revenue / totalCatRev) * 100, 1) : 0
+                categoryRefunds.TryGetValue(category.CategoryId, out var refund);
+                return new CategoryRevenueDto
+                {
+                    CategoryId = category.CategoryId,
+                    CategoryName = category.CategoryName,
+                    SoldQuantity = Math.Max(0, category.SoldQuantity - (refund?.ReturnedQuantity ?? 0)),
+                    Revenue = NetOf(category.Revenue, refund?.RefundAmount ?? 0)
+                };
+            })
+                .Where(category => category.SoldQuantity > 0 || category.Revenue > 0)
+                .OrderByDescending(category => category.Revenue)
+                .ToList();
+
+            var totalCatRev = netCategoryRevenues.Sum(x => x.Revenue);
+            report.CategoryRevenues = netCategoryRevenues.Select(category =>
+            {
+                category.Percentage = totalCatRev > 0
+                    ? Math.Round((double)(category.Revenue / totalCatRev) * 100, 1)
+                    : 0;
+                return category;
             }).ToList();
 
             // Hiệu suất đội ngũ Shipper
@@ -378,17 +468,9 @@ namespace ToyStoreManagement.Infrastructure.Repositories
             var firstDayOfMonth = new DateTime(now.Year, now.Month, 1);
             var firstDayOfYear = new DateTime(now.Year, 1, 1);
 
-            var todayRevenue = await _context.Orders
-                .Where(x => x.Status == 4 && x.OrderDate >= today)
-                .SumAsync(x => (decimal?)x.TotalAmount) ?? 0;
-
-            var monthRevenue = await _context.Orders
-                .Where(x => x.Status == 4 && x.OrderDate >= firstDayOfMonth)
-                .SumAsync(x => (decimal?)x.TotalAmount) ?? 0;
-
-            var yearRevenue = await _context.Orders
-                .Where(x => x.Status == 4 && x.OrderDate >= firstDayOfYear)
-                .SumAsync(x => (decimal?)x.TotalAmount) ?? 0;
+            var todayRevenue = await GetCompletedNetRevenueAsync(today);
+            var monthRevenue = await GetCompletedNetRevenueAsync(firstDayOfMonth);
+            var yearRevenue = await GetCompletedNetRevenueAsync(firstDayOfYear);
 
             return new RevenueStatisticsDto
             {
@@ -423,16 +505,14 @@ namespace ToyStoreManagement.Infrastructure.Repositories
 
                 groupBy = (groupBy ?? "day").Trim().ToLowerInvariant();
                 var endExclusive = endDate.AddDays(1);
-                var completedOrders = await _context.Orders
-                    .Where(x => x.Status == 4 && x.OrderDate >= startDate && x.OrderDate < endExclusive)
-                    .Select(x => new { x.OrderDate, x.TotalAmount })
-                    .ToListAsync();
+                var completedOrders = await GetOrdersAsync(_context.Orders
+                    .Where(x => x.Status == 4 && x.OrderDate >= startDate && x.OrderDate < endExclusive));
 
                 if (groupBy == "day")
                 {
                     var revenueByDay = completedOrders
                         .GroupBy(x => x.OrderDate.Date)
-                        .ToDictionary(x => x.Key, x => x.Sum(order => order.TotalAmount));
+                        .ToDictionary(x => x.Key, x => x.Sum(order => order.NetRevenue));
 
                     for (var date = startDate; date <= endDate; date = date.AddDays(1))
                     {
@@ -444,7 +524,7 @@ namespace ToyStoreManagement.Infrastructure.Repositories
                 {
                     var revenueByMonth = completedOrders
                         .GroupBy(x => new { x.OrderDate.Year, x.OrderDate.Month })
-                        .ToDictionary(x => (x.Key.Year, x.Key.Month), x => x.Sum(order => order.TotalAmount));
+                        .ToDictionary(x => (x.Key.Year, x.Key.Month), x => x.Sum(order => order.NetRevenue));
                     var month = new DateTime(startDate.Year, startDate.Month, 1);
                     var lastMonth = new DateTime(endDate.Year, endDate.Month, 1);
 
@@ -459,7 +539,7 @@ namespace ToyStoreManagement.Infrastructure.Repositories
                 {
                     var revenueByYear = completedOrders
                         .GroupBy(x => x.OrderDate.Year)
-                        .ToDictionary(x => x.Key, x => x.Sum(order => order.TotalAmount));
+                        .ToDictionary(x => x.Key, x => x.Sum(order => order.NetRevenue));
 
                     for (var year = startDate.Year; year <= endDate.Year; year++)
                     {
@@ -475,14 +555,12 @@ namespace ToyStoreManagement.Infrastructure.Repositories
             {
                 var dayCount = period == "day30" ? 30 : 7;
                 var firstDate = now.Date.AddDays(-(dayCount - 1));
-                var completedOrders = await _context.Orders
-                    .Where(x => x.Status == 4 && x.OrderDate >= firstDate)
-                    .Select(x => new { x.OrderDate, x.TotalAmount })
-                    .ToListAsync();
+                var completedOrders = await GetOrdersAsync(_context.Orders
+                    .Where(x => x.Status == 4 && x.OrderDate >= firstDate));
 
                 var revenuesByDate = completedOrders
                     .GroupBy(x => x.OrderDate.Date)
-                    .ToDictionary(x => x.Key, x => x.Sum(order => order.TotalAmount));
+                    .ToDictionary(x => x.Key, x => x.Sum(order => order.NetRevenue));
 
                 for (int i = dayCount - 1; i >= 0; i--)
                 {
@@ -495,11 +573,14 @@ namespace ToyStoreManagement.Infrastructure.Repositories
             }
             else if (period == "month")
             {
+                var yearStart = new DateTime(now.Year, 1, 1);
+                var yearOrders = await GetOrdersAsync(_context.Orders
+                    .Where(x => x.Status == 4 && x.OrderDate >= yearStart && x.OrderDate < yearStart.AddYears(1)));
                 for (int i = 1; i <= 12; i++)
                 {
-                    var revenue = await _context.Orders
-                        .Where(x => x.Status == 4 && x.OrderDate.Year == now.Year && x.OrderDate.Month == i)
-                        .SumAsync(x => (decimal?)x.TotalAmount) ?? 0;
+                    var revenue = yearOrders
+                        .Where(x => x.OrderDate.Month == i)
+                        .Sum(x => x.NetRevenue);
 
                     result.Labels.Add($"Tháng {i}");
                     result.Data.Add(revenue);
@@ -507,12 +588,15 @@ namespace ToyStoreManagement.Infrastructure.Repositories
             }
             else if (period == "year")
             {
+                var firstYear = now.Year - 4;
+                var yearlyOrders = await GetOrdersAsync(_context.Orders
+                    .Where(x => x.Status == 4 && x.OrderDate.Year >= firstYear && x.OrderDate.Year <= now.Year));
                 for (int i = 4; i >= 0; i--)
                 {
                     var year = now.Year - i;
-                    var revenue = await _context.Orders
-                        .Where(x => x.Status == 4 && x.OrderDate.Year == year)
-                        .SumAsync(x => (decimal?)x.TotalAmount) ?? 0;
+                    var revenue = yearlyOrders
+                        .Where(x => x.OrderDate.Year == year)
+                        .Sum(x => x.NetRevenue);
 
                     result.Labels.Add(year.ToString());
                     result.Data.Add(revenue);
@@ -552,7 +636,7 @@ namespace ToyStoreManagement.Infrastructure.Repositories
             if (from.HasValue) query = query.Where(x => x.Order.OrderDate >= from.Value.Date);
             if (to.HasValue) query = query.Where(x => x.Order.OrderDate < to.Value.Date.AddDays(1));
 
-            var result = await query
+            var salesByVariant = await query
                 .GroupBy(x => new
                 {
                     x.VariantId,
@@ -574,11 +658,36 @@ namespace ToyStoreManagement.Infrastructure.Repositories
                     TotalQuantitySold = x.Sum(od => od.Quantity),
                     TotalRevenue = x.Sum(od => od.TotalAmount)
                 })
-                .OrderByDescending(x => x.TotalQuantitySold)
-                .Take(top)
                 .ToListAsync();
 
-            return result;
+            var returnedByVariantQuery = _context.ReturnRequestDetails
+                .Where(x => x.ReturnRequest.Status == 3 && x.ReturnRequest.Order.Status == 4);
+            if (from.HasValue) returnedByVariantQuery = returnedByVariantQuery.Where(x => x.ReturnRequest.Order.OrderDate >= from.Value.Date);
+            if (to.HasValue) returnedByVariantQuery = returnedByVariantQuery.Where(x => x.ReturnRequest.Order.OrderDate < to.Value.Date.AddDays(1));
+
+            var returnedByVariant = await returnedByVariantQuery
+                .GroupBy(x => x.VariantId)
+                .Select(group => new
+                {
+                    VariantId = group.Key,
+                    ReturnedQuantity = group.Sum(x => x.Quantity),
+                    RefundAmount = group.Sum(x => x.RefundAmount)
+                })
+                .ToDictionaryAsync(x => x.VariantId);
+
+            return salesByVariant
+                .Select(sale =>
+                {
+                    returnedByVariant.TryGetValue(sale.VariantId, out var returned);
+                    sale.TotalQuantitySold = Math.Max(0, sale.TotalQuantitySold - (returned?.ReturnedQuantity ?? 0));
+                    sale.TotalRevenue = NetOf(sale.TotalRevenue, returned?.RefundAmount ?? 0);
+                    return sale;
+                })
+                .Where(sale => sale.TotalQuantitySold > 0 || sale.TotalRevenue > 0)
+                .OrderByDescending(sale => sale.TotalQuantitySold)
+                .ThenByDescending(sale => sale.TotalRevenue)
+                .Take(top)
+                .ToList();
         }
 
         public async Task<InventoryStatisticsDto> GetInventoryStatisticsAsync()

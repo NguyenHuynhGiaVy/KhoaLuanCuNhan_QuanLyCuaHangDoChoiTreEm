@@ -253,11 +253,130 @@ function productCard(p) {
                     </div>
                 </div>
             </a>
-            <div style="padding:0 20px 20px;">
+            <div class="product-card-actions">
                 <button class="add-cart" data-id="${p.productId}" ${unavailable ? 'disabled aria-disabled="true" style="opacity:.58;cursor:not-allowed;"' : ''}><span>🛍</span> ${unavailable ? unavailableLabel : 'Thêm vào giỏ'}</button>
+                <button class="buy-now-card" data-id="${p.productId}" ${unavailable ? 'disabled aria-disabled="true"' : ''}><span>⚡</span> ${unavailable ? unavailableLabel : 'Mua ngay'}</button>
             </div>
         </article>
     `;
+}
+
+function makeCardOrderItem(product) {
+    const variant = preferredVariantOf(product);
+    const stockQuantity = availableQuantityOf(variant);
+    const price = sellingPriceOf(variant);
+
+    if (stockQuantity === null || stockQuantity <= 0) {
+        throw new Error(stockQuantity === null
+            ? 'Sản phẩm này chưa có hàng trong kho.'
+            : 'Sản phẩm này hiện đã hết hàng.');
+    }
+    if (price === null) {
+        throw new Error('Sản phẩm này chưa được cập nhật giá bán.');
+    }
+
+    return {
+        productId: product.productId,
+        variantId: variant?.variantId || product.productId,
+        categoryId: product.categoryId ?? null,
+        name: product.name,
+        price,
+        originalPrice: originalPriceOf(variant) ?? price,
+        promotionName: variant?.promotionName || '',
+        imageUrl: product.imageUrl || variant?.imageUrl,
+        quantity: 1,
+        sku: variant?.sku || '',
+        attributes: variant?.attributes || [],
+        variantAttributesText: formatVariantAttributes(variant),
+        stockQuantity
+    };
+}
+
+function fullAddressOf(address) {
+    return address?.fullAddress
+        || [address?.addressDetail, address?.wardName, address?.provinceName]
+            .filter(Boolean)
+            .join(', ');
+}
+
+async function buyNowFromProductCard(productId) {
+    const product = products.find(item => String(item.productId) === String(productId));
+    if (!product) return;
+
+    let item;
+    try {
+        item = makeCardOrderItem(product);
+    } catch (error) {
+        showToast(error.message || 'Sản phẩm hiện chưa thể đặt hàng.', 'error');
+        return;
+    }
+
+    const token = getAuthToken();
+    const sessionUser = getAuthUser();
+    if (!token || !sessionUser?.userId) {
+        openAccountDrawer();
+        showToast('Vui lòng đăng nhập để mua ngay.', 'error');
+        return;
+    }
+
+    try {
+        const profile = await loadCustomerProfile();
+        if (token !== getAuthToken()
+            || getAuthUser()?.userId !== sessionUser.userId
+            || profile?.userId !== sessionUser.userId
+            || !profile?.customerId
+            || !profile?.phone) {
+            openAccountDrawer();
+            showToast('Vui lòng hoàn thiện hồ sơ khách hàng trước khi mua ngay.', 'error');
+            return;
+        }
+
+        const response = await fetch(`${API_BASE}/api/Customer/profile/addresses`, {
+            headers: { 'Authorization': `Bearer ${token}` }
+        });
+        const addresses = await response.json().catch(() => []);
+        const address = Array.isArray(addresses)
+            ? addresses.find(item => item.isDefault) || addresses[0]
+            : null;
+        const fullAddress = fullAddressOf(address);
+        if (!response.ok || !address?.receiverName || !address?.receiverPhone || !fullAddress) {
+            await openCheckoutDrawer();
+            showToast('Hãy lưu địa chỉ giao hàng để tiếp tục mua ngay.', 'error');
+            return;
+        }
+
+        const pricing = getCartPricing([item]);
+        const pendingOrder = {
+            accountUserId: sessionUser.userId,
+            customerId: profile.customerId,
+            customer: {
+                fullName: address.receiverName,
+                phone: address.receiverPhone,
+                address: fullAddress
+            },
+            note: '',
+            paymentMethod: 'COD',
+            voucherCode: null,
+            voucherDiscount: 0,
+            promotionDiscount: pricing.promotionDiscount,
+            originalSubtotal: pricing.originalSubtotal,
+            discountedSubtotal: pricing.saleSubtotal,
+            shippingFee: pricing.shippingFee,
+            total: pricing.saleSubtotal + pricing.shippingFee,
+            orderDetails: [{ variantId: item.variantId, quantity: 1 }],
+            items: [{
+                ...item,
+                variantAttributes: item.variantAttributesText || formatVariantAttributes(item)
+            }],
+            createdAt: new Date().toISOString()
+        };
+
+        // Mua ngay luôn chỉ chứa sản phẩm vừa chọn, không làm thay đổi giỏ hàng hiện có.
+        localStorage.setItem('toyStorePendingOrder', JSON.stringify(pendingOrder));
+        location.href = '/order-review.html';
+    } catch (error) {
+        showToast(error.message || 'Không thể chuẩn bị đơn hàng. Vui lòng thử lại.', 'error');
+    }
 }
 
 function renderProducts() {
@@ -1467,9 +1586,6 @@ function ensureOrderDetailModalInDom() {
     document.body.insertAdjacentHTML('beforeend', modalHtml);
 
     document.getElementById('closeOrderDetailModalBtn')?.addEventListener('click', closeOrderDetailModal);
-    document.getElementById('orderDetailModalBackdrop')?.addEventListener('click', e => {
-        if (e.target.id === 'orderDetailModalBackdrop') closeOrderDetailModal();
-    });
 }
 
 // ── CUSTOMER REALTIME TRACKING SIGNALR (MỤC 4) ────────────────────
@@ -2495,6 +2611,12 @@ document.addEventListener('click', e => {
         return;
     }
 
+    const buyNowBtn = e.target.closest('.buy-now-card');
+    if (buyNowBtn?.dataset.id && !buyNowBtn.disabled) {
+        buyNowFromProductCard(buyNowBtn.dataset.id);
+        return;
+    }
+
     // Add to cart from card
     const addCartBtn = e.target.closest('.add-cart');
     if (addCartBtn && addCartBtn.dataset.id) {
@@ -2530,7 +2652,7 @@ document.addEventListener('click', e => {
 
     if (e.target.closest('#joinLoyaltyBtn')) { location.href = '/rewards.html'; return; }
     if (e.target.closest('#custAccountBtn')) { openAccountDrawer(); return; }
-    if (e.target.closest('#accountDrawerClose') || e.target === document.getElementById('accountDrawerOverlay')) { closeAccountDrawer(); return; }
+    if (e.target.closest('#accountDrawerClose')) { closeAccountDrawer(); return; }
 
     // Cart Qty Modifiers
     const qtyMinus = e.target.closest('.btn-qty-minus');

@@ -6,6 +6,7 @@ namespace ToyStoreManagement.API.Hubs
     public class OrderTrackingHub : Hub
     {
         public const string AdminGroup = "admin-orders-group";
+        public const string ShipperBroadcastGroup = "shipper-new-orders-group";
 
         public static string OrderGroup(int orderId) => $"order-tracking-{orderId}";
 
@@ -39,6 +40,27 @@ namespace ToyStoreManagement.API.Hubs
         public async Task LeaveShipper(int shipperId)
         {
             await Groups.RemoveFromGroupAsync(Context.ConnectionId, ShipperGroup(shipperId));
+        }
+
+        public async Task JoinNewOrderNotifications()
+        {
+            if (!CanReceiveShipperNotifications())
+                throw new HubException("Bạn không có quyền nhận thông báo điều phối đơn hàng.");
+
+            await Groups.AddToGroupAsync(Context.ConnectionId, ShipperBroadcastGroup);
+        }
+
+        public async Task LeaveNewOrderNotifications()
+        {
+            await Groups.RemoveFromGroupAsync(Context.ConnectionId, ShipperBroadcastGroup);
+        }
+
+        private bool CanReceiveShipperNotifications()
+        {
+            return Context.User?.IsInRole("Admin") == true
+                || Context.User?.IsInRole("Manager") == true
+                || Context.User?.IsInRole("Staff") == true
+                || Context.User?.IsInRole("Shipper") == true;
         }
     }
 }

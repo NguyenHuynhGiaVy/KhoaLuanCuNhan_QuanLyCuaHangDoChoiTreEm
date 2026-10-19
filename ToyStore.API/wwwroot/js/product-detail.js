@@ -212,12 +212,45 @@ let selectedReviewRating = 5;
       const attributeKey = normalizedVariantAttribute(attribute.attributeName);
       const valueKey = normalizedVariantAttribute(attribute.attributeValue);
       if (!attributeKey || !valueKey) return;
+      const displayOrder = Number(attribute.displayOrder);
       if (!groups.has(attributeKey)) {
-        groups.set(attributeKey, { name: attribute.attributeName, values: new Map() });
+        groups.set(attributeKey, {
+          name: attribute.attributeName,
+          values: new Map(),
+          displayOrder: Number.isFinite(displayOrder) ? displayOrder : Number.MAX_SAFE_INTEGER
+        });
       }
-      groups.get(attributeKey).values.set(valueKey, attribute.attributeValue);
+      const group = groups.get(attributeKey);
+      group.values.set(valueKey, attribute.attributeValue);
+      group.displayOrder = Math.min(
+        group.displayOrder,
+        Number.isFinite(displayOrder) ? displayOrder : Number.MAX_SAFE_INTEGER
+      );
     }));
-    return [...groups.entries()];
+    return [...groups.entries()].sort(([, left], [, right]) => left.displayOrder - right.displayOrder);
+  }
+
+  function variantMatchesAttributes(variant, attributes) {
+    return attributes.every(([attributeKey, valueKey]) =>
+      variantAttributes(variant).some(attribute =>
+        normalizedVariantAttribute(attribute.attributeName) === attributeKey
+        && normalizedVariantAttribute(attribute.attributeValue) === valueKey));
+  }
+
+  function availableValuesForGroup(groups, groupIndex) {
+    // Một lựa chọn chỉ giới hạn các nhóm theo sau. Ví dụ, chọn màu trước
+    // sẽ chỉ để lại những kích cỡ thực sự có cho màu đó.
+    const priorSelections = groups
+      .slice(0, groupIndex)
+      .map(([attributeKey]) => [attributeKey, selectedVariantAttributes.get(attributeKey)])
+      .filter(([, valueKey]) => valueKey);
+    const [currentAttributeKey] = groups[groupIndex];
+
+    return new Set(detailVariants
+      .filter(variant => variantMatchesAttributes(variant, priorSelections))
+      .flatMap(variant => variantAttributes(variant)
+        .filter(attribute => normalizedVariantAttribute(attribute.attributeName) === currentAttributeKey)
+        .map(attribute => normalizedVariantAttribute(attribute.attributeValue))));
   }
 
   function variantMatchesSelectedAttributes(variant) {
@@ -225,14 +258,6 @@ let selectedReviewRating = 5;
       variantAttributes(variant).some(attribute =>
         normalizedVariantAttribute(attribute.attributeName) === attributeKey
         && normalizedVariantAttribute(attribute.attributeValue) === valueKey));
-  }
-
-  function findSelectedVariant() {
-    return detailVariants.find(variant =>
-      variantMatchesSelectedAttributes(variant)
-      && variantAttributes(variant).every(attribute =>
-        selectedVariantAttributes.get(normalizedVariantAttribute(attribute.attributeName))
-          === normalizedVariantAttribute(attribute.attributeValue))) || null;
   }
 
   function variantLabel(variant) {
@@ -372,7 +397,17 @@ let selectedReviewRating = 5;
 
   function renderVariantChoices() {
     if (!detailVariants.length) return '';
-    return `<div class="variant-choices"><p style="margin:0 0 13px;color:var(--text-muted);font-size:12.5px;">Chọn phân loại sản phẩm (màu sắc, kích cỡ, độ tuổi):</p>${variantAttributeGroups().map(([attributeKey, group]) => `<div class="variant-group"><strong>${escapeHtml(group.name)}</strong><div>${[...group.values.entries()].map(([valueKey, value]) => `<button type="button" class="variant-choice ${selectedVariantAttributes.get(attributeKey) === valueKey ? 'selected' : ''}" data-attribute-key="${escapeHtml(attributeKey)}" data-attribute-value-key="${escapeHtml(valueKey)}">${escapeHtml(value)}</button>`).join('')}</div></div>`).join('')}</div>`;
+    const groups = variantAttributeGroups();
+    const groupMarkup = groups.map(([attributeKey, group], groupIndex) => {
+      const availableValues = availableValuesForGroup(groups, groupIndex);
+      const choices = [...group.values.entries()]
+        .filter(([valueKey]) => availableValues.has(valueKey))
+        .map(([valueKey, value]) => `<button type="button" class="variant-choice ${selectedVariantAttributes.get(attributeKey) === valueKey ? 'selected' : ''}" data-attribute-key="${escapeHtml(attributeKey)}" data-attribute-value-key="${escapeHtml(valueKey)}">${escapeHtml(value)}</button>`)
+        .join('');
+      return `<div class="variant-group"><strong>${escapeHtml(group.name)}</strong><div>${choices}</div></div>`;
+    }).join('');
+
+    return `<div class="variant-choices" id="variantChoices"><p style="margin:0 0 13px;color:var(--text-muted);font-size:12.5px;">Chọn phân loại sản phẩm (màu sắc, kích cỡ, độ tuổi):</p>${groupMarkup}</div>`;
   }
 
   function updateVariantView() {
@@ -386,9 +421,8 @@ let selectedReviewRating = 5;
           : '<span style="color:#ef4444;font-size:16px;font-weight:700;">Tạm hết hàng</span>');
     if (sku) sku.textContent = `SKU: ${selectedVariant?.sku || (detailVariants[0]?.sku || 'Tạm hết hàng')}`;
     if (image) image.src = selectedVariant?.imageUrl || imageOf(detailProduct);
-    document.querySelectorAll('.variant-choice').forEach(button => {
-      button.classList.toggle('selected', selectedVariantAttributes.get(button.dataset.attributeKey) === button.dataset.attributeValueKey);
-    });
+    const choices = document.getElementById('variantChoices');
+    if (choices) choices.outerHTML = renderVariantChoices();
     updateStockAndPurchaseControls();
   }
 
@@ -401,32 +435,30 @@ let selectedReviewRating = 5;
       return;
     }
 
+    const groups = variantAttributeGroups();
+    const groupIndex = groups.findIndex(([key]) => key === attributeKey);
+    if (groupIndex < 0) return;
+
     selectedVariantAttributes.set(attributeKey, valueKey);
-    let matched = findSelectedVariant();
+    const prefixSelections = groups
+      .slice(0, groupIndex + 1)
+      .map(([key]) => [key, selectedVariantAttributes.get(key)])
+      .filter(([, selectedValue]) => selectedValue);
 
-    // Tự động tìm biến thể hợp lệ có chứa thuộc tính vừa bấm (ưu tiên biến thể còn hàng)
-    if (!matched && detailVariants.length) {
-      const candidate = detailVariants.find(v =>
-        variantAttributes(v).some(a =>
-          normalizedVariantAttribute(a.attributeName) === attributeKey &&
-          normalizedVariantAttribute(a.attributeValue) === valueKey
-        ) && stockState(v).canPurchase
-      ) || detailVariants.find(v =>
-        variantAttributes(v).some(a =>
-          normalizedVariantAttribute(a.attributeName) === attributeKey &&
-          normalizedVariantAttribute(a.attributeValue) === valueKey
-        )
-      );
+    // Giữ tổ hợp hiện tại nếu nó vẫn hợp lệ; nếu không, chọn biến thể hợp lệ
+    // cùng các lựa chọn cấp trước để cập nhật các nhóm phía sau.
+    const candidates = detailVariants.filter(variant =>
+      variantMatchesAttributes(variant, prefixSelections));
+    const matched = candidates.find(variant => variantMatchesSelectedAttributes(variant))
+      || candidates.find(variant => stockState(variant).canPurchase)
+      || candidates[0]
+      || null;
 
-      if (candidate) {
-        variantAttributes(candidate).forEach(a => {
-          selectedVariantAttributes.set(
-            normalizedVariantAttribute(a.attributeName),
-            normalizedVariantAttribute(a.attributeValue)
-          );
-        });
-        matched = candidate;
-      }
+    if (matched) {
+      selectedVariantAttributes = new Map(variantAttributes(matched).map(attribute => [
+        normalizedVariantAttribute(attribute.attributeName),
+        normalizedVariantAttribute(attribute.attributeValue)
+      ]));
     }
 
     selectedVariant = matched;

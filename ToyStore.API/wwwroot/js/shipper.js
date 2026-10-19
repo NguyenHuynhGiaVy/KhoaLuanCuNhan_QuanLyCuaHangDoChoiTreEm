@@ -16,10 +16,12 @@ let activeTab = 'active'; // 'active' | 'history' | 'wallet'
 let allOrders = [];
 let shippersList = [];
 let trackingHubConnection = null;
+let shipperNotifications = [];
 
 const esc = v => String(v ?? '').replace(/[&<>'"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', "'": '&#39;', '"': '&quot;' }[c]));
 const money = v => v == null ? '0 đ' : Number(v).toLocaleString('vi-VN') + ' đ';
 const fmtDateTime = s => s ? new Date(s).toLocaleString('vi-VN') : '—';
+const shipperNotificationStorageKey = () => `toyStoreShipperNotifications:${currentShipperId}`;
 
 function toast(msg, type = 'info') {
   const container = document.getElementById('toastContainer');
@@ -30,6 +32,94 @@ function toast(msg, type = 'info') {
   t.innerHTML = `<span>${type === 'error' ? '⚠️' : (type === 'success' ? '✅' : '🔔')}</span> <span>${esc(msg)}</span>`;
   container.appendChild(t);
   setTimeout(() => t.remove(), 4000);
+}
+
+function formatNotificationTime(value) {
+  const time = new Date(value);
+  return Number.isNaN(time.getTime())
+    ? 'Vừa xong'
+    : time.toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' });
+}
+
+function saveShipperNotifications() {
+  localStorage.setItem(shipperNotificationStorageKey(), JSON.stringify(shipperNotifications));
+}
+
+function renderShipperNotifications() {
+  const list = document.getElementById('shipperNotificationList');
+  const count = document.getElementById('shipperNotificationCount');
+  if (count) {
+    count.textContent = shipperNotifications.length > 99 ? '99+' : shipperNotifications.length;
+    count.classList.toggle('show', shipperNotifications.length > 0);
+  }
+  if (!list) return;
+
+  if (!shipperNotifications.length) {
+    list.innerHTML = '<div class="notification-empty">Chưa có thông báo đơn hàng.</div>';
+    return;
+  }
+
+  list.innerHTML = shipperNotifications.map(item => `
+    <article class="notification-item">
+      <span class="notification-icon ${item.type === 'assignment' ? 'assignment' : ''}">${item.type === 'assignment' ? '📦' : '🛎️'}</span>
+      <div>
+        <strong>${esc(item.title)}</strong>
+        <p>${esc(item.message)}</p>
+        <time>${formatNotificationTime(item.createdAt)}</time>
+      </div>
+    </article>
+  `).join('');
+}
+
+function loadShipperNotifications() {
+  try {
+    const saved = JSON.parse(localStorage.getItem(shipperNotificationStorageKey()) || '[]');
+    shipperNotifications = Array.isArray(saved) ? saved : [];
+  } catch (_) {
+    shipperNotifications = [];
+  }
+  renderShipperNotifications();
+}
+
+function addShipperNotification({ id, title, message, type = 'new', createdAt }) {
+  if (id) shipperNotifications = shipperNotifications.filter(item => item.id !== id);
+  shipperNotifications.unshift({
+    id: id || `notice-${Date.now()}`,
+    title,
+    message,
+    type,
+    createdAt: createdAt || new Date().toISOString()
+  });
+  shipperNotifications = shipperNotifications.slice(0, 20);
+  saveShipperNotifications();
+  renderShipperNotifications();
+  toast(`${title}: ${message}`, type === 'assignment' ? 'success' : 'info');
+
+  if (document.hidden && typeof Notification !== 'undefined' && Notification.permission === 'granted') {
+    new Notification(title, { body: message });
+  }
+}
+
+function toggleShipperNotificationPanel() {
+  const panel = document.getElementById('shipperNotificationPanel');
+  const button = document.getElementById('shipperNotificationBtn');
+  if (!panel || !button) return;
+  const isOpen = !panel.classList.contains('open');
+  panel.classList.toggle('open', isOpen);
+  button.setAttribute('aria-expanded', String(isOpen));
+}
+
+function closeShipperNotificationPanel() {
+  const panel = document.getElementById('shipperNotificationPanel');
+  const button = document.getElementById('shipperNotificationBtn');
+  panel?.classList.remove('open');
+  button?.setAttribute('aria-expanded', 'false');
+}
+
+function clearShipperNotifications() {
+  shipperNotifications = [];
+  saveShipperNotifications();
+  renderShipperNotifications();
 }
 
 async function api(endpoint, options = {}) {
@@ -85,6 +175,7 @@ async function loadShipperProfiles() {
       updateProfileDisplay(current);
     }
 
+    loadShipperNotifications();
     initSignalR();
     loadOrders();
   } catch (err) {
@@ -106,13 +197,20 @@ function updateProfileDisplay(shipper) {
 }
 
 function switchShipperProfile(id) {
+  const previousShipperId = currentShipperId;
   currentShipperId = Number(id);
   localStorage.setItem('toyStoreShipperId', currentShipperId);
   const found = shippersList.find(s => s.shipperId === currentShipperId);
   if (found) updateProfileDisplay(found);
-  
+
+  loadShipperNotifications();
   if (trackingHubConnection) {
-    trackingHubConnection.invoke('JoinShipper', currentShipperId).catch(console.warn);
+    const joinCurrentShipper = () => trackingHubConnection.invoke('JoinShipper', currentShipperId).catch(console.warn);
+    if (previousShipperId !== currentShipperId) {
+      trackingHubConnection.invoke('LeaveShipper', previousShipperId).catch(console.warn).finally(joinCurrentShipper);
+    } else {
+      joinCurrentShipper();
+    }
   }
   loadOrders();
 }
@@ -462,12 +560,41 @@ async function initSignalR() {
 
     trackingHubConnection.on('ReceiveNewOrderAssignment', data => {
       console.log('[SignalR Shipper] ReceiveNewOrderAssignment:', data);
-      toast(`📦 Đơn hàng mới: ${data.message || 'Bạn vừa được gán đơn giao hàng!'}`, 'success');
+      addShipperNotification({
+        id: `assignment-${data.orderId || data.deliveryBatchCode || Date.now()}`,
+        title: 'Đơn hàng đã được phân công',
+        message: data.message || 'Bạn vừa được gán đơn giao hàng!',
+        type: 'assignment'
+      });
       loadOrders();
+    });
+
+    trackingHubConnection.on('ReceiveNewOrderCreated', data => {
+      console.log('[SignalR Shipper] ReceiveNewOrderCreated:', data);
+      const orderCode = data.orderCode || data.orderId || '';
+      addShipperNotification({
+        id: `new-order-${data.orderId || orderCode || Date.now()}`,
+        title: 'Có đơn hàng mới chờ điều phối',
+        message: data.message || `Đơn #${orderCode} vừa phát sinh.`,
+        type: 'new',
+        createdAt: data.createdAt
+      });
+    });
+
+    trackingHubConnection.onreconnected(async () => {
+      try {
+        await trackingHubConnection.invoke('JoinShipper', currentShipperId);
+        await trackingHubConnection.invoke('JoinNewOrderNotifications');
+        loadOrders();
+        toast('Đã kết nối lại kênh thông báo đơn hàng.', 'success');
+      } catch (e) {
+        console.warn('[SignalR Shipper] Không thể tham gia lại nhóm thông báo:', e.message);
+      }
     });
 
     await trackingHubConnection.start();
     await trackingHubConnection.invoke('JoinShipper', currentShipperId);
+    await trackingHubConnection.invoke('JoinNewOrderNotifications');
     console.log('[SignalR Shipper] Đã kết nối kênh phân chuyến thành công.');
   } catch (e) {
     console.warn('[SignalR Shipper] Lỗi kết nối SignalR:', e.message);
@@ -479,6 +606,19 @@ document.getElementById('shipperLogoutBtn')?.addEventListener('click', () => {
   localStorage.removeItem('toyStoreUser');
   localStorage.removeItem('toyStoreShipperId');
   location.replace('/customer.html');
+});
+
+document.getElementById('shipperNotificationBtn')?.addEventListener('click', () => {
+  toggleShipperNotificationPanel();
+  if (typeof Notification !== 'undefined' && Notification.permission === 'default') {
+    Notification.requestPermission().catch(() => {});
+  }
+});
+
+document.getElementById('clearShipperNotificationsBtn')?.addEventListener('click', clearShipperNotifications);
+
+document.addEventListener('click', event => {
+  if (!event.target.closest('.shipper-notification-menu')) closeShipperNotificationPanel();
 });
 
 window.onload = loadShipperProfiles;

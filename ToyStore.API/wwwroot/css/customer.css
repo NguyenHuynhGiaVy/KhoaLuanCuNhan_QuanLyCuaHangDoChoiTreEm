@@ -375,7 +375,49 @@ a {
   gap: 8px;
 }
 
-.product-card:hover .add-cart {
+.product-card-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 0 20px 20px;
+}
+
+.product-card-actions .add-cart,
+.buy-now-card {
+  min-width: 0;
+  padding: 10px 8px;
+  font-size: 12px;
+  white-space: nowrap;
+}
+
+.buy-now-card {
+  width: 100%;
+  border: 1px solid var(--border-color);
+  border-radius: 8px;
+  background: var(--bg-subtle);
+  color: var(--text-main);
+  font: inherit;
+  font-weight: 700;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+}
+
+.buy-now-card:hover:not(:disabled) {
+  background: var(--primary);
+  border-color: var(--primary);
+  color: #ffffff;
+  box-shadow: 0 4px 12px var(--primary-glow);
+}
+
+.buy-now-card:disabled {
+  opacity: .58;
+  cursor: not-allowed;
+}
+
+.product-card-actions .add-cart:hover {
   background: var(--primary);
   color: #ffffff;
   border-color: var(--primary);

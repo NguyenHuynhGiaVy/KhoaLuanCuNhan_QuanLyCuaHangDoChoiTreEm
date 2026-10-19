@@ -100,6 +100,98 @@
       box-shadow: 0 0 0 2px rgba(5, 150, 105, 0.3);
       animation: pulse 1.8s infinite;
     }
+    .shipper-notification-menu { position: relative; }
+    .notification-button {
+      width: 36px;
+      height: 36px;
+      border: 1px solid var(--slate-200);
+      border-radius: 10px;
+      background: #ffffff;
+      color: var(--slate-700);
+      cursor: pointer;
+      font-size: 18px;
+      display: grid;
+      place-items: center;
+      position: relative;
+    }
+    .notification-button:hover, .notification-button[aria-expanded="true"] {
+      color: var(--primary);
+      border-color: #c7d2fe;
+      background: var(--primary-light);
+    }
+    .notification-count {
+      position: absolute;
+      top: -6px;
+      right: -6px;
+      min-width: 18px;
+      height: 18px;
+      padding: 0 4px;
+      border-radius: 999px;
+      background: var(--danger);
+      color: #ffffff;
+      border: 2px solid #ffffff;
+      display: none;
+      align-items: center;
+      justify-content: center;
+      font-size: 10px;
+      font-weight: 800;
+    }
+    .notification-count.show { display: flex; }
+    .notification-panel {
+      position: absolute;
+      top: 45px;
+      right: 0;
+      width: min(360px, calc(100vw - 32px));
+      max-height: min(480px, calc(100vh - 88px));
+      overflow: auto;
+      z-index: 100;
+      display: none;
+      background: #ffffff;
+      border: 1px solid var(--slate-200);
+      border-radius: 14px;
+      box-shadow: 0 16px 32px rgba(15, 23, 42, 0.16);
+    }
+    .notification-panel.open { display: block; }
+    .notification-panel-head {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+      padding: 13px 14px;
+      border-bottom: 1px solid var(--slate-100);
+    }
+    .notification-panel-head strong { font-size: 13px; color: var(--slate-900); }
+    .notification-clear-btn {
+      border: 0;
+      background: none;
+      color: var(--primary);
+      font: inherit;
+      font-size: 11px;
+      font-weight: 700;
+      cursor: pointer;
+    }
+    .notification-item {
+      display: flex;
+      gap: 10px;
+      padding: 13px 14px;
+      border-bottom: 1px solid var(--slate-100);
+    }
+    .notification-item:last-child { border-bottom: 0; }
+    .notification-icon {
+      width: 31px;
+      height: 31px;
+      flex: 0 0 31px;
+      display: grid;
+      place-items: center;
+      border-radius: 9px;
+      background: var(--primary-light);
+      font-size: 15px;
+    }
+    .notification-item--assignment .notification-icon { background: var(--success-light); }
+    .notification-item strong { display: block; color: var(--slate-800); font-size: 12px; margin-bottom: 2px; }
+    .notification-item p { color: var(--slate-500); font-size: 11.5px; line-height: 1.45; }
+    .notification-item time { display: block; color: var(--slate-400); font-size: 10.5px; margin-top: 4px; }
+    .notification-empty { padding: 28px 14px; text-align: center; color: var(--slate-400); font-size: 12px; }
     @keyframes pulse {
       0% { transform: scale(0.9); box-shadow: 0 0 0 0 rgba(5, 150, 105, 0.7); }
       70% { transform: scale(1.1); box-shadow: 0 0 0 6px rgba(5, 150, 105, 0); }
@@ -472,6 +564,19 @@
           <div class="live-dot"></div>
           <span>Trực tuyến</span>
         </div>
+        <div class="shipper-notification-menu">
+          <button class="notification-button" id="shipperNotificationBtn" type="button" aria-label="Thông báo đơn hàng" aria-expanded="false" title="Thông báo đơn hàng">
+            🔔
+            <span class="notification-count" id="shipperNotificationCount">0</span>
+          </button>
+          <section class="notification-panel" id="shipperNotificationPanel" aria-label="Thông báo đơn hàng">
+            <div class="notification-panel-head">
+              <strong>Thông báo đơn hàng</strong>
+              <button class="notification-clear-btn" id="clearShipperNotificationsBtn" type="button">Xóa tất cả</button>
+            </div>
+            <div id="shipperNotificationList"></div>
+          </section>
+        </div>
         <button id="shipperLogoutBtn" style="background: #fef2f2; color: #dc2626; border: 1px solid #fecaca; padding: 6px 12px; border-radius: 8px; font-size: 12px; font-weight: 700; cursor: pointer; display: inline-flex; align-items: center; gap: 5px; transition: all 0.2s ease;" title="Đăng xuất">
           <span>🚪</span> Đăng xuất
         </button>
@@ -522,6 +627,6 @@
   <!-- SignalR Library -->
   <script src="https://cdn.jsdelivr.net/npm/@microsoft/signalr@8.0.7/dist/browser/signalr.min.js"></script>
   <!-- Shipper Portal JS -->
-  <script src="/js/shipper.js"></script>
+  <script src="/js/shipper.js?v=20261019-1"></script>
 </body>
 </html>

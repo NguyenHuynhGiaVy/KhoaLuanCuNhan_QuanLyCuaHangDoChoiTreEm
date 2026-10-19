@@ -6,6 +6,8 @@ using System.Threading.Tasks;
 using ToyStoreManagement.Application.DTOs.Order;
 using ToyStoreManagement.Application.Interfaces.Services;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.AspNetCore.SignalR;
+using ToyStoreManagement.API.Hubs;
 using ToyStoreManagement.Infrastructure.Data;
 
 namespace ToyStoreManagement.API.Controllers
@@ -17,11 +19,16 @@ namespace ToyStoreManagement.API.Controllers
     {
         private readonly IOrderService _orderService;
         private readonly ApplicationDbContext _context;
+        private readonly IHubContext<OrderTrackingHub> _orderTrackingHub;
 
-        public OrderController(IOrderService orderService, ApplicationDbContext context)
+        public OrderController(
+            IOrderService orderService,
+            ApplicationDbContext context,
+            IHubContext<OrderTrackingHub> orderTrackingHub)
         {
             _orderService = orderService;
             _context = context;
+            _orderTrackingHub = orderTrackingHub;
         }
 
         // GET: api/Order
@@ -136,6 +143,18 @@ namespace ToyStoreManagement.API.Controllers
                 dto.CustomerId = customerId.Value;
                 var result =
                     await _orderService.CreateAsync(dto);
+
+                // Báo ngay cho các shipper đang trực tuyến để đơn mới không bị bỏ sót.
+                // Thông báo này không tiết lộ địa chỉ hay số điện thoại của khách.
+                await _orderTrackingHub.Clients.Group(OrderTrackingHub.ShipperBroadcastGroup)
+                    .SendAsync("ReceiveNewOrderCreated", new
+                    {
+                        orderId = result.OrderId,
+                        orderCode = result.OrderCode,
+                        totalAmount = result.TotalAmount,
+                        createdAt = result.CreatedAt,
+                        message = $"Đơn #{result.OrderCode} vừa phát sinh và đang chờ điều phối."
+                    });
 
                 return Ok(result);
             }
