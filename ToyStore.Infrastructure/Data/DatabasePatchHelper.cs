@@ -39,6 +39,49 @@ namespace ToyStoreManagement.Infrastructure.Data
                     BEGIN
                         ALTER TABLE [dbo].[Shippings] ADD [EstimatedDeliveryToDate] datetime2 NULL;
                     END
+
+                    IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID(N'[dbo].[Shippings]') AND name = 'ShipperId')
+                    BEGIN
+                        ALTER TABLE [dbo].[Shippings] ADD [ShipperId] int NULL;
+                    END
+
+                    IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID(N'[dbo].[Shippings]') AND name = 'FailReason')
+                    BEGIN
+                        ALTER TABLE [dbo].[Shippings] ADD [FailReason] nvarchar(500) NULL;
+                    END
+
+                    IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID(N'[dbo].[Shippings]') AND name = 'AttemptCount')
+                    BEGIN
+                        ALTER TABLE [dbo].[Shippings] ADD [AttemptCount] int NOT NULL DEFAULT 0;
+                    END
+
+                    IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID(N'[dbo].[Shippings]') AND name = 'FailedAt')
+                    BEGIN
+                        ALTER TABLE [dbo].[Shippings] ADD [FailedAt] datetime2 NULL;
+                    END
+                ");
+
+                // 2.1 Bổ sung bảng Shippers
+                await context.Database.ExecuteSqlRawAsync(@"
+                    IF NOT EXISTS (SELECT 1 FROM sys.tables WHERE name = 'Shippers')
+                    BEGIN
+                        CREATE TABLE [dbo].[Shippers] (
+                            [ShipperId] int IDENTITY(1,1) NOT NULL PRIMARY KEY,
+                            [UserId] nvarchar(450) NULL,
+                            [FullName] nvarchar(150) NOT NULL,
+                            [PhoneNumber] nvarchar(20) NOT NULL,
+                            [VehicleNumber] nvarchar(50) NULL,
+                            [AssignedArea] nvarchar(150) NULL,
+                            [IsActive] bit NOT NULL DEFAULT 1,
+                            [CreatedAt] datetime2 NOT NULL DEFAULT GETUTCDATE()
+                        );
+
+                        -- Seed mẫu 2 nhân viên giao hàng nếu bảng mới tạo
+                        INSERT INTO [dbo].[Shippers] ([FullName], [PhoneNumber], [VehicleNumber], [AssignedArea], [IsActive], [CreatedAt])
+                        VALUES 
+                            (N'Nguyễn Văn Giao', '0909123456', N'59-X1 123.45', N'Quận 1, Quận 3, Quận 5', 1, GETUTCDATE()),
+                            (N'Trần Văn Tốc', '0918765432', N'59-Y2 678.90', N'Bình Thạnh, Phú Nhuận, Gò Vấp', 1, GETUTCDATE());
+                    END
                 ");
 
                 // 3. Bổ sung cột cho bảng Payments
@@ -46,6 +89,26 @@ namespace ToyStoreManagement.Infrastructure.Data
                     IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID(N'[dbo].[Payments]') AND name = 'GatewayTransactionCode')
                     BEGIN
                         ALTER TABLE [dbo].[Payments] ADD [GatewayTransactionCode] nvarchar(100) NULL;
+                    END
+
+                    IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID(N'[dbo].[Payments]') AND name = 'CodStatus')
+                    BEGIN
+                        ALTER TABLE [dbo].[Payments] ADD [CodStatus] int NOT NULL DEFAULT 0;
+                    END
+
+                    IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID(N'[dbo].[Payments]') AND name = 'CodCollectedAt')
+                    BEGIN
+                        ALTER TABLE [dbo].[Payments] ADD [CodCollectedAt] datetime2 NULL;
+                    END
+
+                    IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID(N'[dbo].[Payments]') AND name = 'CodSubmittedAt')
+                    BEGIN
+                        ALTER TABLE [dbo].[Payments] ADD [CodSubmittedAt] datetime2 NULL;
+                    END
+
+                    IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID(N'[dbo].[Payments]') AND name = 'CodNote')
+                    BEGIN
+                        ALTER TABLE [dbo].[Payments] ADD [CodNote] nvarchar(500) NULL;
                     END
                 ");
 

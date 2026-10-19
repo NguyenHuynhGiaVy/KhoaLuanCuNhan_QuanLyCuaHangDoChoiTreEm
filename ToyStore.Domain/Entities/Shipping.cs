@@ -36,7 +36,20 @@ namespace ToyStoreManagement.Domain.Entities
 
         public DateTime? DeliveredAt { get; set; }
 
+        // Shipper phụ trách đơn hàng
+        public int? ShipperId { get; set; }
+
+        // Lý do giao hàng thất bại (nếu có)
+        public string? FailReason { get; set; }
+
+        // Số lần shipper đã thử giao hàng (tối đa 3 lần trước khi hoàn hàng về kho)
+        public int AttemptCount { get; set; } = 0;
+
+        public DateTime? FailedAt { get; set; }
+
         // Navigation
         public virtual Order Order { get; set; }
+
+        public virtual Shipper? Shipper { get; set; }
     }
 }

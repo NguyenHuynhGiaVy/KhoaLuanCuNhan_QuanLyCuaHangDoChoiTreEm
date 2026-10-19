@@ -27,10 +27,43 @@ namespace ToyStoreManagement.API.Controllers
         // GET: api/Order
         [HttpGet]
         [Authorize(Policy = "StaffAccess")]
-        public async Task<IActionResult> GetAll()
+        public async Task<IActionResult> GetAll(
+            [FromQuery] string? statusCategory,
+            [FromQuery] int? status,
+            [FromQuery] string? search)
         {
-            var result = await _orderService.GetAllAsync();
-            return Ok(result);
+            var orders = (await _orderService.GetAllAsync()).AsEnumerable();
+
+            if (status.HasValue)
+            {
+                orders = orders.Where(o => o.Status == status.Value);
+            }
+            else if (!string.IsNullOrWhiteSpace(statusCategory))
+            {
+                var cat = statusCategory.Trim().ToLowerInvariant();
+                if (cat == "processing" || cat == "active")
+                {
+                    orders = orders.Where(o => o.Status >= 0 && o.Status <= 3);
+                }
+                else if (cat == "history")
+                {
+                    orders = orders.Where(o => o.Status == 4 || o.Status == 5);
+                }
+            }
+
+            if (!string.IsNullOrWhiteSpace(search))
+            {
+                var s = search.Trim();
+                orders = orders.Where(o =>
+                    (o.OrderCode != null && o.OrderCode.Contains(s, StringComparison.OrdinalIgnoreCase)) ||
+                    (o.CustomerName != null && o.CustomerName.Contains(s, StringComparison.OrdinalIgnoreCase)) ||
+                    (o.PhoneNumber != null && o.PhoneNumber.Contains(s, StringComparison.OrdinalIgnoreCase)) ||
+                    (o.Shipping?.DeliveryBatchCode != null && o.Shipping.DeliveryBatchCode.Contains(s, StringComparison.OrdinalIgnoreCase)) ||
+                    (o.Shipping?.TrackingCode != null && o.Shipping.TrackingCode.Contains(s, StringComparison.OrdinalIgnoreCase))
+                );
+            }
+
+            return Ok(orders.ToList());
         }
 
         // GET: api/Order/5

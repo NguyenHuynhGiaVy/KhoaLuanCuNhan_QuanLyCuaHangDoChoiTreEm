@@ -1,7 +1,5 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
-using System.Linq;
-using System.Text;
 using System.Threading.Tasks;
 using ToyStoreManagement.Application.DTOs.Dashboard;
 using ToyStoreManagement.Application.Interfaces.Repositories;
@@ -18,9 +16,17 @@ namespace ToyStoreManagement.Infrastructure.Services
             _dashboardRepository = dashboardRepository;
         }
 
-        public async Task<DashboardSummaryDto> GetSummaryAsync()
+        public async Task<DashboardSummaryDto> GetSummaryAsync(DateTime? from = null, DateTime? to = null)
         {
-            return await _dashboardRepository.GetSummaryAsync();
+            return await _dashboardRepository.GetSummaryAsync(from, to);
+        }
+
+        public async Task<FinancialReportDto> GetFinancialReportAsync(
+            DateTime? from = null,
+            DateTime? to = null,
+            string groupBy = "day")
+        {
+            return await _dashboardRepository.GetFinancialReportAsync(from, to, groupBy);
         }
 
         public async Task<RevenueStatisticsDto> GetRevenueStatisticsAsync()
@@ -37,25 +43,20 @@ namespace ToyStoreManagement.Infrastructure.Services
             return await _dashboardRepository.GetRevenueChartAsync(period, from, to, groupBy);
         }
 
-        public async Task<OrderStatisticsDto> GetOrderStatisticsAsync()
+        public async Task<OrderStatisticsDto> GetOrderStatisticsAsync(DateTime? from = null, DateTime? to = null)
         {
-            return await _dashboardRepository.GetOrderStatisticsAsync();
+            return await _dashboardRepository.GetOrderStatisticsAsync(from, to);
         }
 
         public async Task<IEnumerable<BestSellingProductDto>> GetBestSellingProductsAsync(
-            int top = 10)
+            int top = 10,
+            DateTime? from = null,
+            DateTime? to = null)
         {
-            if (top <= 0)
-            {
-                top = 10;
-            }
+            if (top <= 0) top = 10;
+            if (top > 100) top = 100;
 
-            if (top > 100)
-            {
-                top = 100;
-            }
-
-            return await _dashboardRepository.GetBestSellingProductsAsync(top);
+            return await _dashboardRepository.GetBestSellingProductsAsync(top, from, to);
         }
 
         public async Task<InventoryStatisticsDto> GetInventoryStatisticsAsync()

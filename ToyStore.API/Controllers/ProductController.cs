@@ -25,12 +25,55 @@ namespace ToyStoreManagement.API.Controllers
 
         [HttpGet]
         [AllowAnonymous]
-        public async Task<IActionResult> GetAll()
+        public async Task<IActionResult> GetAll(
+            [FromQuery] int? categoryId = null,
+            [FromQuery] int? brandId = null,
+            [FromQuery] int? status = null,
+            [FromQuery] decimal? minPrice = null,
+            [FromQuery] decimal? maxPrice = null,
+            [FromQuery] string? search = null)
         {
             var products =
                 await _productService.GetAllAsync();
 
-            return Ok(products);
+            IEnumerable<ProductDto> query = products;
+
+            if (categoryId.HasValue)
+                query = query.Where(p => p.CategoryId == categoryId.Value);
+
+            if (brandId.HasValue)
+                query = query.Where(p => p.BrandId == brandId.Value);
+
+            if (status.HasValue)
+                query = query.Where(p => p.Status == status.Value);
+
+            if (minPrice.HasValue)
+            {
+                query = query.Where(p =>
+                {
+                    var price = p.BasePrice ?? (p.ProductVariants != null && p.ProductVariants.Count > 0 ? p.ProductVariants[0].Price : 0);
+                    return price >= minPrice.Value;
+                });
+            }
+
+            if (maxPrice.HasValue)
+            {
+                query = query.Where(p =>
+                {
+                    var price = p.BasePrice ?? (p.ProductVariants != null && p.ProductVariants.Count > 0 ? p.ProductVariants[0].Price : 0);
+                    return price <= maxPrice.Value;
+                });
+            }
+
+            if (!string.IsNullOrWhiteSpace(search))
+            {
+                var s = search.Trim().ToLower();
+                query = query.Where(p => (p.Name != null && p.Name.ToLower().Contains(s))
+                    || p.ProductId.ToString() == s
+                    || (p.ProductVariants != null && p.ProductVariants.Any(v => v.SKU != null && v.SKU.ToLower().Contains(s))));
+            }
+
+            return Ok(query.ToList());
         }
 
         // ==========================================

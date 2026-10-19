@@ -101,6 +101,12 @@ namespace ToyStoreManagement.Infrastructure.Data
                 {
                     Name = "Customer",
                     Description = "Khách hàng"
+                },
+
+                new ApplicationRole
+                {
+                    Name = "Shipper",
+                    Description = "Nhân viên giao hàng"
                 }
             };
 
@@ -110,6 +116,45 @@ namespace ToyStoreManagement.Infrastructure.Data
                 {
                     await roleManager.CreateAsync(role);
                 }
+            }
+        }
+
+        public static async Task SeedShipperAsync(
+            UserManager<ApplicationUser> userManager)
+        {
+            var email = "shipper@toystore.vn";
+            var password = "Shipper@123";
+
+            var existingUser = await userManager.FindByEmailAsync(email);
+            if (existingUser != null)
+            {
+                if (!existingUser.IsActive)
+                {
+                    existingUser.IsActive = true;
+                    await userManager.UpdateAsync(existingUser);
+                }
+                if (!await userManager.IsInRoleAsync(existingUser, "Shipper"))
+                {
+                    await userManager.AddToRoleAsync(existingUser, "Shipper");
+                }
+                return;
+            }
+
+            var user = new ApplicationUser
+            {
+                UserName = email,
+                Email = email,
+                FullName = "Nguyễn Văn Giao (Shipper)",
+                PhoneNumber = "0909123456",
+                IsActive = true,
+                EmailConfirmed = true
+            };
+
+            user.PasswordHash = userManager.PasswordHasher.HashPassword(user, password);
+            var result = await userManager.CreateAsync(user);
+            if (result.Succeeded)
+            {
+                await userManager.AddToRoleAsync(user, "Shipper");
             }
         }
     }

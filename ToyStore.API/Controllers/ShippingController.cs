@@ -42,7 +42,7 @@ namespace ToyStoreManagement.API.Controllers
         }
 
         /// <summary>
-        /// Lấy danh sách đề xuất gộp đơn hàng thông minh (cùng người nhận hoặc bán kính lân cận)
+        /// Lấy danh sách đề xuất gộp đơn hàng (cùng người nhận hoặc bán kính lân cận)
         /// </summary>
         [HttpGet("batch-suggestions")]
         [Authorize(Policy = "StaffAccess")]
@@ -106,6 +106,28 @@ namespace ToyStoreManagement.API.Controllers
                     return Ok(new { message = $"Đã xuất kho và chuyển lô {batchCode} sang trạng thái Đang giao." });
                 }
                 return NotFound(new { message = "Không tìm thấy đơn hàng nào thuộc mã lô này." });
+            }
+            catch (Exception ex)
+            {
+                return BadRequest(new { message = ex.Message });
+            }
+        }
+
+        /// <summary>
+        /// Gỡ một đơn hàng ra khỏi mã lô vận chuyển (hủy gộp lô cho đơn)
+        /// </summary>
+        [HttpPost("unbatch-order/{orderId}")]
+        [Authorize(Policy = "StaffAccess")]
+        public async Task<IActionResult> UnbatchOrder(int orderId)
+        {
+            try
+            {
+                var success = await _orderService.UnbatchOrderAsync(orderId);
+                if (success)
+                {
+                    return Ok(new { message = "Đã gỡ đơn hàng ra khỏi mã lô thành công." });
+                }
+                return BadRequest(new { message = "Đơn hàng không thuộc mã lô nào hoặc không tìm thấy." });
             }
             catch (Exception ex)
             {

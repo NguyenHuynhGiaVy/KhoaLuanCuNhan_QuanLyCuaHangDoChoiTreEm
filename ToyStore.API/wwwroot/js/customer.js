@@ -194,6 +194,22 @@ function refreshCartPricesFromProducts() {
         const originalPrice = originalPriceOf(variant);
         if (salePrice === null || originalPrice === null) return;
 
+        if (variant) {
+            if (variant.sku && variant.sku !== item.sku) {
+                item.sku = variant.sku;
+                changed = true;
+            }
+            if (variant.attributes && (!item.attributes || !item.attributes.length)) {
+                item.attributes = variant.attributes;
+                changed = true;
+            }
+            const attrText = formatVariantAttributes(variant);
+            if (attrText && attrText !== item.variantAttributesText) {
+                item.variantAttributesText = attrText;
+                changed = true;
+            }
+        }
+
         if (Number(item.price) !== salePrice
             || Number(item.originalPrice ?? item.price) !== originalPrice
             || String(item.promotionName || '') !== String(variant?.promotionName || '')) {
@@ -499,6 +515,27 @@ function updateCartCountBadge() {
     if (dCount) dCount.textContent = totalQty;
 }
 
+function formatVariantAttributes(item) {
+    if (!item) return '';
+    if (item.variantAttributesText && typeof item.variantAttributesText === 'string') {
+        return item.variantAttributesText;
+    }
+    if (Array.isArray(item.attributes) && item.attributes.length > 0) {
+        const text = item.attributes
+            .filter(a => a && a.attributeName && a.attributeValue)
+            .map(a => `${a.attributeName}: ${a.attributeValue}`)
+            .join(' · ');
+        if (text) return text;
+    }
+    if (item.variantLabel) return item.variantLabel;
+    if (item.variantName) return item.variantName;
+    const parts = [];
+    if (item.color) parts.push(`Màu: ${item.color}`);
+    if (item.size) parts.push(`Size: ${item.size}`);
+    if (parts.length > 0) return parts.join(' · ');
+    return '';
+}
+
 function addToCart(item) {
     const cart = getCart();
     const stockQuantity = availableQuantityOf({ availableQuantity: item.stockQuantity });
@@ -514,7 +551,19 @@ function addToCart(item) {
         return;
     }
 
-    const existing = cart.find(x => x.variantId === item.variantId || (x.productId === item.productId && !item.variantId));
+    if (!item.variantAttributesText) {
+        item.variantAttributesText = formatVariantAttributes(item);
+    }
+
+    // Phân biệt biến thể: trùng nếu cùng variantId (khi có variantId riêng) hoặc cùng productId và cùng thuộc tính
+    const existing = cart.find(x => {
+        if (item.variantId && x.variantId && Number(item.variantId) !== Number(item.productId)) {
+            return Number(x.variantId) === Number(item.variantId);
+        }
+        return Number(x.productId) === Number(item.productId)
+            && String(x.variantAttributesText || '').trim() === String(item.variantAttributesText || '').trim();
+    });
+
     if (existing) {
         if ((existing.quantity || 1) + requestedQuantity > stockQuantity) {
             showToast(`Bạn chỉ có thể chọn tối đa ${stockQuantity} sản phẩm này.`, 'error');
@@ -522,6 +571,12 @@ function addToCart(item) {
         }
         existing.quantity = (existing.quantity || 1) + requestedQuantity;
         existing.stockQuantity = stockQuantity;
+        if (item.price) existing.price = item.price;
+        if (item.originalPrice) existing.originalPrice = item.originalPrice;
+        if (item.imageUrl) existing.imageUrl = item.imageUrl;
+        if (item.sku) existing.sku = item.sku;
+        if (item.attributes) existing.attributes = item.attributes;
+        if (item.variantAttributesText) existing.variantAttributesText = item.variantAttributesText;
     } else {
         if (requestedQuantity > stockQuantity) {
             showToast(`Bạn chỉ có thể chọn tối đa ${stockQuantity} sản phẩm này.`, 'error');
@@ -530,7 +585,8 @@ function addToCart(item) {
         cart.push({ ...item, quantity: requestedQuantity, stockQuantity });
     }
     saveCart(cart);
-    showToast(`Đã thêm "${item.name}" vào giỏ hàng!`);
+    const attrText = item.variantAttributesText ? ` (${item.variantAttributesText})` : '';
+    showToast(`Đã thêm "${item.name}${attrText}" vào giỏ hàng!`);
     openCartDrawer();
 }
 
@@ -677,22 +733,29 @@ function renderCartDrawer() {
         const hasPromotion = originalPrice > Number(item.price || 0);
         const stockQuantity = availableQuantityOf({ availableQuantity: item.stockQuantity });
         const cannotIncrease = stockQuantity !== null && item.quantity >= stockQuantity;
+        const variantText = item.variantAttributesText || formatVariantAttributes(item);
         subtotal += itemTotal;
         return `
-            <div style="display:flex;gap:14px;padding:14px 0;border-bottom:1px solid var(--border-light);align-items:center;">
-                <img src="${escapeHtml(item.imageUrl || 'https://placehold.co/100x100?text=Toy')}" style="width:64px;height:64px;object-fit:cover;border-radius:10px;border:1px solid var(--border-color);">
+            <div class="cart-drawer-item" style="display:flex;gap:12px;padding:14px 0;border-bottom:1px solid var(--border-light);align-items:flex-start;">
+                <img src="${escapeHtml(item.imageUrl || 'https://placehold.co/100x100?text=Toy')}" alt="${escapeHtml(item.name)}" style="width:68px;height:68px;object-fit:cover;border-radius:10px;border:1px solid var(--border-color);flex-shrink:0;">
                 <div style="flex:1;min-width:0;">
-                    <h4 style="font-size:13.5px;font-weight:700;margin-bottom:4px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${escapeHtml(item.name)}</h4>
+                    <h4 style="font-size:13.5px;font-weight:700;margin:0 0 3px;line-height:1.35;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;" title="${escapeHtml(item.name)}">${escapeHtml(item.name)}</h4>
+                    ${variantText ? `
+                        <div class="cart-item-variant-chip" style="display:inline-flex;align-items:center;gap:4px;background:#f1f5f9;border:1px solid #e2e8f0;padding:2px 7px;border-radius:5px;font-size:11.5px;color:#334155;margin-bottom:5px;font-weight:600;max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">
+                            <span>🏷️ ${escapeHtml(variantText)}</span>
+                            ${item.sku ? `<small style="color:#64748b;font-weight:400;margin-left:3px;">(SKU: ${escapeHtml(item.sku)})</small>` : ''}
+                        </div>
+                    ` : (item.sku ? `<div style="font-size:11.5px;color:#64748b;margin-bottom:4px;">SKU: ${escapeHtml(item.sku)}</div>` : '')}
                     <p style="font-size:13px;color:var(--primary);font-weight:800;margin:0 0 6px;">${hasPromotion ? `<del class="original-price">${money(originalPrice)}</del> ` : ''}${money(item.price)}</p>
                     <div style="display:flex;align-items:center;gap:8px;">
-                        <button type="button" class="btn-qty-minus" data-index="${idx}" style="width:24px;height:24px;border:1px solid var(--border-color);background:#fff;border-radius:4px;cursor:pointer;">-</button>
+                        <button type="button" class="btn-qty-minus" data-index="${idx}" aria-label="Giảm số lượng" style="width:24px;height:24px;border:1px solid var(--border-color);background:#fff;border-radius:4px;cursor:pointer;font-weight:700;">-</button>
                         <span style="font-size:13px;font-weight:700;min-width:20px;text-align:center;">${item.quantity}</span>
-                        <button type="button" class="btn-qty-plus" data-index="${idx}" ${cannotIncrease ? 'disabled' : ''} style="width:24px;height:24px;border:1px solid var(--border-color);background:#fff;border-radius:4px;cursor:${cannotIncrease ? 'not-allowed' : 'pointer'};opacity:${cannotIncrease ? '.45' : '1'};">+</button>
+                        <button type="button" class="btn-qty-plus" data-index="${idx}" ${cannotIncrease ? 'disabled' : ''} aria-label="Tăng số lượng" style="width:24px;height:24px;border:1px solid var(--border-color);background:#fff;border-radius:4px;cursor:${cannotIncrease ? 'not-allowed' : 'pointer'};opacity:${cannotIncrease ? '.45' : '1'};font-weight:700;">+</button>
                     </div>
                 </div>
-                <div style="text-align:right;">
+                <div style="text-align:right;flex-shrink:0;">
                     <strong style="font-size:13.5px;color:var(--text-main);display:block;margin-bottom:8px;">${money(itemTotal)}</strong>
-                    <button type="button" class="cart-item-remove" data-index="${idx}" style="border:none;background:none;color:var(--text-muted);cursor:pointer;font-size:14px;">🗑</button>
+                    <button type="button" class="cart-item-remove" data-index="${idx}" title="Xóa sản phẩm" style="border:none;background:none;color:var(--danger,#ef4444);cursor:pointer;font-size:15px;">🗑</button>
                 </div>
             </div>
         `;
@@ -1393,9 +1456,63 @@ function ensureOrderDetailModalInDom() {
     });
 }
 
+// ── CUSTOMER REALTIME TRACKING SIGNALR (MỤC 4) ────────────────────
+let customerTrackingConnection = null;
+let currentTrackingOrderId = null;
+
+async function initCustomerTrackingSignalR() {
+    if (typeof signalR === 'undefined' || customerTrackingConnection) return;
+    try {
+        const token = getAuthToken();
+        customerTrackingConnection = new signalR.HubConnectionBuilder()
+            .withUrl('/hubs/order-tracking' + (token ? `?access_token=${encodeURIComponent(token)}` : ''))
+            .withAutomaticReconnect([0, 2000, 5000, 10000])
+            .build();
+
+        customerTrackingConnection.on('ReceiveOrderStateChanged', data => {
+            console.log('[SignalR Customer] Trạng thái đơn thay đổi:', data);
+            if (currentTrackingOrderId && (String(currentTrackingOrderId) === String(data.orderId) || String(currentTrackingOrderId) === String(data.orderCode))) {
+                window.showOrderDetailModal(data.orderId);
+                showToast(`📦 Đơn hàng #${data.orderCode}: ${data.statusText || 'Trạng thái đã cập nhật'}`);
+            }
+            if (typeof loadCustomerOrders === 'function') {
+                loadCustomerOrders();
+            }
+        });
+
+        customerTrackingConnection.on('ReceiveDeliveryCompleted', data => {
+            console.log('[SignalR Customer] Giao hoàn tất:', data);
+            if (currentTrackingOrderId && (String(currentTrackingOrderId) === String(data.orderId) || String(currentTrackingOrderId) === String(data.orderCode))) {
+                window.showOrderDetailModal(data.orderId);
+                showToast(`🎉 Đơn hàng #${data.orderCode} đã giao thành công!`);
+            }
+            if (typeof loadCustomerOrders === 'function') {
+                loadCustomerOrders();
+            }
+        });
+
+        customerTrackingConnection.on('ReceiveDeliveryFailed', data => {
+            console.log('[SignalR Customer] Giao thất bại:', data);
+            if (currentTrackingOrderId && (String(currentTrackingOrderId) === String(data.orderId) || String(currentTrackingOrderId) === String(data.orderCode))) {
+                window.showOrderDetailModal(data.orderId);
+                showToast(`⚠️ Giao hàng #${data.orderCode} thất bại lần ${data.attemptCount}: ${data.reason}`, 'error');
+            }
+        });
+
+        await customerTrackingConnection.start();
+        console.log('[SignalR Customer] Đã kết nối OrderTrackingHub.');
+    } catch (e) {
+        console.warn('[SignalR Customer] Không thể kết nối OrderTrackingHub:', e);
+    }
+}
+
 function closeOrderDetailModal() {
     const backdrop = document.getElementById('orderDetailModalBackdrop');
     if (backdrop) backdrop.classList.remove('show');
+    if (customerTrackingConnection && customerTrackingConnection.state === 'Connected' && currentTrackingOrderId) {
+        customerTrackingConnection.invoke('LeaveOrder', currentTrackingOrderId).catch(console.warn);
+    }
+    currentTrackingOrderId = null;
 }
 
 function getOrderStatusMeta(status) {
@@ -1430,6 +1547,10 @@ window.showOrderDetailModal = async function(orderIdOrCode) {
         if (!res.ok) throw new Error('Không thể tải thông tin đơn hàng.');
 
         const order = await res.json();
+        currentTrackingOrderId = order.orderId;
+        if (customerTrackingConnection && customerTrackingConnection.state === 'Connected') {
+            customerTrackingConnection.invoke('JoinOrder', order.orderId).catch(console.warn);
+        }
         renderOrderDetailContent(order, content);
     } catch (err) {
         content.innerHTML = `
@@ -1462,6 +1583,12 @@ function renderOrderDetailContent(order, container) {
     const receiverName = shipping.receiverName || order.customer?.fullName || 'Khách hàng';
     const receiverPhone = shipping.receiverPhone || order.customer?.phone || 'Chưa có SĐT';
     const receiverAddress = shipping.address || order.customer?.address || 'Nhận tại cửa hàng';
+    const shipperName = shipping.shipper?.fullName || shipping.shipperName;
+    const shipperPhone = shipping.shipper?.phoneNumber || shipping.shipperPhone;
+    const vehicleNumber = shipping.shipper?.vehicleNumber || 'Chưa cập nhật';
+    const failReason = shipping.failReason;
+    const attemptCount = shipping.attemptCount || 0;
+    const shippingStatus = Number(shipping.status);
 
     let timelineHtml = '';
     if (!isCancelled) {
@@ -1493,9 +1620,10 @@ function renderOrderDetailContent(order, container) {
 
     const items = order.orderDetails || order.items || [];
     const itemsRowsHtml = items.map(item => {
+        const itemName = item.productName || item.name || 'Đồ chơi trẻ em';
         const itemImg = item.productImageUrl || item.imageUrl || 'https://placehold.co/80x80?text=Toy';
-        const itemName = item.productName || item.name || 'Sản phẩm đồ chơi';
-        const itemVariant = item.variantName || item.sku ? `<div style="font-size:11.5px;color:var(--text-muted);">${item.variantName || item.sku}</div>` : '';
+        const variantText = item.variantAttributes || item.variantName || (item.sku ? `SKU: ${item.sku}` : '');
+        const itemVariant = variantText ? `<div style="font-size:11.5px;color:var(--text-muted);margin-top:2px;"><span style="background:#f1f5f9;border:1px solid #e2e8f0;padding:2px 6px;border-radius:4px;color:#475569;font-weight:600;">🏷️ ${escapeHtml(variantText)}</span></div>` : '';
         const itemPrice = item.unitPrice ?? item.price ?? 0;
         const itemQty = item.quantity || 1;
         const itemTotal = item.totalPrice ?? (itemPrice * itemQty);
@@ -1504,9 +1632,9 @@ function renderOrderDetailContent(order, container) {
         <tr>
             <td>
                 <div style="display:flex;align-items:center;">
-                    <img class="order-item-img" src="${itemImg}" alt="${itemName}">
+                    <img class="order-item-img" src="${itemImg}" alt="${escapeHtml(itemName)}">
                     <div>
-                        <strong>${itemName}</strong>
+                        <strong>${escapeHtml(itemName)}</strong>
                         ${itemVariant}
                     </div>
                 </div>
@@ -1531,13 +1659,68 @@ function renderOrderDetailContent(order, container) {
         <div id="orderDeliveryTrackingSlot"></div>
 
         <div class="order-section-box">
-            <div class="order-section-title">📍 Thông tin giao nhận hàng</div>
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;">
+                <div class="order-section-title" style="margin-bottom:0;">📍 Thông tin giao nhận hàng</div>
+                <span class="realtime-live-badge" style="font-size:11px;padding:3px 8px;border-radius:12px;background:#ecfdf5;color:#047857;border:1px solid #a7f3d0;font-weight:700;display:inline-flex;align-items:center;gap:4px;">
+                    <span class="realtime-live-dot" style="display:inline-block;width:6px;height:6px;border-radius:50%;background:#10b981;"></span>Realtime Live
+                </span>
+            </div>
             <div class="order-info-grid">
-                <div><span style="color:var(--text-muted);display:block;font-size:12px;">Người nhận</span><strong>${receiverName}</strong></div>
-                <div><span style="color:var(--text-muted);display:block;font-size:12px;">Số điện thoại</span><strong>${receiverPhone}</strong></div>
-                <div style="grid-column:1/-1;"><span style="color:var(--text-muted);display:block;font-size:12px;">Địa chỉ nhận hàng</span><strong>${receiverAddress}</strong></div>
-                <div><span style="color:var(--text-muted);display:block;font-size:12px;">Mã vận đơn</span><strong style="color:var(--accent);">${trackingCode}</strong></div>
-                <div><span style="color:var(--text-muted);display:block;font-size:12px;">Hình thức giao</span><strong>Giao hàng tiêu chuẩn</strong></div>
+                <div><span style="color:var(--text-muted);display:block;font-size:12px;">Người nhận</span><strong>${escapeHtml(receiverName)}</strong></div>
+                <div><span style="color:var(--text-muted);display:block;font-size:12px;">Số điện thoại</span><strong>${escapeHtml(receiverPhone)}</strong></div>
+                <div style="grid-column:1/-1;"><span style="color:var(--text-muted);display:block;font-size:12px;">Địa chỉ nhận hàng</span><strong>${escapeHtml(receiverAddress)}</strong></div>
+                <div><span style="color:var(--text-muted);display:block;font-size:12px;">Mã vận đơn</span><strong style="color:var(--accent);">${escapeHtml(trackingCode)}</strong></div>
+                <div><span style="color:var(--text-muted);display:block;font-size:12px;">Trạng thái vận chuyển</span>
+                    <strong style="color:${shippingStatus === 2 ? '#059669' : (shippingStatus === 3 ? '#dc2626' : (shippingStatus === 1 ? '#2563eb' : '#d97706'))};">
+                        ${shippingStatus === 1 ? '🚚 Đang giao hàng' : (shippingStatus === 2 ? '✓ Giao thành công' : (shippingStatus === 3 ? '⚠️ Giao thất bại' : (shippingStatus === 4 ? '🔄 Đang giao lại' : (shippingStatus === 5 ? '📦 Hoàn kho' : 'Chờ xuất kho'))))}
+                    </strong>
+                </div>
+
+                ${shipperName ? `
+                <div style="grid-column:1/-1;background:#eff6ff;border:1px solid #bfdbfe;border-radius:10px;padding:12px 16px;margin-top:6px;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:12px;">
+                    <div style="display:flex;align-items:center;gap:12px;">
+                        <div style="width:44px;height:44px;border-radius:50%;background:#3b82f6;color:white;display:flex;align-items:center;justify-content:center;font-size:20px;font-weight:700;">🚚</div>
+                        <div>
+                            <div style="font-size:11px;font-weight:700;color:#1e40af;text-transform:uppercase;letter-spacing:0.5px;">Shipper phụ trách</div>
+                            <div style="font-size:15px;font-weight:800;color:#1e293b;">${escapeHtml(shipperName)}</div>
+                            <div style="font-size:12px;color:#64748b;">Biển số xe: <strong>${escapeHtml(vehicleNumber)}</strong></div>
+                        </div>
+                    </div>
+                    ${shipperPhone ? `
+                    <div>
+                        <a href="tel:${escapeHtml(shipperPhone)}" class="btn-view-order" style="background:#2563eb;color:white;border:none;font-size:12.5px;padding:8px 16px;border-radius:8px;text-decoration:none;display:inline-flex;align-items:center;gap:6px;font-weight:700;box-shadow:0 2px 6px rgba(37,99,235,0.25);">
+                            📞 Gọi cho Shipper (${escapeHtml(shipperPhone)})
+                        </a>
+                    </div>
+                    ` : ''}
+                </div>
+                ` : `
+                <div style="grid-column:1/-1;font-size:12.5px;color:#64748b;margin-top:4px;background:#f8fafc;padding:10px 14px;border-radius:8px;border:1px solid #e2e8f0;">
+                    ⏳ Cửa hàng đang sắp xếp và phân công Shipper giao đơn này...
+                </div>
+                `}
+
+                ${shippingStatus === 3 ? `
+                <div style="grid-column:1/-1;background:#fef2f2;border:1px solid #fecaca;border-radius:8px;padding:12px 14px;color:#991b1b;margin-top:6px;">
+                    <div style="font-weight:700;font-size:13px;display:flex;align-items:center;gap:6px;margin-bottom:4px;">
+                        <span>⚠️ Giao hàng không thành công (Lần ${attemptCount}/3)</span>
+                    </div>
+                    <div style="font-size:12.5px;color:#7f1d1d;">Lý do: <em>"${escapeHtml(failReason || 'Khách hẹn giao lại hoặc không liên lạc được')}"</em></div>
+                    <div style="font-size:11.5px;color:#b91c1c;margin-top:4px;">Đơn hàng sẽ được nhân viên giao lại hoặc liên hệ xác nhận thời gian phù hợp.</div>
+                </div>
+                ` : ''}
+
+                ${shippingStatus === 4 ? `
+                <div style="grid-column:1/-1;background:#fffbeb;border:1px solid #fde68a;border-radius:8px;padding:10px 14px;color:#92400e;margin-top:6px;font-size:12.5px;">
+                    <strong>🔄 Đang giao lại (Lần ${attemptCount}):</strong> Shipper đang trên đường giao lại kiện hàng đến bạn.
+                </div>
+                ` : ''}
+
+                ${shippingStatus === 5 ? `
+                <div style="grid-column:1/-1;background:#fef2f2;border:1px solid #f87171;border-radius:8px;padding:10px 14px;color:#991b1b;margin-top:6px;font-size:12.5px;">
+                    <strong>📦 Kiện hàng đã được hoàn về kho:</strong> Do không thể liên hệ giao hàng sau 3 lần giao. Quý khách vui lòng liên hệ CSKH nếu cần đặt lại.
+                </div>
+                ` : ''}
             </div>
         </div>
 
@@ -2233,13 +2416,17 @@ async function handleCheckoutSubmit(e) {
         orderDetails,
         items: cart.map(item => ({
             productId: item.productId,
+            variantId: item.variantId || item.productId,
             categoryId: products.find(product => String(product.productId) === String(item.productId))?.categoryId ?? null,
             name: item.name,
             imageUrl: item.imageUrl,
             price: item.price,
             originalPrice: item.originalPrice ?? item.price,
             promotionName: item.promotionName || '',
-            quantity: item.quantity || 1
+            quantity: item.quantity || 1,
+            sku: item.sku || '',
+            attributes: item.attributes || [],
+            variantAttributes: item.variantAttributesText || formatVariantAttributes(item)
         })),
         createdAt: new Date().toISOString()
     };
@@ -2299,6 +2486,7 @@ document.addEventListener('click', e => {
         const targetProd = products.find(x => String(x.productId) === String(pId));
         if (targetProd) {
             const variant = preferredVariantOf(targetProd);
+            const variantAttrs = variant?.attributes || [];
             addToCart({
                 productId: targetProd.productId,
                 variantId: variant?.variantId || targetProd.productId,
@@ -2309,6 +2497,8 @@ document.addEventListener('click', e => {
                 imageUrl: targetProd.imageUrl || variant?.imageUrl,
                 quantity: 1,
                 sku: variant?.sku || '',
+                attributes: variantAttrs,
+                variantAttributesText: formatVariantAttributes(variant || targetProd),
                 stockQuantity: availableQuantityOf(variant)
             });
         }
@@ -2465,4 +2655,6 @@ if (!redirectAdminPortalUser()) {
     loadData();
     startHomeCarousel();
     setInterval(loadData, 30000);
+    setTimeout(initCustomerTrackingSignalR, 1000);
 }
+

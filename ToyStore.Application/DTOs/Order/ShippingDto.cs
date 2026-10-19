@@ -23,5 +23,11 @@ namespace ToyStoreManagement.Application.DTOs.Order
         public int Status { get; set; }
         public DateTime? ShippedAt { get; set; }
         public DateTime? DeliveredAt { get; set; }
+        public int? ShipperId { get; set; }
+        public string? ShipperName { get; set; }
+        public string? ShipperPhone { get; set; }
+        public string? FailReason { get; set; }
+        public int AttemptCount { get; set; }
+        public DateTime? FailedAt { get; set; }
     }
 }

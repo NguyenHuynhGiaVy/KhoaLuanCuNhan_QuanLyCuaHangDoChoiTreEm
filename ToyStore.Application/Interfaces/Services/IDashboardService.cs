@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Text;
@@ -9,7 +9,12 @@ namespace ToyStoreManagement.Application.Interfaces.Services
 {
     public interface IDashboardService
     {
-        Task<DashboardSummaryDto> GetSummaryAsync();
+        Task<DashboardSummaryDto> GetSummaryAsync(DateTime? from = null, DateTime? to = null);
+
+        Task<FinancialReportDto> GetFinancialReportAsync(
+            DateTime? from = null,
+            DateTime? to = null,
+            string groupBy = "day");
 
         Task<RevenueStatisticsDto> GetRevenueStatisticsAsync();
 
@@ -19,9 +24,12 @@ namespace ToyStoreManagement.Application.Interfaces.Services
             DateTime? to = null,
             string groupBy = "day");
 
-        Task<OrderStatisticsDto> GetOrderStatisticsAsync();
+        Task<OrderStatisticsDto> GetOrderStatisticsAsync(DateTime? from = null, DateTime? to = null);
 
-        Task<IEnumerable<BestSellingProductDto>> GetBestSellingProductsAsync(int top = 10);
+        Task<IEnumerable<BestSellingProductDto>> GetBestSellingProductsAsync(
+            int top = 10,
+            DateTime? from = null,
+            DateTime? to = null);
 
         Task<InventoryStatisticsDto> GetInventoryStatisticsAsync();
 

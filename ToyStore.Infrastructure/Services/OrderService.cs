@@ -192,6 +192,23 @@ namespace ToyStoreManagement.Infrastructure.Services
             await _orderRepository.AddAsync(order);
             await _unitOfWork.SaveChangesAsync();
 
+            DateTime? estimatedDeliveryFromDate = null;
+            DateTime? estimatedDeliveryToDate = null;
+
+            try
+            {
+                var distanceInfo = await _distanceMatrixService.CalculateDistanceToWarehouseAsync(dto.Shipping.Address.Trim());
+                var window = CalculateWindowFromDistance(DateTime.UtcNow, distanceInfo.DistanceInKm);
+                estimatedDeliveryFromDate = window.FromDate;
+                estimatedDeliveryToDate = window.ToDate;
+            }
+            catch
+            {
+                var fallbackWindow = CreateDeliveryWindow(DateTime.UtcNow, 2);
+                estimatedDeliveryFromDate = fallbackWindow.FromDate;
+                estimatedDeliveryToDate = fallbackWindow.ToDate;
+            }
+
             _context.Shippings.Add(new Shipping
             {
                 OrderId = order.OrderId,
@@ -201,7 +218,11 @@ namespace ToyStoreManagement.Infrastructure.Services
                 ShippingMethod = dto.Shipping.ShippingMethod,
                 TrackingCode = !string.IsNullOrWhiteSpace(dto.Shipping.TrackingCode) ? dto.Shipping.TrackingCode.Trim() : $"TRK-{order.OrderCode}",
                 ShippingFee = order.ShippingFee,
-                Status = 0
+                Status = 0,
+                DeliveryBatchCode = null,
+                EstimatedDeliveryFromDate = estimatedDeliveryFromDate,
+                EstimatedDeliveryToDate = estimatedDeliveryToDate,
+                EstimatedDeliveryAt = estimatedDeliveryFromDate
             });
 
             foreach (var productId in affectedProductIds)
@@ -326,7 +347,7 @@ namespace ToyStoreManagement.Infrastructure.Services
                     ?? await _shippingRepository.FirstOrDefaultAsync(x => x.OrderId == order.OrderId);
                 if (shipping != null)
                 {
-                    shipping.Status = 1; // 1: Đã giao
+                    shipping.Status = 2; // 2: Đã giao thành công
                     shipping.DeliveredAt = DateTime.UtcNow;
                 }
 
@@ -952,7 +973,11 @@ namespace ToyStoreManagement.Infrastructure.Services
                         Quantity = x.Quantity,
                         UnitPrice = x.UnitPrice,
                         DiscountAmount = x.DiscountAmount,
-                        TotalAmount = x.TotalAmount
+                        TotalAmount = x.TotalAmount,
+                        ProductName = x.ProductVariant?.Product?.Name,
+                        Sku = x.ProductVariant?.SKU,
+                        ImageUrl = x.ProductVariant?.ImageUrl ?? x.ProductVariant?.Product?.ImageUrl,
+                        VariantAttributes = FormatVariantAttributes(x.ProductVariant)
                     })
                     .ToList()
                     ?? new List<OrderDetailDto>(),
@@ -967,6 +992,23 @@ namespace ToyStoreManagement.Infrastructure.Services
             };
         }
 
+        private static string? FormatVariantAttributes(ProductVariant? variant)
+        {
+            if (variant == null) return null;
+            if (variant.VariantAttributes != null && variant.VariantAttributes.Any())
+            {
+                var attrs = variant.VariantAttributes
+                    .Where(a => !string.IsNullOrWhiteSpace(a.AttributeName) && !string.IsNullOrWhiteSpace(a.AttributeValue))
+                    .Select(a => $"{a.AttributeName}: {a.AttributeValue}")
+                    .ToList();
+                if (attrs.Any()) return string.Join(" · ", attrs);
+            }
+            var parts = new List<string>();
+            if (!string.IsNullOrWhiteSpace(variant.Color)) parts.Add($"Màu: {variant.Color}");
+            if (!string.IsNullOrWhiteSpace(variant.Size)) parts.Add($"Size: {variant.Size}");
+            return parts.Any() ? string.Join(" · ", parts) : null;
+        }
+
         private static PaymentDto MapPaymentToDto(Payment payment)
         {
             return new PaymentDto
@@ -978,6 +1020,10 @@ namespace ToyStoreManagement.Infrastructure.Services
                 Amount = payment.Amount,
                 Status = payment.Status,
                 PaidAt = payment.PaidAt,
+                CodStatus = payment.CodStatus,
+                CodCollectedAt = payment.CodCollectedAt,
+                CodSubmittedAt = payment.CodSubmittedAt,
+                CodNote = payment.CodNote,
                 CreatedAt = payment.CreatedAt
             };
         }
@@ -1002,7 +1048,13 @@ namespace ToyStoreManagement.Infrastructure.Services
                     ?? shipping.EstimatedDeliveryAt?.Date.AddDays(1),
                 Status = shipping.Status,
                 ShippedAt = shipping.ShippedAt,
-                DeliveredAt = shipping.DeliveredAt
+                DeliveredAt = shipping.DeliveredAt,
+                ShipperId = shipping.ShipperId,
+                ShipperName = shipping.Shipper?.FullName,
+                ShipperPhone = shipping.Shipper?.PhoneNumber,
+                FailReason = shipping.FailReason,
+                AttemptCount = shipping.AttemptCount,
+                FailedAt = shipping.FailedAt
             };
         }
 
@@ -1282,6 +1334,19 @@ namespace ToyStoreManagement.Infrastructure.Services
                 }
             }
 
+            await _unitOfWork.SaveChangesAsync();
+            return true;
+        }
+
+        public async Task<bool> UnbatchOrderAsync(int orderId)
+        {
+            var shipping = await _context.Shippings
+                .FirstOrDefaultAsync(s => s.OrderId == orderId);
+
+            if (shipping == null || string.IsNullOrWhiteSpace(shipping.DeliveryBatchCode))
+                return false;
+
+            shipping.DeliveryBatchCode = null;
             await _unitOfWork.SaveChangesAsync();
             return true;
         }

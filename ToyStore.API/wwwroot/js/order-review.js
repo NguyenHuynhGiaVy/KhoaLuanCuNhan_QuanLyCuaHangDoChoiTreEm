@@ -101,12 +101,25 @@
       </div>
       <div class="order-review-grid">
         <div>
-          <section class="review-card"><h2>Sản phẩm đã chọn</h2>${pending.items.map(item => `
+          <section class="review-card"><h2>Sản phẩm đã chọn</h2>${pending.items.map(item => {
+            const variantText = item.variantAttributes || item.variantAttributesText || (item.sku ? `SKU: ${item.sku}` : '');
+            return `
             <article class="review-item">
               <img src="${escapeHtml(item.imageUrl || 'https://placehold.co/100x100?text=Toy')}" alt="${escapeHtml(item.name)}">
-              <div><h3>${escapeHtml(item.name)}</h3><small>${Number(item.originalPrice ?? item.price) > Number(item.price) ? `<del class="original-price">${money(item.originalPrice)}</del> ` : ''}${money(item.price)} × ${Number(item.quantity || 1)}</small></div>
+              <div style="flex:1;min-width:0;">
+                <h3 style="margin-bottom:3px;">${escapeHtml(item.name)}</h3>
+                ${variantText ? `
+                  <div style="margin-bottom:4px;">
+                    <span style="display:inline-block;background:#f1f5f9;border:1px solid #e2e8f0;padding:2px 8px;border-radius:4px;font-size:11.5px;color:#334155;font-weight:600;">
+                      🏷️ ${escapeHtml(variantText)}
+                    </span>
+                  </div>
+                ` : ''}
+                <small>${Number(item.originalPrice ?? item.price) > Number(item.price) ? `<del class="original-price">${money(item.originalPrice)}</del> ` : ''}${money(item.price)} × ${Number(item.quantity || 1)}</small>
+              </div>
               <strong>${money(Number(item.price || 0) * Number(item.quantity || 1))}</strong>
-            </article>`).join('')}</section>
+            </article>`;
+          }).join('')}</section>
           <section class="review-card"><h2>Thông tin nhận hàng</h2>
             <div class="review-info"><div><span>Người nhận</span><p>${escapeHtml(pending.customer.fullName)}</p></div><div><span>Số điện thoại</span><p>${escapeHtml(pending.customer.phone)}</p></div><div style="grid-column:1/-1;"><span>Địa chỉ</span><p>${escapeHtml(pending.customer.address)}</p></div>${pending.note ? `<div style="grid-column:1/-1;"><span>Ghi chú</span><p>${escapeHtml(pending.note)}</p></div>` : ''}</div>
           </section>

@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Text;
@@ -16,6 +16,10 @@ namespace ToyStoreManagement.Application.DTOs.Order
         public decimal Amount { get; set; }
         public int Status { get; set; }
         public DateTime? PaidAt { get; set; }
+        public int CodStatus { get; set; }
+        public DateTime? CodCollectedAt { get; set; }
+        public DateTime? CodSubmittedAt { get; set; }
+        public string? CodNote { get; set; }
         public DateTime CreatedAt { get; set; }
     }
 }

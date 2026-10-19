@@ -53,6 +53,8 @@ namespace ToyStoreManagement.Infrastructure.Data
 
         public DbSet<Shipping> Shippings { get; set; }
 
+        public DbSet<Shipper> Shippers { get; set; }
+
         public DbSet<Promotion> Promotions { get; set; }
 
         public DbSet<PromotionCondition> PromotionConditions { get; set; }
@@ -92,6 +94,12 @@ namespace ToyStoreManagement.Infrastructure.Data
                 .HasOne(x => x.ProductVariant)
                 .WithOne(x => x.Inventory)
                 .HasForeignKey<Inventory>(x => x.VariantId);
+
+            modelBuilder.Entity<Shipping>()
+                .HasOne(x => x.Shipper)
+                .WithMany(x => x.Shippings)
+                .HasForeignKey(x => x.ShipperId)
+                .OnDelete(DeleteBehavior.SetNull);
 
             modelBuilder.ApplyConfigurationsFromAssembly(
                 typeof(ApplicationDbContext).Assembly);

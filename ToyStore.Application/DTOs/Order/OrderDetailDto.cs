@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Text;
@@ -15,5 +15,9 @@ namespace ToyStoreManagement.Application.DTOs.Order
         public decimal UnitPrice { get; set; }
         public decimal DiscountAmount { get; set; }
         public decimal TotalAmount { get; set; }
+        public string? ProductName { get; set; }
+        public string? Sku { get; set; }
+        public string? ImageUrl { get; set; }
+        public string? VariantAttributes { get; set; }
     }
 }

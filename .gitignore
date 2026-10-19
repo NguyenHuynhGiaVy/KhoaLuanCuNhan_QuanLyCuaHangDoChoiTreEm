@@ -18,6 +18,7 @@ packages/
 # Temporary files
 *.tmp
 *.temp
+*.txt
 
 # OS
 Thumbs.db

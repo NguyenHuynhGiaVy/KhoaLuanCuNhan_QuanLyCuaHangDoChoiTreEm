@@ -21,6 +21,15 @@ namespace ToyStoreManagement.Domain.Entities
 
         public DateTime? PaidAt { get; set; }
 
+        // Trạng thái đối soát COD: 0 = Chưa thu / Online, 1 = Shipper đang giữ tiền, 2 = Đã nộp tiền về cửa hàng
+        public int CodStatus { get; set; } = 0;
+
+        public DateTime? CodCollectedAt { get; set; }
+
+        public DateTime? CodSubmittedAt { get; set; }
+
+        public string? CodNote { get; set; }
+
         public DateTime CreatedAt { get; set; }
 
         // Navigation

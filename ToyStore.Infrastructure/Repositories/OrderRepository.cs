@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Text;
@@ -27,8 +27,12 @@ namespace ToyStoreManagement.Infrastructure.Repositories
                 .Include(x => x.OrderDetails)
                     .ThenInclude(x => x.ProductVariant)
                         .ThenInclude(x => x.Product)
+                .Include(x => x.OrderDetails)
+                    .ThenInclude(x => x.ProductVariant)
+                        .ThenInclude(x => x.VariantAttributes)
                 .Include(x => x.Payment)
                 .Include(x => x.Shipping)
+                    .ThenInclude(x => x.Shipper)
                 .OrderByDescending(x => x.OrderDate)
                 .ToListAsync();
         }
@@ -41,8 +45,12 @@ namespace ToyStoreManagement.Infrastructure.Repositories
                 .Include(x => x.OrderDetails)
                     .ThenInclude(x => x.ProductVariant)
                         .ThenInclude(x => x.Product)
+                .Include(x => x.OrderDetails)
+                    .ThenInclude(x => x.ProductVariant)
+                        .ThenInclude(x => x.VariantAttributes)
                 .Include(x => x.Payment)
                 .Include(x => x.Shipping)
+                    .ThenInclude(x => x.Shipper)
                 .FirstOrDefaultAsync(x => x.OrderId == orderId);
         }
 
@@ -50,6 +58,16 @@ namespace ToyStoreManagement.Infrastructure.Repositories
             GetByOrderCodeAsync(string orderCode)
         {
             return await _dbSet
+                .Include(x => x.Customer)
+                .Include(x => x.OrderDetails)
+                    .ThenInclude(x => x.ProductVariant)
+                        .ThenInclude(x => x.Product)
+                .Include(x => x.OrderDetails)
+                    .ThenInclude(x => x.ProductVariant)
+                        .ThenInclude(x => x.VariantAttributes)
+                .Include(x => x.Payment)
+                .Include(x => x.Shipping)
+                    .ThenInclude(x => x.Shipper)
                 .FirstOrDefaultAsync(
                     x => x.OrderCode == orderCode);
         }
@@ -61,8 +79,12 @@ namespace ToyStoreManagement.Infrastructure.Repositories
                 .Include(x => x.OrderDetails)
                     .ThenInclude(x => x.ProductVariant)
                         .ThenInclude(x => x.Product)
+                .Include(x => x.OrderDetails)
+                    .ThenInclude(x => x.ProductVariant)
+                        .ThenInclude(x => x.VariantAttributes)
                 .Include(x => x.Payment)
                 .Include(x => x.Shipping)
+                    .ThenInclude(x => x.Shipper)
                 .Where(x => x.CustomerId == customerId)
                 .OrderByDescending(x => x.OrderDate)
                 .ToListAsync();

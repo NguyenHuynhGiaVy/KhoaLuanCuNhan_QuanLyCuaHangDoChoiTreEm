@@ -51,5 +51,6 @@ namespace ToyStoreManagement.Application.Interfaces.Services
             MergeBatchRequestDto request);
 
         Task<bool> DispatchBatchAsync(string batchCode);
+        Task<bool> UnbatchOrderAsync(int orderId);
     }
 }

@@ -301,7 +301,7 @@ let selectedReviewRating = 5;
       const label = button.querySelector('.purchase-action-label');
       if (label) {
         label.textContent = stock.canPurchase
-          ? (id === 'buyNow' ? 'Mua ngay' : 'Thêm vào giỏ hàng')
+          ? (id === 'buyNow' ? 'Đặt hàng ngay' : 'Thêm vào giỏ hàng')
           : stock.label;
       }
     });
@@ -361,7 +361,7 @@ let selectedReviewRating = 5;
           </div>
           <button type="button" class="buy-button" id="addDetailCart" ${stock.canPurchase ? '' : 'disabled'}><span class="purchase-action-label">${stock.canPurchase ? 'Thêm vào giỏ hàng' : stock.label}</span> <span>→</span></button>
         </div>
-        <button type="button" class="buy-now-button" id="buyNow" ${stock.canPurchase ? '' : 'disabled'}><span class="purchase-action-label">${stock.canPurchase ? 'Mua ngay' : stock.label}</span></button>
+        <button type="button" class="buy-now-button" id="buyNow" ${stock.canPurchase ? '' : 'disabled'}><span class="purchase-action-label">${stock.canPurchase ? 'Đặt hàng ngay' : stock.label}</span></button>
         <div class="detail-meta">
           <div><span>✓</span><p><strong id="detailStockMetaTitle">${stock.canPurchase ? 'Kho hàng ToyStore' : stock.label}</strong><small id="detailStockMetaHint">${stock.canPurchase ? `Có thể đặt tối đa ${stock.quantity} sản phẩm.` : (stock.label === 'Chưa cập nhật giá bán' ? 'Sản phẩm đang chờ cập nhật giá bán.' : (stock.type === 'pending' ? 'Sản phẩm chưa có thông tin nhập kho.' : 'Vui lòng chọn sản phẩm khác hoặc quay lại sau.'))}</small></p></div>
           <div><span>♧</span><p><strong>Đóng gói cẩn thận</strong><small>Kiểm tra trước khi nhận</small></p></div>
@@ -498,10 +498,16 @@ let selectedReviewRating = 5;
             imageUrl: selectedVariant?.imageUrl || imageOf(detailProduct),
             quantity: detailQuantity,
             sku: selectedVariant?.sku || '',
+            attributes: selectedVariant?.attributes || [],
+            variantAttributesText: variantLabel(selectedVariant),
             stockQuantity: stock.quantity
           });
-          if (isBuyNow && typeof openCheckoutModal === 'function') {
-            openCheckoutModal();
+          if (isBuyNow) {
+            if (typeof openCheckoutDrawer === 'function') {
+              openCheckoutDrawer();
+            } else if (typeof openCheckoutModal === 'function') {
+              openCheckoutModal();
+            }
           }
         }
       }

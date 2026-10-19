@@ -98,6 +98,7 @@ builder.Services.AddScoped<ISupportChatService, SupportChatService>();
 
 builder.Services.AddScoped<IDashboardRepository, DashboardRepository>();
 builder.Services.AddScoped<IDashboardService, DashboardService>();
+builder.Services.AddScoped<IShipperService, ShipperService>();
 
 builder.Services.Configure<AppSettings>(
     builder.Configuration.GetSection("AppSettings"));
@@ -209,7 +210,8 @@ builder.Services
             {
                 var accessToken = context.Request.Query["access_token"];
                 if (!string.IsNullOrEmpty(accessToken)
-                    && context.HttpContext.Request.Path.StartsWithSegments("/hubs/support-chat"))
+                    && (context.HttpContext.Request.Path.StartsWithSegments("/hubs/support-chat")
+                        || context.HttpContext.Request.Path.StartsWithSegments("/hubs/order-tracking")))
                 {
                     context.Token = accessToken;
                 }
@@ -250,6 +252,12 @@ builder.Services.AddAuthorization(options =>
     options.AddPolicy("StaffAccess", policy =>
         policy.RequireRole("Admin", "Manager", "Staff"));
 
+    options.AddPolicy("ShipperAccess", policy =>
+        policy.RequireRole("Admin", "Manager", "Staff", "Shipper"));
+
+    options.AddPolicy("ShipperOnly", policy =>
+        policy.RequireRole("Shipper"));
+
     options.AddPolicy("CustomerAccess", policy =>
         policy.RequireRole("Customer"));
 });
@@ -288,6 +296,7 @@ using (var scope = app.Services.CreateScope())
 
     await IdentitySeeder.SeedRolesAsync(roleManager);
     await IdentitySeeder.SeedAdminFromEnvironmentAsync(userManager);
+    await IdentitySeeder.SeedShipperAsync(userManager);
 }
 
 // Configure the HTTP request pipeline.
@@ -315,5 +324,6 @@ app.UseAuthorization();
 
 app.MapControllers();
 app.MapHub<SupportChatHub>("/hubs/support-chat");
+app.MapHub<OrderTrackingHub>("/hubs/order-tracking");
 
 app.Run();

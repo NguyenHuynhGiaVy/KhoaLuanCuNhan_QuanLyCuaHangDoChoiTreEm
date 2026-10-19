@@ -387,6 +387,37 @@ namespace ToyStoreManagement.Infrastructure.Services
 
             ValidateVariantAttributes(dto.Attributes);
 
+            // Kiểm tra trùng tổ hợp thuộc tính với các biến thể đã có của sản phẩm này
+            if (dto.Attributes != null && dto.Attributes.Count > 0)
+            {
+                var existingVariants = await _context.ProductVariants
+                    .Include(v => v.VariantAttributes)
+                    .Where(v => v.ProductId == productId)
+                    .ToListAsync();
+
+                var newDef = string.Join("|", dto.Attributes
+                    .OrderBy(a => a.AttributeName, StringComparer.OrdinalIgnoreCase)
+                    .ThenBy(a => a.AttributeValue, StringComparer.OrdinalIgnoreCase)
+                    .Select(a => $"{a.AttributeName.Trim().ToUpperInvariant()}:{a.AttributeValue.Trim().ToUpperInvariant()}"));
+
+                foreach (var ev in existingVariants)
+                {
+                    if (ev.VariantAttributes == null || !ev.VariantAttributes.Any())
+                        continue;
+
+                    var existingDef = string.Join("|", ev.VariantAttributes
+                        .OrderBy(a => a.AttributeName, StringComparer.OrdinalIgnoreCase)
+                        .ThenBy(a => a.AttributeValue, StringComparer.OrdinalIgnoreCase)
+                        .Select(a => $"{a.AttributeName.Trim().ToUpperInvariant()}:{a.AttributeValue.Trim().ToUpperInvariant()}"));
+
+                    if (string.Equals(newDef, existingDef, StringComparison.OrdinalIgnoreCase))
+                    {
+                        throw new InvalidOperationException(
+                            "Đã tồn tại biến thể khác của sản phẩm này có cùng tổ hợp thuộc tính.");
+                    }
+                }
+            }
+
             var variant = new ProductVariant
             {
                 ProductId = productId,
@@ -444,6 +475,37 @@ namespace ToyStoreManagement.Infrastructure.Services
                 return false;
 
             ValidateVariantAttributes(dto.Attributes);
+
+            // Kiểm tra trùng tổ hợp thuộc tính với các biến thể khác của sản phẩm này
+            if (dto.Attributes != null && dto.Attributes.Count > 0)
+            {
+                var otherVariants = await _context.ProductVariants
+                    .Include(v => v.VariantAttributes)
+                    .Where(v => v.ProductId == variant.ProductId && v.VariantId != variantId)
+                    .ToListAsync();
+
+                var updatedDef = string.Join("|", dto.Attributes
+                    .OrderBy(a => a.AttributeName, StringComparer.OrdinalIgnoreCase)
+                    .ThenBy(a => a.AttributeValue, StringComparer.OrdinalIgnoreCase)
+                    .Select(a => $"{a.AttributeName.Trim().ToUpperInvariant()}:{a.AttributeValue.Trim().ToUpperInvariant()}"));
+
+                foreach (var ov in otherVariants)
+                {
+                    if (ov.VariantAttributes == null || !ov.VariantAttributes.Any())
+                        continue;
+
+                    var otherDef = string.Join("|", ov.VariantAttributes
+                        .OrderBy(a => a.AttributeName, StringComparer.OrdinalIgnoreCase)
+                        .ThenBy(a => a.AttributeValue, StringComparer.OrdinalIgnoreCase)
+                        .Select(a => $"{a.AttributeName.Trim().ToUpperInvariant()}:{a.AttributeValue.Trim().ToUpperInvariant()}"));
+
+                    if (string.Equals(updatedDef, otherDef, StringComparison.OrdinalIgnoreCase))
+                    {
+                        throw new InvalidOperationException(
+                            "Đã tồn tại biến thể khác của sản phẩm này có cùng tổ hợp thuộc tính.");
+                    }
+                }
+            }
 
             // Kiểm tra SKU trùng
             var existsSku =
@@ -559,12 +621,27 @@ namespace ToyStoreManagement.Infrastructure.Services
             if (attributes == null)
                 return;
 
-            if (attributes.Any(attribute =>
+            var attrList = attributes.ToList();
+
+            if (attrList.Any(attribute =>
                 string.IsNullOrWhiteSpace(attribute.AttributeName)
                 || string.IsNullOrWhiteSpace(attribute.AttributeValue)))
             {
                 throw new InvalidOperationException(
                     "Mỗi thông số biến thể cần có cả tên và giá trị.");
+            }
+
+            // Quy tắc nghiệp vụ: Một biến thể KHÔNG THỂ chứa 2 giá trị cho cùng 1 thuộc tính (VD: không thể có 2 Size hoặc 2 Màu trong 1 biến thể)
+            var duplicateNames = attrList
+                .GroupBy(a => a.AttributeName.Trim(), StringComparer.OrdinalIgnoreCase)
+                .Where(g => g.Count() > 1)
+                .Select(g => g.Key)
+                .ToList();
+
+            if (duplicateNames.Any())
+            {
+                throw new InvalidOperationException(
+                    $"Một biến thể không thể chứa nhiều giá trị cho cùng một thuộc tính ({string.Join(", ", duplicateNames)}).");
             }
         }
 
