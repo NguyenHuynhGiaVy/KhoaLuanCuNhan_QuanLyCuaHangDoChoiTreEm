@@ -856,10 +856,26 @@ function isAdminPortalUser(user) {
     return ['admin', 'manager', 'staff'].includes(String(user?.role || '').trim().toLowerCase());
 }
 
+function isShipperUser(user) {
+    return String(user?.role || '').trim().toLowerCase() === 'shipper';
+}
+
+function redirectInternalPortalUser(user = getAuthUser()) {
+    if (!getAuthToken() || !user) return false;
+    const role = String(user?.role || '').trim().toLowerCase();
+    if (role === 'shipper') {
+        window.location.replace('/shipper.html');
+        return true;
+    }
+    if (['admin', 'manager', 'staff'].includes(role)) {
+        window.location.replace('/index.html');
+        return true;
+    }
+    return false;
+}
+
 function redirectAdminPortalUser(user = getAuthUser()) {
-    if (!getAuthToken() || !isAdminPortalUser(user)) return false;
-    window.location.replace('/index.html');
-    return true;
+    return redirectInternalPortalUser(user);
 }
 
 async function loadCustomerProfile() {

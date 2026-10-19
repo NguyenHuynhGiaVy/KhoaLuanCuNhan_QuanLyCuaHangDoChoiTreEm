@@ -28,7 +28,7 @@ namespace ToyStoreManagement.API.Controllers
         }
 
         [HttpGet]
-        [Authorize(Policy = "StaffAccess")]
+        [Authorize(Policy = "ShipperAccess")]
         public async Task<IActionResult> GetAll()
         {
             var shippers = await _shipperService.GetAllShippersAsync();
@@ -36,7 +36,7 @@ namespace ToyStoreManagement.API.Controllers
         }
 
         [HttpGet("{id}")]
-        [Authorize(Policy = "StaffAccess")]
+        [Authorize(Policy = "ShipperAccess")]
         public async Task<IActionResult> GetById(int id)
         {
             var shipper = await _shipperService.GetShipperByIdAsync(id);

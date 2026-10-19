@@ -2,6 +2,15 @@
 // TOYSTORE SHIPPER PORTAL CLIENT JAVASCRIPT
 // ============================================================
 
+const authUser = JSON.parse(localStorage.getItem('toyStoreUser') || 'null');
+const authToken = localStorage.getItem('toyStoreToken') || localStorage.getItem('token') || sessionStorage.getItem('token');
+const userRole = String(authUser?.role || '').trim().toLowerCase();
+
+// Không đăng nhập hoặc tài khoản không có quyền giao hàng/quản trị thì trở về trang khách hàng
+if (!authToken || !['admin', 'manager', 'staff', 'shipper'].includes(userRole)) {
+  location.replace('/customer.html');
+}
+
 let currentShipperId = Number(localStorage.getItem('toyStoreShipperId') || 1);
 let activeTab = 'active'; // 'active' | 'history' | 'wallet'
 let allOrders = [];
@@ -24,11 +33,18 @@ function toast(msg, type = 'info') {
 }
 
 async function api(endpoint, options = {}) {
-  const token = localStorage.getItem('token') || sessionStorage.getItem('token') || localStorage.getItem('toyStoreToken');
+  const token = localStorage.getItem('toyStoreToken') || localStorage.getItem('token') || sessionStorage.getItem('token');
   const headers = { 'Content-Type': 'application/json', ...(options.headers || {}) };
   if (token) headers['Authorization'] = `Bearer ${token}`;
 
   const res = await fetch(`/api/${endpoint}`, { ...options, headers });
+  if (res.status === 401) {
+    localStorage.removeItem('toyStoreToken');
+    localStorage.removeItem('toyStoreUser');
+    localStorage.removeItem('toyStoreShipperId');
+    location.replace('/customer.html');
+    return null;
+  }
   if (!res.ok) {
     let err = 'Yêu cầu không thành công';
     try {
@@ -59,10 +75,13 @@ async function loadShipperProfiles() {
       `).join('');
     }
 
-    const current = shippersList.find(s => s.shipperId === currentShipperId) || shippersList[0];
+    // Ưu tiên chọn hồ sơ Shipper khớp với tài khoản đăng nhập (userId)
+    const matchingShipper = authUser?.userId ? shippersList.find(s => s.userId === authUser.userId) : null;
+    const current = matchingShipper || shippersList.find(s => s.shipperId === currentShipperId) || shippersList[0];
     if (current) {
       currentShipperId = current.shipperId;
       localStorage.setItem('toyStoreShipperId', currentShipperId);
+      if (select) select.value = currentShipperId;
       updateProfileDisplay(current);
     }
 
@@ -435,7 +454,7 @@ async function submitFailDelivery() {
 async function initSignalR() {
   if (typeof signalR === 'undefined' || trackingHubConnection) return;
   try {
-    const token = localStorage.getItem('token') || sessionStorage.getItem('token');
+    const token = localStorage.getItem('toyStoreToken') || localStorage.getItem('token') || sessionStorage.getItem('token');
     trackingHubConnection = new signalR.HubConnectionBuilder()
       .withUrl('/hubs/order-tracking' + (token ? `?access_token=${encodeURIComponent(token)}` : ''))
       .withAutomaticReconnect()
@@ -454,5 +473,12 @@ async function initSignalR() {
     console.warn('[SignalR Shipper] Lỗi kết nối SignalR:', e.message);
   }
 }
+
+document.getElementById('shipperLogoutBtn')?.addEventListener('click', () => {
+  localStorage.removeItem('toyStoreToken');
+  localStorage.removeItem('toyStoreUser');
+  localStorage.removeItem('toyStoreShipperId');
+  location.replace('/customer.html');
+});
 
 window.onload = loadShipperProfiles;

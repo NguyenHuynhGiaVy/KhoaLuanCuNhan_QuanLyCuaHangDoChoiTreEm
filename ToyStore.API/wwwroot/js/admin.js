@@ -4766,9 +4766,13 @@ document.getElementById('menuToggle')?.addEventListener('click', () => {
 // Chỉ tài khoản thuộc khu vực quản trị mới được mở trang Admin.
 const adminPortalRoles = ['admin', 'manager', 'staff'];
 const canAccessAdminPortal = user => adminPortalRoles.includes(String(user?.role || '').trim().toLowerCase());
+const isShipperPortalUser = user => String(user?.role || '').trim().toLowerCase() === 'shipper';
 
-// Không đăng nhập hoặc không có quyền quản trị thì trở về trang khách hàng.
-if (!token || !canAccessAdminPortal(currentUser)) {
+// Nếu là Shipper thì chuyển thẳng đến trang Shipper Portal
+if (token && isShipperPortalUser(currentUser)) {
+  location.replace('/shipper.html');
+} else if (!token || !canAccessAdminPortal(currentUser)) {
+  // Không đăng nhập hoặc không có quyền quản trị thì trở về trang khách hàng.
   location.replace('/customer.html');
 } else {
   document.querySelector('.app-shell')?.classList.add('show');
