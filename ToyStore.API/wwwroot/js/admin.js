@@ -1505,6 +1505,46 @@ async function renderList(key) {
         </div>
       ` : ''}
 
+      ${key === 'imports' ? `
+        <div class="import-filter-bar" style="margin:16px 24px 0;background:var(--slate-50);border:1px solid var(--slate-200);border-radius:12px;padding:16px;">
+          <div class="import-filter-grid" style="display:grid;grid-template-columns:repeat(auto-fit, minmax(160px, 1fr));gap:12px;align-items:flex-end;">
+            <div class="filter-control-wrap">
+              <label style="display:block;font-size:11px;font-weight:700;color:var(--slate-600);margin-bottom:4px;text-transform:uppercase;">Mã phiếu / Ghi chú</label>
+              <input type="text" id="importFilterKeyword" class="input-control" placeholder="Tìm mã phiếu, người đặt..." oninput="applyImportFilters()">
+            </div>
+            <div class="filter-control-wrap">
+              <label style="display:block;font-size:11px;font-weight:700;color:var(--slate-600);margin-bottom:4px;text-transform:uppercase;">Nhà cung cấp</label>
+              <select id="importFilterSupplier" class="input-control" onchange="applyImportFilters()">
+                <option value="">-- Tất cả nhà cung cấp --</option>
+                ${(ref.suppliers || []).map(s => `<option value="${s.id || s.supplierId}">${esc(s.name)}</option>`).join('')}
+              </select>
+            </div>
+            <div class="filter-control-wrap">
+              <label style="display:block;font-size:11px;font-weight:700;color:var(--slate-600);margin-bottom:4px;text-transform:uppercase;">Trạng thái phiếu</label>
+              <select id="importFilterStatus" class="input-control" onchange="applyImportFilters()">
+                <option value="">-- Tất cả trạng thái --</option>
+                <option value="1">1. Chờ duyệt</option>
+                <option value="2">2. Nhập một phần</option>
+                <option value="3">3. Đã hoàn tất</option>
+                <option value="4">4. Đã hủy</option>
+              </select>
+            </div>
+            <div class="filter-control-wrap">
+              <label style="display:block;font-size:11px;font-weight:700;color:var(--slate-600);margin-bottom:4px;text-transform:uppercase;">Từ ngày đặt</label>
+              <input type="date" id="importFilterFromDate" class="input-control" onchange="applyImportFilters()">
+            </div>
+            <div class="filter-control-wrap">
+              <label style="display:block;font-size:11px;font-weight:700;color:var(--slate-600);margin-bottom:4px;text-transform:uppercase;">Đến ngày đặt</label>
+              <input type="date" id="importFilterToDate" class="input-control" onchange="applyImportFilters()">
+            </div>
+            <div class="filter-control-wrap" style="display:flex;gap:6px;">
+              <button type="button" class="secondary-btn" style="width:100%;padding:9px;" onclick="resetImportFilters()">Đặt lại lọc</button>
+            </div>
+          </div>
+          <div id="importFilterSummary" style="margin-top:10px;font-size:12.5px;color:var(--slate-500);font-weight:600;"></div>
+        </div>
+      ` : ''}
+
       ${key === 'cod' ? `
         <div class="cod-summary-bar" id="codSummaryCards">
           <div class="cod-kpi-card">
@@ -1554,6 +1594,8 @@ async function renderList(key) {
       applyProductFilters();
     } else if (key === 'orders') {
       applyOrderFilters();
+    } else if (key === 'imports') {
+      applyImportFilters();
     } else if (key === 'cod') {
       updateCodSummary(cache[key]);
       renderTableRows(key, cache[key]);
@@ -1609,6 +1651,10 @@ function filterTableData(key) {
   }
   if (key === 'orders') {
     applyOrderFilters();
+    return;
+  }
+  if (key === 'imports') {
+    applyImportFilters();
     return;
   }
   const term = (document.getElementById('tableSearchInput')?.value || '').toLowerCase().trim();
@@ -1800,6 +1846,71 @@ function resetProductFilters() {
   if (document.getElementById('prodFilterMaxPrice')) document.getElementById('prodFilterMaxPrice').value = '';
   if (document.getElementById('tableSearchInput')) document.getElementById('tableSearchInput').value = '';
   applyProductFilters();
+}
+
+function applyImportFilters() {
+  const allImports = cache['imports'] || [];
+  const keyword = (document.getElementById('importFilterKeyword')?.value || document.getElementById('tableSearchInput')?.value || '').toLowerCase().trim();
+  const supplierId = document.getElementById('importFilterSupplier')?.value;
+  const status = document.getElementById('importFilterStatus')?.value;
+  const fromDate = document.getElementById('importFilterFromDate')?.value;
+  const toDate = document.getElementById('importFilterToDate')?.value;
+
+  let filtered = [...allImports];
+
+  if (keyword) {
+    filtered = filtered.filter(r => 
+      (r.receiptCode && r.receiptCode.toLowerCase().includes(keyword)) ||
+      (r.supplierName && r.supplierName.toLowerCase().includes(keyword)) ||
+      (r.orderedByName && r.orderedByName.toLowerCase().includes(keyword)) ||
+      (r.note && r.note.toLowerCase().includes(keyword))
+    );
+  }
+
+  if (supplierId) {
+    filtered = filtered.filter(r => String(r.supplierId) === String(supplierId));
+  }
+
+  if (status) {
+    filtered = filtered.filter(r => String(r.status) === String(status));
+  }
+
+  if (fromDate) {
+    filtered = filtered.filter(r => {
+      const d = (r.importDate || r.createdAt || '').split('T')[0];
+      return d >= fromDate;
+    });
+  }
+
+  if (toDate) {
+    filtered = filtered.filter(r => {
+      const d = (r.importDate || r.createdAt || '').split('T')[0];
+      return d <= toDate;
+    });
+  }
+
+  const summaryEl = document.getElementById('importFilterSummary');
+  if (summaryEl) {
+    summaryEl.textContent = `Hiển thị ${filtered.length} / ${allImports.length} phiếu đặt hàng NCC`;
+  }
+
+  renderTableRows('imports', filtered);
+}
+
+function resetImportFilters() {
+  const kw = document.getElementById('importFilterKeyword');
+  if (kw) kw.value = '';
+  const kw2 = document.getElementById('tableSearchInput');
+  if (kw2) kw2.value = '';
+  const sup = document.getElementById('importFilterSupplier');
+  if (sup) sup.value = '';
+  const st = document.getElementById('importFilterStatus');
+  if (st) st.value = '';
+  const fromD = document.getElementById('importFilterFromDate');
+  if (fromD) fromD.value = '';
+  const toD = document.getElementById('importFilterToDate');
+  if (toD) toD.value = '';
+  applyImportFilters();
 }
 
 function getRowCells(key, r) {
@@ -2083,7 +2194,16 @@ function renderProductVariantEditor(variant = {}) {
         </div>
         <div class="form-group">
           <label>URL hình ảnh riêng của biến thể</label>
-          <input type="url" class="input-control variant-image-url" value="${esc(variant.imageUrl)}" placeholder="https://example.com/bien-the.jpg">
+          <div style="display:flex;gap:6px;">
+            <input type="url" class="input-control variant-image-url" id="varImg_${rowKey}" value="${esc(variant.imageUrl)}" placeholder="https://example.com/bien-the.jpg" style="flex:1;">
+            <label class="secondary-btn" style="padding:6px 10px;cursor:pointer;display:inline-flex;align-items:center;gap:4px;font-size:12px;margin:0;" title="Tải ảnh từ máy">
+              📁 Tải ảnh
+              <input type="file" accept="image/*" style="display:none;" onchange="handleFileInputForControl(this, 'varImg_${rowKey}', 'varImgPrev_${rowKey}')">
+            </label>
+          </div>
+          <div id="varImgWrap_${rowKey}" style="margin-top:6px;${variant.imageUrl ? '' : 'display:none;'}">
+            <img id="varImgPrev_${rowKey}" src="${esc(variant.imageUrl || '')}" style="width:48px;height:48px;object-fit:cover;border-radius:6px;border:1px solid #cbd5e1;">
+          </div>
         </div>
       </div>
       <div style="margin-top:12px;">
@@ -2423,10 +2543,16 @@ function renderProduct2ColView() {
               </div>
 
               <div class="form-group" style="margin-bottom:14px;">
-                <label>URL Hình ảnh đại diện</label>
-                <input id="p2c_imageUrl" class="input-control" value="${esc(p.imageUrl || '')}" placeholder="https://example.com/hinh-anh.jpg" oninput="updateImagePreview(this.value)">
+                <label>Hình ảnh sản phẩm đại diện</label>
+                <div style="display:flex;gap:8px;align-items:center;">
+                  <input id="p2c_imageUrl" class="input-control" value="${esc(p.imageUrl || '')}" placeholder="https://... hoặc tải từ máy" oninput="updateImagePreview(this.value)" style="flex:1;">
+                  <label class="secondary-btn" style="padding:7px 12px;cursor:pointer;display:inline-flex;align-items:center;gap:6px;font-size:12.5px;white-space:nowrap;margin:0;" title="Chọn file từ máy tính">
+                    📁 Tải ảnh từ máy
+                    <input type="file" accept="image/*" style="display:none;" onchange="handleFileInputForControl(this, 'p2c_imageUrl', 'p2c_imgPreviewElement')">
+                  </label>
+                </div>
                 <div id="p2c_imgPreview" style="margin-top:8px;${p.imageUrl ? '' : 'display:none;'}">
-                  <img src="${esc(p.imageUrl || '')}" style="width:70px;height:70px;object-fit:cover;border-radius:8px;border:1px solid var(--slate-200);">
+                  <img id="p2c_imgPreviewElement" src="${esc(p.imageUrl || '')}" style="width:70px;height:70px;object-fit:cover;border-radius:8px;border:1px solid var(--slate-200);">
                 </div>
               </div>
 
@@ -2639,8 +2765,15 @@ function renderMatrixTableHtml() {
                 <td>
                   <input type="number" min="0" step="1000" class="matrix-input matrix-price" id="price_${idx}" value="${row.price ?? ''}" ${canSetPrice ? '' : 'disabled'} title="${esc(priceTitle)}" placeholder="${canSetPrice ? 'VNĐ' : 'Chờ kho'}" oninput="onMatrixPriceInput(${idx}, this.value)">
                 </td>
-                <td>
-                  <input type="url" class="matrix-input matrix-image" id="img_${idx}" value="${esc(row.imageUrl || '')}" placeholder="https://..." oninput="onMatrixImageInput(${idx}, this.value)">
+                <td style="min-width:145px;">
+                  <div style="display:flex;align-items:center;gap:4px;">
+                    <input type="url" class="matrix-input matrix-image" id="img_${idx}" value="${esc(row.imageUrl || '')}" placeholder="URL hoặc tải..." oninput="onMatrixImageInput(${idx}, this.value)" style="flex:1;">
+                    <label class="secondary-btn" style="padding:4px 6px;cursor:pointer;font-size:11px;margin:0;display:inline-flex;align-items:center;" title="Tải ảnh từ máy tính">
+                      📁
+                      <input type="file" accept="image/*" style="display:none;" onchange="handleVariantMatrixFileUpload(this, ${idx})">
+                    </label>
+                  </div>
+                  ${row.imageUrl ? `<img src="${esc(row.imageUrl)}" class="matrix-preview-thumb" style="width:28px;height:28px;object-fit:cover;border-radius:4px;border:1px solid #cbd5e1;margin-top:4px;display:block;">` : ''}
                 </td>
                 <td style="text-align:center;">
                   <button type="button" class="icon-action-btn del" title="Xóa dòng biến thể" onclick="removeMatrixRow(${idx})">✕</button>
@@ -3140,13 +3273,87 @@ function toAsciiSlug(str) {
 function updateImagePreview(url) {
   const previewDiv = document.getElementById('p2c_imgPreview');
   if (!previewDiv) return;
-  if (url && url.startsWith('http')) {
+  const trimmed = (url || '').trim();
+  if (trimmed && (trimmed.startsWith('http') || trimmed.startsWith('/') || trimmed.startsWith('data:image'))) {
     previewDiv.style.display = 'block';
-    previewDiv.innerHTML = `<img src="${esc(url)}" style="width:70px;height:70px;object-fit:cover;border-radius:8px;border:1px solid var(--slate-200);" onerror="this.parentElement.style.display='none'">`;
+    previewDiv.innerHTML = `<img id="p2c_imgPreviewElement" src="${esc(trimmed)}" style="width:70px;height:70px;object-fit:cover;border-radius:8px;border:1px solid var(--slate-200);" onerror="this.parentElement.style.display='none'">`;
   } else {
     previewDiv.style.display = 'none';
   }
 }
+
+async function uploadImageFile(file, folder = 'products') {
+  if (!file) return null;
+  const formData = new FormData();
+  formData.append('file', file);
+  const resp = await fetch(`/api/Upload/image?folder=${encodeURIComponent(folder)}`, {
+    method: 'POST',
+    headers: token ? { 'Authorization': `Bearer ${token}` } : {},
+    body: formData
+  });
+  if (!resp.ok) {
+    const err = await resp.json().catch(() => ({ message: 'Lỗi tải ảnh lên máy chủ' }));
+    throw new Error(err.message || 'Lỗi tải ảnh');
+  }
+  const result = await resp.json();
+  return result.url;
+}
+
+window.handleFileInputForControl = async function(fileInput, targetInputId, previewImgId) {
+  const file = fileInput.files?.[0];
+  if (!file) return;
+  try {
+    toast('Đang tải ảnh từ máy tính lên...', 'info');
+    const url = await uploadImageFile(file, 'products');
+    const targetInput = document.getElementById(targetInputId);
+    if (targetInput) {
+      targetInput.value = url;
+      targetInput.dispatchEvent(new Event('input', { bubbles: true }));
+    }
+    const previewEl = document.getElementById(previewImgId);
+    if (previewEl) {
+      previewEl.src = url;
+      previewEl.style.display = 'block';
+      const container = previewEl.closest('div');
+      if (container) container.style.display = 'block';
+    }
+    toast('Tải ảnh thành công!', 'success');
+  } catch (err) {
+    toast(`Lỗi upload ảnh: ${err.message}`, 'error');
+  }
+};
+
+window.handleVariantMatrixFileUpload = async function(fileInput, rowIndex) {
+  const file = fileInput.files?.[0];
+  if (!file) return;
+  try {
+    toast('Đang tải ảnh biến thể...', 'info');
+    const url = await uploadImageFile(file, 'variants');
+    const targetInput = document.getElementById(`img_${rowIndex}`);
+    if (targetInput) {
+      targetInput.value = url;
+      if (typeof onMatrixImageInput === 'function') {
+        onMatrixImageInput(rowIndex, url);
+      }
+    }
+    // Update preview below input if present
+    const rowEl = targetInput?.closest('td');
+    if (rowEl) {
+      let previewImg = rowEl.querySelector('.matrix-preview-thumb');
+      if (!previewImg) {
+        previewImg = document.createElement('img');
+        previewImg.className = 'matrix-preview-thumb';
+        previewImg.style.cssText = 'width:28px;height:28px;object-fit:cover;border-radius:4px;border:1px solid #cbd5e1;margin-top:4px;display:block;';
+        rowEl.appendChild(previewImg);
+      }
+      previewImg.src = url;
+    }
+    toast('Tải ảnh biến thể thành công!', 'success');
+  } catch (err) {
+    toast(`Lỗi upload ảnh: ${err.message}`, 'error');
+  }
+};
+
 
 // ── SHIPPING BATCH DISPATCHING MODAL ─────────────────────────
 async function showShippingBatchModal() {
@@ -3588,8 +3795,17 @@ function renderFormFields(key, r) {
             <textarea name="description" class="input-control" rows="4" required placeholder="Nhập mô tả sản phẩm, chất liệu, tính năng...">${esc(v.description)}</textarea>
           </div>
           <div class="form-group full">
-            <label>URL hình ảnh sản phẩm</label>
-            <input name="imageUrl" type="url" class="input-control" value="${esc(v.imageUrl)}" placeholder="https://example.com/hinh-san-pham.jpg">
+            <label>Hình ảnh sản phẩm đại diện</label>
+            <div style="display:flex;gap:8px;">
+              <input name="imageUrl" id="prodForm_imageUrl" type="url" class="input-control" value="${esc(v.imageUrl)}" placeholder="https://example.com/hinh-san-pham.jpg" style="flex:1;">
+              <label class="secondary-btn" style="padding:6px 12px;cursor:pointer;display:inline-flex;align-items:center;gap:5px;font-size:13px;white-space:nowrap;margin:0;">
+                📁 Chọn ảnh từ máy tính
+                <input type="file" accept="image/*" style="display:none;" onchange="handleFileInputForControl(this, 'prodForm_imageUrl', 'prodForm_imgPrev')">
+              </label>
+            </div>
+            <div style="margin-top:8px;${v.imageUrl ? '' : 'display:none;'}">
+              <img id="prodForm_imgPrev" src="${esc(v.imageUrl || '')}" style="width:72px;height:72px;object-fit:cover;border-radius:8px;border:1px solid #cbd5e1;">
+            </div>
           </div>
         </div>
         ${renderProductVariantsSection(v)}
@@ -4527,9 +4743,25 @@ async function showOrderDetail(id) {
               </table>
             </div>
           </div>
+          <div class="form-section-card" id="adminOrderTrackingSection" style="margin-top:20px;">
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px;border-bottom:1px solid #f1f5f9;padding-bottom:10px;">
+              <div>
+                <h4 style="margin:0;display:flex;align-items:center;gap:8px;">
+                  <span>📜 Lịch sử quy trình & Kiểm toán (Audit Timeline Log)</span>
+                </h4>
+                <p style="margin:4px 0 0;font-size:12px;color:var(--slate-500);">Theo dõi toàn bộ 5 bước quy trình giao hàng, thời gian, người thực hiện và đối soát COD.</p>
+              </div>
+              <button class="secondary-btn" style="padding:4px 10px;font-size:12px;" onclick="loadAdminOrderTrackingLogs(${order.orderId})">🔄 Tải lại nhật ký</button>
+            </div>
+            <div id="adminOrderTrackingTimeline" style="padding:4px 0;">
+              <div style="color:var(--slate-400);font-size:13px;font-style:italic;">Đang tải nhật ký kiểm toán...</div>
+            </div>
+          </div>
         </div>
       </div>
     `;
+
+    loadAdminOrderTrackingLogs(order.orderId);
 
     if (order.shipping?.address) {
       api('Shipping/calculate-delivery-estimate', {
@@ -4553,6 +4785,63 @@ async function showOrderDetail(id) {
     toast(`Lỗi tải đơn hàng: ${err.message}`, 'error');
   }
 }
+
+async function loadAdminOrderTrackingLogs(orderId) {
+  const container = document.getElementById('adminOrderTrackingTimeline');
+  if (!container) return;
+  try {
+    const logs = await api(`Shipper/orders/${orderId}/tracking-logs`).catch(() => api(`Order/${orderId}/tracking-logs`));
+    if (!logs || logs.length === 0) {
+      container.innerHTML = '<div style="color:var(--slate-400);font-size:13px;font-style:italic;padding:8px 0;">Chưa có nhật ký kiểm toán cho đơn hàng này. Khi Shipper thực hiện các bước (Nhận đơn, Lấy hàng, Giao hàng, Thu tiền, Nộp quỹ), hệ thống sẽ tự động ghi lại tại đây.</div>';
+      return;
+    }
+
+    const actionIcons = {
+      'Nhận đơn': '📋',
+      'Đến cửa hàng nhận hàng': '🏬',
+      'Giao hàng cho KH': '🛵',
+      'Giao thành công & Thu tiền': '💵',
+      'Giao thành công': '✅',
+      'Gửi lại tiền cho cửa hàng': '🏦',
+      'Giao thất bại': '⚠️',
+      'Xuất giao lại': '🔄',
+      'Khởi tạo': '✨',
+      'Gán Shipper': '🚚'
+    };
+
+    let html = '<div class="tracking-timeline" style="position:relative;padding-left:26px;border-left:2px solid #e2e8f0;display:flex;flex-direction:column;gap:14px;margin-left:10px;">';
+    logs.forEach(log => {
+      const icon = actionIcons[log.action] || '📌';
+      html += `
+        <div class="tracking-item" style="position:relative;">
+          <div style="position:absolute;left:-36px;top:0;width:20px;height:20px;border-radius:50%;background:#4f46e5;color:#fff;display:flex;align-items:center;justify-content:center;font-size:10px;box-shadow:0 0 0 3px #e0e7ff;">
+            ${icon}
+          </div>
+          <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
+            <strong style="font-size:13.5px;color:var(--slate-800);">${esc(log.action)}</strong>
+            <span style="font-size:11.5px;background:#f1f5f9;color:#475569;border:1px solid #e2e8f0;padding:2px 8px;border-radius:12px;font-weight:600;">${esc(log.performedByRole || 'Hệ thống')}: ${esc(log.performedByName || 'Tự động')}</span>
+            <span style="font-size:11.5px;color:var(--slate-400);margin-left:auto;">${fmtDateTime(log.createdAt)}</span>
+          </div>
+          ${(log.previousStatus && log.previousStatus !== log.newStatus) ? `
+            <div style="font-size:12px;color:var(--slate-500);margin-top:3px;">
+              Trạng thái: <em>${esc(log.previousStatus)}</em> ➔ <strong style="color:var(--primary);">${esc(log.newStatus)}</strong>
+            </div>
+          ` : ''}
+          ${log.note ? `
+            <div style="font-size:12px;background:#f8fafc;border:1px solid #e2e8f0;border-radius:6px;padding:6px 10px;margin-top:4px;color:var(--slate-600);">
+              💬 <strong>Ghi chú:</strong> ${esc(log.note)}
+            </div>
+          ` : ''}
+        </div>
+      `;
+    });
+    html += '</div>';
+    container.innerHTML = html;
+  } catch (err) {
+    container.innerHTML = `<div style="color:#ef4444;font-size:12.5px;">Không thể tải nhật ký tracking: ${esc(err.message)}</div>`;
+  }
+}
+window.loadAdminOrderTrackingLogs = loadAdminOrderTrackingLogs;
 
 window.updateOrderStatusAction = async function(id) {
   const newSt = Number(document.getElementById('orderNewStatusSelect')?.value);

@@ -158,8 +158,17 @@ builder.Services.AddSwaggerGen(options =>
 });
 
 builder.Services.AddDbContext<ApplicationDbContext>(options =>
-    options.UseSqlServer(
-        builder.Configuration.GetConnectionString("DefaultConnection")));
+{
+    var connectionString = builder.Configuration.GetConnectionString("DefaultConnection");
+    if (!string.IsNullOrEmpty(connectionString) && !connectionString.Contains("TrustServerCertificate", StringComparison.OrdinalIgnoreCase))
+    {
+        connectionString = connectionString.TrimEnd(';') + ";TrustServerCertificate=True;";
+    }
+    options.UseSqlServer(connectionString, sqlOptions =>
+    {
+        sqlOptions.CommandTimeout(60);
+    });
+});
 
 builder.Services
     .AddIdentity<ApplicationUser, ApplicationRole>()
@@ -264,64 +273,80 @@ builder.Services.AddAuthorization(options =>
 
 var app = builder.Build();
 
+// 1. Cấu hình Forwarded Headers tối ưu cho Render / Cloud Reverse Proxy (SSL termination)
+var forwardedOptions = new ForwardedHeadersOptions
+{
+    ForwardedHeaders = Microsoft.AspNetCore.HttpOverrides.ForwardedHeaders.XForwardedFor | Microsoft.AspNetCore.HttpOverrides.ForwardedHeaders.XForwardedProto
+};
+forwardedOptions.KnownNetworks.Clear();
+forwardedOptions.KnownProxies.Clear();
+app.UseForwardedHeaders(forwardedOptions);
+
+// 2. Health check endpoint cho Render uptime monitor & keep-alive ping
+app.MapGet("/health", () => Results.Ok(new { status = "Healthy", timestamp = DateTime.UtcNow }));
+
+// 3. Exception Handler Middleware
+app.UseMiddleware<ExceptionMiddleware>();
+
+// 4. Phục vụ Static Files & Default Files
 var defaultFiles = new DefaultFilesOptions();
 defaultFiles.DefaultFileNames.Clear();
 defaultFiles.DefaultFileNames.Add("customer.html");
 app.UseDefaultFiles(defaultFiles);
 app.UseStaticFiles();
 
+// 5. Friendly Direct Routes (ngăn lỗi 404 khi truy cập không có đuôi .html)
 app.MapGet("/admin", () => Results.Redirect("/index.html"));
+app.MapGet("/shipper", () => Results.Redirect("/shipper.html"));
+app.MapGet("/customer", () => Results.Redirect("/customer.html"));
+app.MapGet("/products", () => Results.Redirect("/products.html"));
 
+// 6. Khởi tạo & Patch Database an toàn khi deploy
 using (var scope = app.Services.CreateScope())
 {
-    var dbContext = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
     try
     {
-        await dbContext.Database.MigrateAsync();
+        var dbContext = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+        try
+        {
+            await dbContext.Database.MigrateAsync();
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"[Database Migration Warning] {ex.Message}");
+        }
+
+        await DatabasePatchHelper.ApplyPatchesAsync(dbContext);
+
+        var roleManager = scope.ServiceProvider.GetRequiredService<RoleManager<ApplicationRole>>();
+        var userManager = scope.ServiceProvider.GetRequiredService<UserManager<ApplicationUser>>();
+
+        await IdentitySeeder.SeedRolesAsync(roleManager);
+        await IdentitySeeder.SeedAdminFromEnvironmentAsync(userManager);
+        await IdentitySeeder.SeedShipperAsync(userManager);
     }
     catch (Exception ex)
     {
-        Console.WriteLine($"[Database Migration] Warning during migration: {ex.Message}");
+        Console.WriteLine($"[Startup Seeding Warning] {ex.Message}");
     }
-
-    await DatabasePatchHelper.ApplyPatchesAsync(dbContext);
-
-    var roleManager =
-        scope.ServiceProvider
-            .GetRequiredService<RoleManager<ApplicationRole>>();
-
-    var userManager =
-        scope.ServiceProvider
-            .GetRequiredService<UserManager<ApplicationUser>>();
-
-    await IdentitySeeder.SeedRolesAsync(roleManager);
-    await IdentitySeeder.SeedAdminFromEnvironmentAsync(userManager);
-    await IdentitySeeder.SeedShipperAsync(userManager);
 }
 
-// Configure the HTTP request pipeline.
+// 7. Swagger Documentation
 if (app.Environment.IsDevelopment() || builder.Configuration.GetValue<bool>("EnableSwagger", true))
 {
     app.UseSwagger();
     app.UseSwaggerUI();
 }
 
-app.UseForwardedHeaders(new ForwardedHeadersOptions
-{
-    ForwardedHeaders = Microsoft.AspNetCore.HttpOverrides.ForwardedHeaders.XForwardedFor | Microsoft.AspNetCore.HttpOverrides.ForwardedHeaders.XForwardedProto
-});
-
-app.UseMiddleware<ExceptionMiddleware>();
-
+// 8. HTTPS Redirection & CORS
 app.UseHttpsRedirection();
-
 app.UseCors("AllowFrontend");
 
-
+// 9. Authentication & Authorization
 app.UseAuthentication();
-
 app.UseAuthorization();
 
+// 10. Map Controllers & SignalR Hubs
 app.MapControllers();
 app.MapHub<SupportChatHub>("/hubs/support-chat");
 app.MapHub<OrderTrackingHub>("/hubs/order-tracking");

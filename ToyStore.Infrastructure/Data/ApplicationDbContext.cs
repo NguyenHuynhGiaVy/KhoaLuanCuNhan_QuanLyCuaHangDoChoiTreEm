@@ -81,6 +81,8 @@ namespace ToyStoreManagement.Infrastructure.Data
 
         public DbSet<SupportMessage> SupportMessages { get; set; }
 
+        public DbSet<OrderTrackingLog> OrderTrackingLogs { get; set; }
+
         protected override void OnModelCreating(ModelBuilder modelBuilder)
         {
             base.OnModelCreating(modelBuilder);
@@ -100,6 +102,12 @@ namespace ToyStoreManagement.Infrastructure.Data
                 .WithMany(x => x.Shippings)
                 .HasForeignKey(x => x.ShipperId)
                 .OnDelete(DeleteBehavior.SetNull);
+
+            modelBuilder.Entity<OrderTrackingLog>(entity =>
+            {
+                entity.HasKey(x => x.TrackingLogId);
+                entity.ToTable("OrderTrackingLogs");
+            });
 
             modelBuilder.ApplyConfigurationsFromAssembly(
                 typeof(ApplicationDbContext).Assembly);

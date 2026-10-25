@@ -87,6 +87,39 @@ namespace ToyStoreManagement.API.Controllers
             return Ok(result);
         }
 
+        // GET: api/Order/5/tracking-logs
+        [HttpGet("{orderId}/tracking-logs")]
+        public async Task<IActionResult> GetTrackingLogs(int orderId)
+        {
+            var order = await _orderService.GetByIdAsync(orderId);
+            if (order == null)
+                return NotFound("Không tìm thấy đơn hàng.");
+            if (!IsStaff && !User.IsInRole("Shipper") && order.CustomerId != await GetCurrentCustomerId())
+                return Forbid();
+
+            var logs = await _context.OrderTrackingLogs
+                .AsNoTracking()
+                .Where(l => l.OrderId == orderId)
+                .OrderBy(l => l.CreatedAt)
+                .Select(l => new OrderTrackingLogDto
+                {
+                    TrackingLogId = l.TrackingLogId,
+                    OrderId = l.OrderId,
+                    ShippingId = l.ShippingId,
+                    Action = l.Action,
+                    PreviousStatus = l.PreviousStatus,
+                    NewStatus = l.NewStatus,
+                    PerformedByUserId = l.PerformedByUserId,
+                    PerformedByName = l.PerformedByName,
+                    PerformedByRole = l.PerformedByRole,
+                    Note = l.Note,
+                    CreatedAt = l.CreatedAt
+                })
+                .ToListAsync();
+
+            return Ok(logs);
+        }
+
         // GET: api/Order/code/ORD-20260911203000123
         [HttpGet("code/{orderCode}")]
         public async Task<IActionResult> GetByOrderCode(

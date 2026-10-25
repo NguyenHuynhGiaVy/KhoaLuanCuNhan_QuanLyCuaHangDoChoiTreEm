@@ -23,6 +23,7 @@ namespace ToyStoreManagement.Infrastructure.Repositories
             GetAllWithDetailsAsync()
         {
             return await _dbSet
+                .AsNoTracking()
                 .Include(x => x.Customer)
                 .Include(x => x.OrderDetails)
                     .ThenInclude(x => x.ProductVariant)

@@ -517,6 +517,140 @@
       background: var(--danger-light);
       color: var(--danger);
     }
+    /* Timeline & Workflow Stepper */
+    .workflow-stepper {
+      display: flex;
+      justify-content: space-between;
+      margin: 14px 0 16px;
+      position: relative;
+    }
+    .workflow-stepper::before {
+      content: '';
+      position: absolute;
+      top: 14px;
+      left: 20px;
+      right: 20px;
+      height: 2px;
+      background: var(--slate-200);
+      z-index: 1;
+    }
+    .step-item {
+      position: relative;
+      z-index: 2;
+      text-align: center;
+      flex: 1;
+    }
+    .step-num {
+      width: 28px;
+      height: 28px;
+      border-radius: 50%;
+      background: white;
+      border: 2px solid var(--slate-300);
+      color: var(--slate-500);
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 11px;
+      font-weight: 700;
+      margin-bottom: 4px;
+      transition: all 0.2s ease;
+    }
+    .step-item.active .step-num {
+      background: var(--primary);
+      border-color: var(--primary);
+      color: white;
+      box-shadow: 0 0 0 3px var(--primary-light);
+    }
+    .step-item.done .step-num {
+      background: var(--success);
+      border-color: var(--success);
+      color: white;
+    }
+    .step-text {
+      font-size: 10.5px;
+      font-weight: 600;
+      color: var(--slate-500);
+      line-height: 1.2;
+    }
+    .step-item.active .step-text {
+      color: var(--primary);
+      font-weight: 700;
+    }
+    .step-item.done .step-text {
+      color: var(--success);
+    }
+    /* Timeline Log Modal */
+    .timeline-list {
+      position: relative;
+      padding-left: 20px;
+      margin: 16px 0;
+    }
+    .timeline-list::before {
+      content: '';
+      position: absolute;
+      top: 6px;
+      bottom: 6px;
+      left: 6px;
+      width: 2px;
+      background: var(--slate-200);
+    }
+    .timeline-item {
+      position: relative;
+      margin-bottom: 16px;
+    }
+    .timeline-node {
+      position: absolute;
+      left: -20px;
+      top: 3px;
+      width: 14px;
+      height: 14px;
+      border-radius: 50%;
+      background: var(--primary);
+      border: 2px solid white;
+      box-shadow: 0 0 0 2px var(--primary-light);
+    }
+    .timeline-action {
+      font-size: 13px;
+      font-weight: 700;
+      color: var(--slate-800);
+    }
+    .timeline-performer {
+      font-size: 11.5px;
+      color: var(--slate-500);
+      margin-top: 2px;
+    }
+    .timeline-note {
+      font-size: 12px;
+      color: var(--slate-600);
+      background: var(--slate-50);
+      padding: 6px 10px;
+      border-radius: 6px;
+      margin-top: 4px;
+      border-left: 3px solid var(--primary);
+    }
+    /* Upload Box */
+    .photo-upload-box {
+      border: 2px dashed var(--slate-300);
+      border-radius: 10px;
+      padding: 12px;
+      text-align: center;
+      background: var(--slate-50);
+      cursor: pointer;
+      margin-bottom: 12px;
+      transition: all 0.2s ease;
+    }
+    .photo-upload-box:hover {
+      border-color: var(--primary);
+      background: #f8faff;
+    }
+    .photo-preview-img {
+      max-width: 100%;
+      max-height: 140px;
+      border-radius: 8px;
+      object-fit: cover;
+      margin-top: 8px;
+      display: none;
+    }
     /* Toast */
     #toastContainer {
       position: fixed;
@@ -595,9 +729,10 @@
         </div>
       </div>
       <div>
-        <select class="profile-select" id="shipperSelector" onchange="switchShipperProfile(this.value)">
-          <option value="">Đang tải...</option>
-        </select>
+        <span class="badge" style="background:#ecfdf5;color:#047857;font-weight:700;font-size:12px;padding:6px 12px;border-radius:20px;border:1px solid #a7f3d0;display:inline-flex;align-items:center;gap:6px;">
+          <span style="width:7px;height:7px;background:#059669;border-radius:50%;display:inline-block;"></span>
+          <span id="shipperStatusBadge">Đang trực tuyến</span>
+        </span>
       </div>
     </div>
 

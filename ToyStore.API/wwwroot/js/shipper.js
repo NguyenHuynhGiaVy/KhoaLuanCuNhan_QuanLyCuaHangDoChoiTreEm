@@ -1,5 +1,6 @@
 // ============================================================
 // TOYSTORE SHIPPER PORTAL CLIENT JAVASCRIPT
+// Chuẩn hóa quy trình 5 bước thực tế & Siết chặt RBAC 2026
 // ============================================================
 
 const authUser = JSON.parse(localStorage.getItem('toyStoreUser') || 'null');
@@ -11,17 +12,17 @@ if (!authToken || !['admin', 'manager', 'staff', 'shipper'].includes(userRole)) 
   location.replace('/customer.html');
 }
 
-let currentShipperId = Number(localStorage.getItem('toyStoreShipperId') || 1);
+let currentShipper = null;
+let currentShipperId = null;
 let activeTab = 'active'; // 'active' | 'history' | 'wallet'
 let allOrders = [];
-let shippersList = [];
 let trackingHubConnection = null;
 let shipperNotifications = [];
 
 const esc = v => String(v ?? '').replace(/[&<>'"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', "'": '&#39;', '"': '&quot;' }[c]));
 const money = v => v == null ? '0 đ' : Number(v).toLocaleString('vi-VN') + ' đ';
 const fmtDateTime = s => s ? new Date(s).toLocaleString('vi-VN') : '—';
-const shipperNotificationStorageKey = () => `toyStoreShipperNotifications:${currentShipperId}`;
+const shipperNotificationStorageKey = () => `toyStoreShipperNotifications:${currentShipperId || 'me'}`;
 
 function toast(msg, type = 'info') {
   const container = document.getElementById('toastContainer');
@@ -146,41 +147,32 @@ async function api(endpoint, options = {}) {
   return res.status !== 204 ? await res.json() : null;
 }
 
-// ── 1. SHIPPER PROFILE INITIALIZATION ───────────────────────
-async function loadShipperProfiles() {
+// ── 1. SHIPPER IDENTITY INITIALIZATION (STRICT RBAC) ────────
+async function loadShipperProfile() {
   try {
-    const list = await api('Shipper');
-    shippersList = Array.isArray(list) ? list : [];
-    const select = document.getElementById('shipperSelector');
-    if (!shippersList.length) {
-      if (select) select.innerHTML = '<option value="">Chưa có shipper</option>';
+    // Luôn nhận diện Shipper trực tiếp từ Token đăng nhập qua API /api/Shipper/me
+    const profile = await api('Shipper/me');
+    if (!profile) {
+      toast('Không tìm thấy hồ sơ shipper liên kết với tài khoản này.', 'error');
       return;
     }
 
-    if (select) {
-      select.innerHTML = shippersList.map(s => `
-        <option value="${s.shipperId}" ${s.shipperId === currentShipperId ? 'selected' : ''}>
-          ${esc(s.fullName)} (${esc(s.phoneNumber)})
-        </option>
-      `).join('');
-    }
+    currentShipper = profile;
+    currentShipperId = profile.shipperId;
+    localStorage.setItem('toyStoreShipperId', currentShipperId);
 
-    // Ưu tiên chọn hồ sơ Shipper khớp với tài khoản đăng nhập (userId)
-    const matchingShipper = authUser?.userId ? shippersList.find(s => s.userId === authUser.userId) : null;
-    const current = matchingShipper || shippersList.find(s => s.shipperId === currentShipperId) || shippersList[0];
-    if (current) {
-      currentShipperId = current.shipperId;
-      localStorage.setItem('toyStoreShipperId', currentShipperId);
-      if (select) select.value = currentShipperId;
-      updateProfileDisplay(current);
-    }
-
+    updateProfileDisplay(profile);
     loadShipperNotifications();
     initSignalR();
     loadOrders();
   } catch (err) {
     console.error('Không thể nạp hồ sơ shipper:', err);
-    toast(`Lỗi kết nối máy chủ: ${err.message}`, 'error');
+    // Nếu chưa liên kết shipper
+    const nameEl = document.getElementById('currentShipperName');
+    const subEl = document.getElementById('currentShipperPhone');
+    if (nameEl) nameEl.textContent = authUser?.fullName || 'Nhân viên giao hàng';
+    if (subEl) subEl.textContent = `Tài khoản: ${authUser?.email || '—'} · Vai trò: ${authUser?.role || 'Shipper'}`;
+    toast(`Lỗi xác thực shipper: ${err.message}`, 'error');
   }
 }
 
@@ -189,33 +181,14 @@ function updateProfileDisplay(shipper) {
   const subEl = document.getElementById('currentShipperPhone');
   const letterEl = document.getElementById('avatarLetter');
   if (nameEl) nameEl.textContent = shipper.fullName;
-  if (subEl) subEl.textContent = `SĐT: ${shipper.phoneNumber} · Xe: ${shipper.vehicleNumber || '—'} · Tuyến: ${shipper.assignedArea || 'Linh hoạt'}`;
+  if (subEl) subEl.textContent = `SĐT: ${shipper.phoneNumber} · Biển số xe: ${shipper.vehicleNumber || '—'} · Tuyến: ${shipper.assignedArea || 'Linh hoạt'}`;
   if (letterEl) {
-    const parts = (shipper.fullName || 'NV').split(' ');
+    const parts = (shipper.fullName || 'NV').trim().split(' ');
     letterEl.textContent = parts[parts.length - 1].slice(0, 2).toUpperCase();
   }
 }
 
-function switchShipperProfile(id) {
-  const previousShipperId = currentShipperId;
-  currentShipperId = Number(id);
-  localStorage.setItem('toyStoreShipperId', currentShipperId);
-  const found = shippersList.find(s => s.shipperId === currentShipperId);
-  if (found) updateProfileDisplay(found);
-
-  loadShipperNotifications();
-  if (trackingHubConnection) {
-    const joinCurrentShipper = () => trackingHubConnection.invoke('JoinShipper', currentShipperId).catch(console.warn);
-    if (previousShipperId !== currentShipperId) {
-      trackingHubConnection.invoke('LeaveShipper', previousShipperId).catch(console.warn).finally(joinCurrentShipper);
-    } else {
-      joinCurrentShipper();
-    }
-  }
-  loadOrders();
-}
-
-// ── 2. ORDER LIST & ACTIONS ─────────────────────────────────
+// ── 2. ORDER LIST & WORKFLOW RENDERING ──────────────────────
 async function loadOrders() {
   const container = document.getElementById('tabContent');
   if (container) {
@@ -223,7 +196,8 @@ async function loadOrders() {
   }
 
   try {
-    allOrders = await api(`Shipper/my-orders?shipperId=${currentShipperId}`);
+    // API tự động giới hạn chỉ trả về đơn của chính shipper này theo Token
+    allOrders = await api(`Shipper/my-orders`);
     renderCurrentTab();
   } catch (err) {
     if (container) {
@@ -233,14 +207,17 @@ async function loadOrders() {
 }
 
 function renderCurrentTab() {
+  // Trạng thái đang giao: 0 (chờ), 1 (đã nhận đơn), 2 (đã lấy hàng), 3 (đang đi giao), 4 (đang giao lại)
   const activeOrders = allOrders.filter(o => {
     const st = Number(o.shipping?.status ?? 0);
-    return st === 0 || st === 1 || st === 4;
+    return st === 0 || st === 1 || st === 2 || st === 3 || st === 4;
   });
 
+  // Trạng thái lịch sử: 4 (thành công) hoặc 2 theo chuẩn cũ, hoặc 5 (thất bại), 6 (hoàn hàng)
   const historyOrders = allOrders.filter(o => {
     const st = Number(o.shipping?.status ?? 0);
-    return st === 2 || st === 3 || st === 5;
+    const ordSt = Number(o.status ?? 0);
+    return ordSt === 4 || ordSt === 5 || st === 2 || st === 4 || st === 5 || st === 6;
   });
 
   const badgeActive = document.getElementById('badgeActiveCount');
@@ -269,13 +246,53 @@ function switchTab(tab) {
   renderCurrentTab();
 }
 
+function renderWorkflowStepper(shippingStatus, isCod, codStatus) {
+  // 5 bước chuẩn hóa:
+  // 1. Nhận đơn (status >= 1)
+  // 2. Đến cửa hàng nhận hàng (status >= 2)
+  // 3. Giao hàng cho KH (status >= 3)
+  // 4. Nhận tiền / Giao thành công (status == 4 hoặc order status == 4)
+  // 5. Gửi lại tiền cho cửa hàng (codStatus == 2)
+  const s = Number(shippingStatus || 0);
+  const step1Done = s >= 1;
+  const step2Done = s >= 2;
+  const step3Done = s >= 3;
+  const step4Done = s >= 4;
+  const step5Done = isCod ? (codStatus === 2) : step4Done;
+
+  return `
+    <div class="workflow-stepper">
+      <div class="step-item ${step1Done ? (s === 1 ? 'active' : 'done') : ''}">
+        <div class="step-num">${step1Done && s > 1 ? '✓' : '1'}</div>
+        <div class="step-text">Nhận đơn</div>
+      </div>
+      <div class="step-item ${step2Done ? (s === 2 ? 'active' : 'done') : ''}">
+        <div class="step-num">${step2Done && s > 2 ? '✓' : '2'}</div>
+        <div class="step-text">Lấy hàng tại kho</div>
+      </div>
+      <div class="step-item ${step3Done ? (s === 3 ? 'active' : 'done') : ''}">
+        <div class="step-num">${step3Done && s > 3 ? '✓' : '3'}</div>
+        <div class="step-text">Giao cho KH</div>
+      </div>
+      <div class="step-item ${step4Done ? (s === 4 && !step5Done ? 'active' : 'done') : ''}">
+        <div class="step-num">${step4Done ? '✓' : '4'}</div>
+        <div class="step-text">${isCod ? 'Thu tiền COD' : 'Giao thành công'}</div>
+      </div>
+      <div class="step-item ${step5Done ? 'done' : ''}">
+        <div class="step-num">${step5Done ? '✓' : '5'}</div>
+        <div class="step-text">Nộp tiền về shop</div>
+      </div>
+    </div>
+  `;
+}
+
 function renderActiveOrders(orders, container) {
   if (!orders.length) {
     container.innerHTML = `
       <div style="background:white;border-radius:16px;padding:50px 20px;text-align:center;border:1px solid var(--slate-200);">
         <div style="font-size:48px;margin-bottom:12px;">🎉</div>
-        <h3 style="font-size:17px;font-weight:700;color:var(--slate-800);">Hiện không có đơn nào đang chờ giao</h3>
-        <p style="font-size:13px;color:var(--slate-500);margin-top:4px;">Khi quản trị viên phân công đơn hoặc lô hàng mới, bạn sẽ nhận được thông báo ngay lập tức.</p>
+        <h3 style="font-size:17px;font-weight:700;color:var(--slate-800);">Hiện không có đơn nào đang cần xử lý</h3>
+        <p style="font-size:13px;color:var(--slate-500);margin-top:4px;">Khi cửa hàng phân công đơn hoặc lô hàng mới, bạn sẽ nhận được thông báo ngay lập tức.</p>
       </div>
     `;
     return;
@@ -285,25 +302,30 @@ function renderActiveOrders(orders, container) {
     const shipping = order.shipping || {};
     const payment = order.payment || {};
     const isCod = payment.paymentMethod === 0;
-    const isDelivering = shipping.status === 1 || shipping.status === 4;
+    const st = Number(shipping.status || 0);
+
     const address = shipping.address || 'Chưa có địa chỉ';
     const receiverName = shipping.receiverName || order.customerName || 'Khách nhận';
     const receiverPhone = shipping.receiverPhone || order.phoneNumber || '';
     const mapsUrl = `https://www.google.com/maps/dir/?api=1&origin=${encodeURIComponent('123 Nguyễn Thị Minh Khai, Quận 1, TP.HCM')}&destination=${encodeURIComponent(address)}`;
 
+    let statusBadge = '';
+    if (st === 0 || st === 1) statusBadge = `<span class="badge" style="background:#fef3c7;color:#92400e;font-weight:700;font-size:11.5px;padding:3px 8px;border-radius:6px;">Chờ đến kho lấy hàng</span>`;
+    else if (st === 2) statusBadge = `<span class="badge" style="background:#ecfdf5;color:#047857;font-weight:700;font-size:11.5px;padding:3px 8px;border-radius:6px;">Đã lấy hàng - Sẵn sàng giao</span>`;
+    else if (st === 3) statusBadge = `<span class="badge" style="background:#e0e7ff;color:#3730a3;font-weight:700;font-size:11.5px;padding:3px 8px;border-radius:6px;">⚡ Đang trên đường giao cho KH</span>`;
+    else statusBadge = `<span class="badge" style="background:#f1f5f9;color:#475569;font-weight:700;font-size:11.5px;padding:3px 8px;border-radius:6px;">Đang xử lý</span>`;
+
     return `
-      <div class="order-card in-transit">
+      <div class="order-card in-transit" id="orderCard_${order.orderId}">
         <div class="card-top">
           <div>
             <div class="order-code">#${esc(order.orderCode || order.orderId)}</div>
             ${shipping.deliveryBatchCode ? `<span class="batch-tag">📦 Lô: ${esc(shipping.deliveryBatchCode)}</span>` : ''}
           </div>
-          <div>
-            ${isDelivering 
-              ? `<span class="badge" style="background:#e0e7ff;color:#3730a3;font-weight:700;font-size:11.5px;padding:3px 8px;border-radius:6px;">⚡ Đang giao</span>` 
-              : `<span class="badge" style="background:#fef3c7;color:#92400e;font-weight:700;font-size:11.5px;padding:3px 8px;border-radius:6px;">Chờ xuất phát</span>`}
-          </div>
+          <div>${statusBadge}</div>
         </div>
+
+        ${renderWorkflowStepper(st, isCod, payment.codStatus)}
 
         <div class="customer-info">
           <div class="customer-name">
@@ -314,11 +336,14 @@ function renderActiveOrders(orders, container) {
             <span>📍</span>
             <div>${esc(address)}</div>
           </div>
-          <div>
+          <div style="display:flex;gap:8px;margin-top:4px;">
             <a href="${mapsUrl}" target="_blank" class="maps-link-btn">
               <span>🗺️ Chỉ đường Google Maps</span>
               <span>↗</span>
             </a>
+            <button type="button" class="secondary-btn" style="padding:4px 10px;font-size:11.5px;" onclick="viewOrderTrackingLogs(${order.orderId})">
+              📜 Lịch sử hành trình
+            </button>
           </div>
         </div>
 
@@ -329,21 +354,26 @@ function renderActiveOrders(orders, container) {
 
         ${shipping.failReason ? `
           <div style="background:#fef2f2;border:1px solid #fecaca;color:#991b1b;padding:8px 12px;border-radius:8px;font-size:12px;margin-bottom:12px;">
-            <strong>⚠️ Lần giao trước thất bại:</strong> ${esc(shipping.failReason)} (Đã thử: ${shipping.attemptCount}/3)
+            <strong>⚠️ Lần giao trước thất bại:</strong> ${esc(shipping.failReason)} (Đã thử: ${shipping.attemptCount || 1}/3)
           </div>
         ` : ''}
 
+        <!-- Nút hành động tương ứng từng bước trong quy trình -->
         <div class="card-actions">
-          ${!isDelivering ? `
+          ${st <= 1 ? `
+            <button class="btn-action btn-start" onclick="pickupOrder(${order.orderId})">
+              <span>🏬 Bước 2: Đến cửa hàng nhận hàng</span>
+            </button>
+          ` : st === 2 ? `
             <button class="btn-action btn-start" onclick="startDelivery(${order.orderId})">
-              <span>🚀 Bắt đầu giao đơn này</span>
+              <span>🚀 Bước 3: Xuất phát giao cho KH</span>
             </button>
           ` : `
             <button class="btn-action btn-fail" onclick="openFailModal(${order.orderId})">
               <span>✕ Giao thất bại</span>
             </button>
-            <button class="btn-action btn-success" onclick="completeDelivery(${order.orderId}, ${isCod ? (order.finalAmount || order.totalAmount) : 0})">
-              <span>✓ Giao thành công</span>
+            <button class="btn-action btn-success" onclick="openCompleteDeliveryModal(${order.orderId}, ${isCod ? (order.finalAmount || order.totalAmount) : 0})">
+              <span>✓ Bước 4: Giao thành công & Thu tiền</span>
             </button>
           `}
         </div>
@@ -364,8 +394,10 @@ function renderHistoryOrders(orders, container) {
 
   container.innerHTML = orders.map(order => {
     const shipping = order.shipping || {};
-    const isSuccess = shipping.status === 2;
+    const payment = order.payment || {};
+    const isSuccess = Number(order.status) === 4 || shipping.status === 2 || shipping.status === 4;
     const receiverName = shipping.receiverName || order.customerName || 'Khách nhận';
+    const isCod = payment.paymentMethod === 0;
 
     return `
       <div class="order-card ${isSuccess ? 'delivered' : 'failed'}">
@@ -388,8 +420,25 @@ function renderHistoryOrders(orders, container) {
             Lý do: <b>${esc(shipping.failReason)}</b> (Thử: ${shipping.attemptCount || 1} lần)
           </div>
         ` : ''}
+
+        ${isSuccess && isCod ? `
+          <div style="display:flex;justify-content:space-between;align-items:center;background:#fffbeb;border:1px solid #fde68a;border-radius:8px;padding:8px 12px;margin-bottom:8px;font-size:12px;">
+            <div>
+              <span style="font-weight:700;color:#b45309;">Tiền COD: ${money(order.finalAmount || order.totalAmount)}</span>
+              <span style="display:block;font-size:11px;color:#92400e;">${payment.codStatus === 2 ? '✅ Đã nộp tiền về cửa hàng' : '⏳ Đang giữ tiền COD trong túi'}</span>
+            </div>
+            ${payment.codStatus === 1 ? `
+              <button class="primary-btn" style="padding:4px 10px;font-size:11px;" onclick="submitCod(${order.orderId})">
+                Bước 5: Gửi lại tiền shop
+              </button>
+            ` : ''}
+          </div>
+        ` : ''}
+
         <div style="display:flex;justify-content:space-between;align-items:center;font-size:12px;color:var(--slate-500);border-top:1px dashed var(--slate-200);padding-top:8px;">
-          <span>Thời gian: ${fmtDateTime(shipping.deliveredAt || shipping.failedAt)}</span>
+          <button type="button" class="secondary-btn" style="padding:3px 8px;font-size:11px;" onclick="viewOrderTrackingLogs(${order.orderId})">
+            📜 Xem lịch sử hành trình
+          </button>
           <span style="font-weight:700;color:var(--slate-800);">${money(order.finalAmount || order.totalAmount)}</span>
         </div>
       </div>
@@ -397,11 +446,13 @@ function renderHistoryOrders(orders, container) {
   }).join('');
 }
 
+// ── 3. VÍ COD CỦA SHIPPER (ĐỒNG NHẤT GIỮA CÁC MÁY TÍNH) ─────
 async function renderWallet(container) {
-  container.innerHTML = '<div style="text-align:center;padding:40px;color:var(--slate-400);">Đang tổng hợp ví COD...</div>';
+  container.innerHTML = '<div style="text-align:center;padding:40px;color:var(--slate-400);">Đang tổng hợp ví COD của bạn...</div>';
 
   try {
-    const codList = await api(`Shipper/cod-reconciliation?shipperId=${currentShipperId}`);
+    // API /api/Shipper/cod-reconciliation với Policy ShipperAccess đã sửa
+    const codList = await api('Shipper/cod-reconciliation');
     const items = Array.isArray(codList) ? codList : [];
 
     const holdingAmount = items.filter(x => x.codStatus === 1).reduce((sum, x) => sum + (Number(x.amount) || 0), 0);
@@ -415,11 +466,22 @@ async function renderWallet(container) {
           <div>Đã nộp về shop: <b>${money(submittedAmount)}</b></div>
           <div>Tổng số đơn đã thu: <b>${items.length}</b></div>
         </div>
+        ${holdingAmount > 0 ? `
+          <div style="margin-top:14px;border-top:1px solid rgba(255,255,255,0.2);padding-top:12px;font-size:12.5px;color:rgba(255,255,255,0.9);">
+            ℹ️ Hãy bàn giao số tiền này cho thủ quỹ / quản lý cửa hàng khi kết thúc ca làm việc.
+          </div>
+        ` : ''}
       </div>
 
-      <h4 style="font-size:14px;font-weight:700;color:var(--slate-700);margin:16px 0 10px;">Chi tiết các đơn thu tiền COD:</h4>
+      <div style="display:flex;justify-content:space-between;align-items:center;margin:20px 0 10px;">
+        <h4 style="font-size:14px;font-weight:700;color:var(--slate-700);">Chi tiết các khoản thu tiền COD của bạn:</h4>
+        <button class="secondary-btn" style="padding:4px 10px;font-size:11.5px;" onclick="renderWallet(document.getElementById('tabContent'))">🔄 Làm mới</button>
+      </div>
+
       ${!items.length ? `
-        <div style="background:white;border-radius:12px;padding:30px;text-align:center;border:1px solid var(--slate-200);color:var(--slate-400);">Chưa có đơn COD nào.</div>
+        <div style="background:white;border-radius:12px;padding:30px;text-align:center;border:1px solid var(--slate-200);color:var(--slate-400);">
+          Bạn chưa có khoản thu COD nào phát sinh.
+        </div>
       ` : `
         <div style="display:flex;flex-direction:column;gap:10px;">
           ${items.map(item => `
@@ -428,14 +490,14 @@ async function renderWallet(container) {
                 <div>
                   <strong style="font-size:14px;color:var(--slate-900);">#${esc(item.orderCode)}</strong>
                   <div style="font-size:12.5px;color:var(--slate-600);margin-top:2px;">Khách: ${esc(item.receiverName)} (${esc(item.receiverPhone)})</div>
-                  <div style="font-size:11.5px;color:var(--slate-400);margin-top:2px;">Thu: ${fmtDateTime(item.codCollectedAt)}</div>
+                  <div style="font-size:11.5px;color:var(--slate-400);margin-top:2px;">Thu lúc: ${fmtDateTime(item.codCollectedAt)}</div>
                 </div>
                 <div style="text-align:right;">
                   <strong style="font-size:15px;color:#b45309;">${money(item.amount)}</strong>
                   <div style="margin-top:4px;">
                     ${item.codStatus === 2 
-                      ? `<span class="badge" style="background:#ecfdf5;color:#047857;font-weight:700;font-size:11px;padding:2px 6px;border-radius:4px;">Đã nộp shop</span>` 
-                      : `<span class="badge" style="background:#fef3c7;color:#b45309;font-weight:700;font-size:11px;padding:2px 6px;border-radius:4px;">Đang giữ tiền</span>`}
+                      ? `<span class="badge" style="background:#ecfdf5;color:#047857;font-weight:700;font-size:11px;padding:2px 6px;border-radius:4px;">✅ Đã nộp shop</span>` 
+                      : `<button class="primary-btn" style="padding:3px 8px;font-size:11px;" onclick="submitCod(${item.orderId})">Bước 5: Nộp shop</button>`}
                   </div>
                 </div>
               </div>
@@ -445,30 +507,153 @@ async function renderWallet(container) {
       `}
     `;
   } catch (err) {
-    container.innerHTML = `<div style="text-align:center;padding:30px;color:var(--danger);">Không thể nạp ví COD: ${esc(err.message)}</div>`;
+    container.innerHTML = `
+      <div style="background:white;border-radius:12px;padding:30px;text-align:center;border:1px solid var(--slate-200);">
+        <div style="font-size:32px;margin-bottom:8px;">⚠️</div>
+        <div style="color:var(--danger);font-weight:700;">Không thể tải ví COD: ${esc(err.message)}</div>
+        <p style="font-size:12px;color:var(--slate-500);margin-top:6px;">Vui lòng kiểm tra lại phiên đăng nhập hoặc nhấn nút thử lại.</p>
+        <button class="primary-btn" style="margin-top:12px;padding:6px 14px;" onclick="renderWallet(document.getElementById('tabContent'))">Thử lại</button>
+      </div>
+    `;
   }
 }
 
-// ── 3. DELIVERY ACTIONS ─────────────────────────────────────
-async function startDelivery(orderId) {
+// ── 4. WORKFLOW ACTIONS (BƯỚC 1 ĐẾN BƯỚC 5) ───────────────────
+// Bước 1: Nhận đơn
+async function acceptOrder(orderId) {
   try {
-    await api(`Shipper/orders/${orderId}/start-delivery?shipperId=${currentShipperId}`, { method: 'POST' });
-    toast('Đã bắt đầu hành trình giao đơn hàng!', 'success');
+    await api(`Shipper/orders/${orderId}/accept-order`, { method: 'POST' });
+    toast('Đã xác nhận tiếp nhận đơn hàng!', 'success');
     loadOrders();
   } catch (err) {
     toast(`Lỗi: ${err.message}`, 'error');
   }
 }
 
-async function completeDelivery(orderId, codAmount) {
-  const promptText = codAmount > 0 
-    ? `Xác nhận đã giao hàng thành công và ĐÃ THU ${money(codAmount)} tiền mặt COD từ khách hàng?` 
-    : 'Xác nhận kiện hàng đã được giao thành công tới khách hàng?';
+// Bước 2: Đến cửa hàng nhận hàng
+async function pickupOrder(orderId) {
+  try {
+    await api(`Shipper/orders/${orderId}/pickup`, { method: 'POST' });
+    toast('Đã xác nhận lấy hàng tại kho/cửa hàng!', 'success');
+    loadOrders();
+  } catch (err) {
+    toast(`Lỗi: ${err.message}`, 'error');
+  }
+}
 
-  if (!confirm(promptText)) return;
+// Bước 3: Giao hàng cho KH
+async function startDelivery(orderId) {
+  try {
+    await api(`Shipper/orders/${orderId}/start-delivery`, { method: 'POST' });
+    toast('Đã bắt đầu lộ trình giao hàng tới khách!', 'success');
+    loadOrders();
+  } catch (err) {
+    toast(`Lỗi: ${err.message}`, 'error');
+  }
+}
+
+// Bước 4: Nhận tiền / Giao thành công (Kèm tải ảnh minh chứng giao hàng từ máy tính)
+let completeModalState = { orderId: null, codAmount: 0, uploadedProofUrl: null };
+
+function openCompleteDeliveryModal(orderId, codAmount) {
+  completeModalState = { orderId, codAmount, uploadedProofUrl: null };
+
+  const modal = document.createElement('div');
+  modal.id = 'completeModalOverlay';
+  modal.className = 'modal-overlay';
+  modal.innerHTML = `
+    <div class="modal-content" style="max-width:440px;">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px;">
+        <h3 style="font-size:16px;font-weight:800;color:var(--slate-900);">Bước 4: Xác nhận Giao Thành Công</h3>
+        <button type="button" onclick="document.getElementById('completeModalOverlay').remove()" style="background:none;border:none;font-size:18px;cursor:pointer;color:var(--slate-400);">✕</button>
+      </div>
+
+      <div style="background:${codAmount > 0 ? '#fffbeb' : '#ecfdf5'};border:1px solid ${codAmount > 0 ? '#fde68a' : '#a7f3d0'};border-radius:10px;padding:12px;margin-bottom:14px;">
+        ${codAmount > 0 ? `
+          <div style="font-size:13px;color:#92400e;font-weight:700;">💵 CẦN THU TIỀN MẶT (COD):</div>
+          <div style="font-size:20px;font-weight:800;color:#b45309;margin-top:2px;">${money(codAmount)}</div>
+          <div style="font-size:11.5px;color:#92400e;margin-top:2px;">Bạn có chắc chắn đã nhận đủ số tiền mặt này từ khách hàng?</div>
+        ` : `
+          <div style="font-size:13px;color:#047857;font-weight:700;">💳 Đơn đã thanh toán trực tuyến: 0 đ</div>
+          <div style="font-size:11.5px;color:#065f46;margin-top:2px;">Kiện hàng đã giao thành công tới tay người nhận.</div>
+        `}
+      </div>
+
+      <!-- Tải ảnh minh chứng giao hàng trực tiếp từ máy tính/điện thoại -->
+      <label style="display:block;font-size:12px;font-weight:700;color:var(--slate-700);margin-bottom:6px;">Ảnh chụp minh chứng giao hàng (Tùy chọn):</label>
+      <div class="photo-upload-box" onclick="document.getElementById('proofFileInput').click()">
+        <input type="file" id="proofFileInput" accept="image/*" style="display:none;" onchange="handleProofImageSelected(this)">
+        <div style="font-size:24px;">📸</div>
+        <div style="font-size:12.5px;font-weight:600;color:var(--primary);margin-top:4px;">Nhấn để chọn ảnh từ máy tính hoặc chụp ảnh</div>
+        <div style="font-size:11px;color:var(--slate-400);">Hỗ trợ JPG, PNG, WEBP (Tối đa 10MB)</div>
+        <img id="proofPreviewImg" class="photo-preview-img" alt="Xem trước minh chứng">
+      </div>
+
+      <div style="margin-bottom:14px;">
+        <label style="display:block;font-size:12px;font-weight:700;color:var(--slate-700);margin-bottom:4px;">Ghi chú bàn giao (nếu có):</label>
+        <input type="text" id="deliveryNoteInput" class="input-control" style="width:100%;padding:8px 12px;border:1px solid var(--slate-300);border-radius:8px;" placeholder="VD: Gửi bảo vệ / Khách nhận trực tiếp...">
+      </div>
+
+      <div style="display:flex;gap:8px;">
+        <button type="button" class="secondary-btn" style="flex:1;padding:10px;" onclick="document.getElementById('completeModalOverlay').remove()">Hủy bỏ</button>
+        <button type="button" class="btn-action btn-success" style="flex:2;padding:10px;justify-content:center;" onclick="submitCompleteDelivery()">
+          ✓ Xác nhận hoàn thành
+        </button>
+      </div>
+    </div>
+  `;
+  document.body.appendChild(modal);
+}
+
+async function handleProofImageSelected(input) {
+  const file = input.files?.[0];
+  if (!file) return;
+
+  const preview = document.getElementById('proofPreviewImg');
+  if (preview) {
+    const reader = new FileReader();
+    reader.onload = e => {
+      preview.src = e.target.result;
+      preview.style.display = 'block';
+    };
+    reader.readAsDataURL(file);
+  }
+
+  // Tải lên server qua API UploadController
+  const formData = new FormData();
+  formData.append('file', file);
+  formData.append('folder', 'proofs');
 
   try {
-    await api(`Shipper/orders/${orderId}/complete-delivery?shipperId=${currentShipperId}`, { method: 'POST' });
+    toast('Đang tải ảnh minh chứng lên máy chủ...', 'info');
+    const token = localStorage.getItem('toyStoreToken') || localStorage.getItem('token');
+    const res = await fetch('/api/Upload/image', {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${token}` },
+      body: formData
+    });
+    if (!res.ok) throw new Error('Không thể tải ảnh lên');
+    const data = await res.json();
+    completeModalState.uploadedProofUrl = data.url;
+    toast('Đã tải ảnh minh chứng thành công!', 'success');
+  } catch (err) {
+    toast(`Tải ảnh thất bại: ${err.message}`, 'error');
+  }
+}
+
+async function submitCompleteDelivery() {
+  const { orderId } = completeModalState;
+  const note = document.getElementById('deliveryNoteInput')?.value || '';
+  const fullNote = completeModalState.uploadedProofUrl 
+    ? `${note} (Ảnh minh chứng: ${completeModalState.uploadedProofUrl})`.trim()
+    : note;
+
+  try {
+    await api(`Shipper/orders/${orderId}/complete-delivery`, {
+      method: 'POST',
+      body: JSON.stringify({ note: fullNote })
+    });
+    document.getElementById('completeModalOverlay')?.remove();
     toast('Chúc mừng bạn đã hoàn thành giao đơn hàng!', 'success');
     loadOrders();
   } catch (err) {
@@ -476,6 +661,24 @@ async function completeDelivery(orderId, codAmount) {
   }
 }
 
+// Bước 5: Gửi lại tiền cho cửa hàng
+async function submitCod(orderId) {
+  if (!confirm('Xác nhận bạn đã đối soát và nộp lại toàn bộ số tiền COD của đơn này cho cửa hàng/thủ quỹ?')) return;
+
+  try {
+    await api(`Shipper/orders/${orderId}/submit-cod`, {
+      method: 'POST',
+      body: JSON.stringify({ note: 'Shipper đã nộp lại tiền mặt COD về cửa hàng' })
+    });
+    toast('Đã nộp tiền COD về cửa hàng thành công!', 'success');
+    loadOrders();
+    if (activeTab === 'wallet') renderWallet(document.getElementById('tabContent'));
+  } catch (err) {
+    toast(`Lỗi: ${err.message}`, 'error');
+  }
+}
+
+// Báo cáo giao hàng thất bại
 let activeFailOrderId = null;
 function openFailModal(orderId) {
   activeFailOrderId = orderId;
@@ -488,7 +691,7 @@ function openFailModal(orderId) {
         <h3 style="font-size:16px;font-weight:800;color:var(--slate-900);">Báo cáo Giao hàng thất bại</h3>
         <button type="button" onclick="document.getElementById('failModalOverlay').remove()" style="background:none;border:none;font-size:18px;cursor:pointer;color:var(--slate-400);">✕</button>
       </div>
-      <p style="font-size:13px;color:var(--slate-500);margin-bottom:12px;">Vui lòng chọn lý do chính xác để bộ phận điều phối hỗ trợ xử lý:</p>
+      <p style="font-size:13px;color:var(--slate-500);margin-bottom:12px;">Vui lòng chọn lý do chính xác để điều phối hỗ trợ xử lý:</p>
 
       <div id="failReasonsList">
         <button class="reason-btn selected" onclick="selectFailReason(this, 'Không liên lạc được (Thuê bao / Không nghe máy)')">
@@ -500,125 +703,160 @@ function openFailModal(orderId) {
         <button class="reason-btn" onclick="selectFailReason(this, 'Khách từ chối nhận hàng (Bom hàng / Đổi ý)')">
           <span>🚫</span> <span>Khách từ chối nhận hàng</span>
         </button>
-        <button class="reason-btn" onclick="selectFailReason(this, 'Sai địa chỉ / Không tìm thấy số nhà')">
-          <span>📍</span> <span>Sai địa chỉ giao hàng</span>
-        </button>
-        <button class="reason-btn" onclick="selectFailReason(this, 'Khác')">
-          <span>✍️</span> <span>Lý do khác...</span>
+        <button class="reason-btn" onclick="selectFailReason(this, 'Sai địa chỉ hoặc khu vực không thể tiếp cận')">
+          <span>📍</span> <span>Sai thông tin địa chỉ giao</span>
         </button>
       </div>
 
-      <div style="margin:12px 0;">
-        <label style="display:block;font-size:12.5px;font-weight:700;color:var(--slate-700);margin-bottom:4px;">Ghi chú chi tiết (nếu có):</label>
-        <input type="text" id="failNoteInput" placeholder="Ví dụ: Đã gọi 3 cuộc lúc 10h15 không nghe máy..." style="width:100%;padding:10px 12px;border:1px solid var(--slate-300);border-radius:8px;font-size:13px;">
+      <div style="margin-top:12px;">
+        <label style="display:block;font-size:12px;font-weight:700;color:var(--slate-700);margin-bottom:4px;">Ghi chú chi tiết thêm:</label>
+        <input type="text" id="failNoteInput" class="input-control" style="width:100%;padding:8px 12px;border:1px solid var(--slate-300);border-radius:8px;" placeholder="Nhập ghi chú thêm...">
       </div>
 
-      <div style="display:flex;gap:10px;margin-top:16px;">
-        <button type="button" onclick="document.getElementById('failModalOverlay').remove()" style="flex:1;padding:12px;background:var(--slate-100);color:var(--slate-700);border:none;border-radius:10px;font-weight:700;cursor:pointer;">Hủy</button>
-        <button type="button" onclick="submitFailDelivery()" style="flex:2;padding:12px;background:var(--danger);color:white;border:none;border-radius:10px;font-weight:700;cursor:pointer;">Xác nhận báo thất bại</button>
+      <div style="display:flex;gap:8px;margin-top:16px;">
+        <button type="button" class="secondary-btn" style="flex:1;padding:10px;" onclick="document.getElementById('failModalOverlay').remove()">Hủy</button>
+        <button type="button" class="btn-action btn-fail" style="flex:2;padding:10px;justify-content:center;" onclick="submitFailReport()">Gửi báo cáo</button>
       </div>
     </div>
   `;
   document.body.appendChild(modal);
 }
 
-let selectedReasonText = 'Không liên lạc được (Thuê bao / Không nghe máy)';
+let selectedFailReasonText = 'Không liên lạc được (Thuê bao / Không nghe máy)';
 function selectFailReason(btn, text) {
   document.querySelectorAll('.reason-btn').forEach(b => b.classList.remove('selected'));
   btn.classList.add('selected');
-  selectedReasonText = text;
+  selectedFailReasonText = text;
 }
 
-async function submitFailDelivery() {
+async function submitFailReport() {
   if (!activeFailOrderId) return;
   const note = document.getElementById('failNoteInput')?.value || '';
+
   try {
-    await api(`Shipper/orders/${activeFailOrderId}/fail-delivery?shipperId=${currentShipperId}`, {
+    await api(`Shipper/orders/${activeFailOrderId}/fail-delivery`, {
       method: 'POST',
       body: JSON.stringify({
-        failReason: selectedReasonText,
-        note
+        failReason: selectedFailReasonText,
+        note: note
       })
     });
-    toast('Đã ghi nhận báo cáo giao hàng thất bại.', 'info');
     document.getElementById('failModalOverlay')?.remove();
+    toast('Đã ghi nhận báo cáo giao hàng thất bại.', 'info');
     loadOrders();
   } catch (err) {
     toast(`Lỗi: ${err.message}`, 'error');
   }
 }
 
-// ── 4. REALTIME SIGNALR CONNECTION ──────────────────────────
-async function initSignalR() {
-  if (typeof signalR === 'undefined' || trackingHubConnection) return;
+// ── 5. TIMELINE / AUDIT LOG VIEWER ──────────────────────────
+async function viewOrderTrackingLogs(orderId) {
+  const modal = document.createElement('div');
+  modal.id = 'trackingModalOverlay';
+  modal.className = 'modal-overlay';
+  modal.innerHTML = `
+    <div class="modal-content" style="max-width:500px;">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;">
+        <h3 style="font-size:16px;font-weight:800;color:var(--slate-900);">Lịch sử hành trình đơn #${orderId}</h3>
+        <button type="button" onclick="document.getElementById('trackingModalOverlay').remove()" style="background:none;border:none;font-size:18px;cursor:pointer;color:var(--slate-400);">✕</button>
+      </div>
+      <div id="trackingLogsContent" style="max-height:400px;overflow-y:auto;padding-right:4px;">
+        <div style="text-align:center;padding:30px;color:var(--slate-400);">Đang tải lịch sử...</div>
+      </div>
+    </div>
+  `;
+  document.body.appendChild(modal);
+
   try {
-    const token = localStorage.getItem('toyStoreToken') || localStorage.getItem('token') || sessionStorage.getItem('token');
-    trackingHubConnection = new signalR.HubConnectionBuilder()
-      .withUrl('/hubs/order-tracking' + (token ? `?access_token=${encodeURIComponent(token)}` : ''))
-      .withAutomaticReconnect()
-      .build();
+    const logs = await api(`Shipper/orders/${orderId}/tracking-logs`);
+    const container = document.getElementById('trackingLogsContent');
+    if (!container) return;
 
-    trackingHubConnection.on('ReceiveNewOrderAssignment', data => {
-      console.log('[SignalR Shipper] ReceiveNewOrderAssignment:', data);
-      addShipperNotification({
-        id: `assignment-${data.orderId || data.deliveryBatchCode || Date.now()}`,
-        title: 'Đơn hàng đã được phân công',
-        message: data.message || 'Bạn vừa được gán đơn giao hàng!',
-        type: 'assignment'
-      });
-      loadOrders();
-    });
+    if (!Array.isArray(logs) || !logs.length) {
+      container.innerHTML = '<div style="text-align:center;padding:30px;color:var(--slate-400);">Chưa có bản ghi lịch sử nào cho đơn này.</div>';
+      return;
+    }
 
-    trackingHubConnection.on('ReceiveNewOrderCreated', data => {
-      console.log('[SignalR Shipper] ReceiveNewOrderCreated:', data);
-      const orderCode = data.orderCode || data.orderId || '';
-      addShipperNotification({
-        id: `new-order-${data.orderId || orderCode || Date.now()}`,
-        title: 'Có đơn hàng mới chờ điều phối',
-        message: data.message || `Đơn #${orderCode} vừa phát sinh.`,
-        type: 'new',
-        createdAt: data.createdAt
-      });
-    });
-
-    trackingHubConnection.onreconnected(async () => {
-      try {
-        await trackingHubConnection.invoke('JoinShipper', currentShipperId);
-        await trackingHubConnection.invoke('JoinNewOrderNotifications');
-        loadOrders();
-        toast('Đã kết nối lại kênh thông báo đơn hàng.', 'success');
-      } catch (e) {
-        console.warn('[SignalR Shipper] Không thể tham gia lại nhóm thông báo:', e.message);
-      }
-    });
-
-    await trackingHubConnection.start();
-    await trackingHubConnection.invoke('JoinShipper', currentShipperId);
-    await trackingHubConnection.invoke('JoinNewOrderNotifications');
-    console.log('[SignalR Shipper] Đã kết nối kênh phân chuyến thành công.');
-  } catch (e) {
-    console.warn('[SignalR Shipper] Lỗi kết nối SignalR:', e.message);
+    container.innerHTML = `
+      <div class="timeline-list">
+        ${logs.map(log => `
+          <div class="timeline-item">
+            <div class="timeline-node"></div>
+            <div class="timeline-action">${esc(log.action)} → <span style="color:var(--primary);">${esc(log.newStatus)}</span></div>
+            <div class="timeline-performer">
+              👤 <b>${esc(log.performedByName || 'Hệ thống')}</b> (${esc(log.performedByRole || 'System')}) · 🕒 ${fmtDateTime(log.createdAt)}
+            </div>
+            ${log.note ? `<div class="timeline-note">${esc(log.note)}</div>` : ''}
+          </div>
+        `).join('')}
+      </div>
+    `;
+  } catch (err) {
+    const container = document.getElementById('trackingLogsContent');
+    if (container) container.innerHTML = `<div style="color:var(--danger);padding:20px;">Lỗi tải timeline: ${esc(err.message)}</div>`;
   }
 }
 
-document.getElementById('shipperLogoutBtn')?.addEventListener('click', () => {
-  localStorage.removeItem('toyStoreToken');
-  localStorage.removeItem('toyStoreUser');
-  localStorage.removeItem('toyStoreShipperId');
-  location.replace('/customer.html');
+// ── 6. REALTIME NOTIFICATIONS (SIGNALR) ──────────────────────
+function initSignalR() {
+  if (typeof signalR === 'undefined') return;
+
+  const token = localStorage.getItem('toyStoreToken') || localStorage.getItem('token');
+  trackingHubConnection = new signalR.HubConnectionBuilder()
+    .withUrl('/hubs/order-tracking', {
+      accessTokenFactory: () => token
+    })
+    .withAutomaticReconnect()
+    .build();
+
+  trackingHubConnection.on('ReceiveNewOrderAssignment', data => {
+    addShipperNotification({
+      id: `assign-${data.orderId || Date.now()}`,
+      title: 'Đơn hàng mới được phân công',
+      message: data.message || `Đơn hàng #${data.orderId} đã được gán cho bạn.`,
+      type: 'assignment'
+    });
+    loadOrders();
+  });
+
+  trackingHubConnection.on('ReceiveOrderTrackingUpdate', data => {
+    loadOrders();
+  });
+
+  trackingHubConnection.start()
+    .then(() => {
+      console.log('[SignalR Shipper] Kết nối thành công.');
+      if (currentShipperId) {
+        trackingHubConnection.invoke('JoinShipper', currentShipperId).catch(console.warn);
+      }
+    })
+    .catch(err => console.warn('[SignalR Shipper] Không thể kết nối:', err));
+}
+
+// ── 7. INITIALIZATION ───────────────────────────────────────
+document.addEventListener('DOMContentLoaded', () => {
+  document.getElementById('shipperLogoutBtn')?.addEventListener('click', () => {
+    localStorage.removeItem('toyStoreToken');
+    localStorage.removeItem('toyStoreUser');
+    localStorage.removeItem('toyStoreShipperId');
+    location.replace('/customer.html');
+  });
+
+  document.getElementById('shipperNotificationBtn')?.addEventListener('click', e => {
+    e.stopPropagation();
+    toggleShipperNotificationPanel();
+  });
+
+  document.getElementById('clearShipperNotificationsBtn')?.addEventListener('click', e => {
+    e.stopPropagation();
+    clearShipperNotifications();
+  });
+
+  document.addEventListener('click', e => {
+    if (!e.target.closest('.shipper-notification-menu')) {
+      closeShipperNotificationPanel();
+    }
+  });
+
+  loadShipperProfile();
 });
-
-document.getElementById('shipperNotificationBtn')?.addEventListener('click', () => {
-  toggleShipperNotificationPanel();
-  if (typeof Notification !== 'undefined' && Notification.permission === 'default') {
-    Notification.requestPermission().catch(() => {});
-  }
-});
-
-document.getElementById('clearShipperNotificationsBtn')?.addEventListener('click', clearShipperNotifications);
-
-document.addEventListener('click', event => {
-  if (!event.target.closest('.shipper-notification-menu')) closeShipperNotificationPanel();
-});
-
-window.onload = loadShipperProfiles;

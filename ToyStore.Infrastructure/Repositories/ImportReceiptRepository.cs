@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Text;
@@ -23,6 +23,7 @@ namespace ToyStoreManagement.Infrastructure.Repositories
         public async Task<IEnumerable<ImportReceipt>> GetAllWithDetailsAsync()
         {
             return await _dbSet
+                .AsNoTracking()
                 .Include(x => x.Supplier)
                 .Include(x => x.OrderedByUser)
                 .Include(x => x.ImportReceiptDetails)

@@ -197,6 +197,36 @@ namespace ToyStoreManagement.Infrastructure.Data
                         );
                     END
                 ");
+
+                // 7. Bổ sung bảng OrderTrackingLogs (Lưu lịch sử Audit/Workflow luồng vận chuyển)
+                await context.Database.ExecuteSqlRawAsync(@"
+                    IF NOT EXISTS (SELECT 1 FROM sys.tables WHERE name = 'OrderTrackingLogs')
+                    BEGIN
+                        CREATE TABLE [dbo].[OrderTrackingLogs] (
+                            [TrackingLogId] int IDENTITY(1,1) NOT NULL PRIMARY KEY,
+                            [OrderId] int NOT NULL,
+                            [ShippingId] int NULL,
+                            [Action] nvarchar(100) NOT NULL,
+                            [PreviousStatus] nvarchar(100) NULL,
+                            [NewStatus] nvarchar(100) NOT NULL,
+                            [PerformedByUserId] nvarchar(450) NULL,
+                            [PerformedByName] nvarchar(150) NOT NULL,
+                            [PerformedByRole] nvarchar(50) NOT NULL,
+                            [Note] nvarchar(500) NULL,
+                            [CreatedAt] datetime2 NOT NULL DEFAULT GETUTCDATE(),
+                            CONSTRAINT [FK_OrderTrackingLogs_Orders_OrderId] FOREIGN KEY ([OrderId]) 
+                                REFERENCES [dbo].[Orders]([OrderId]) ON DELETE CASCADE
+                        );
+                    END
+
+                    -- Tự động liên kết UserId của tài khoản shipper@toystore.vn với Shipper trong bảng Shippers
+                    IF EXISTS (SELECT 1 FROM [dbo].[AspNetUsers] WHERE [Email] = 'shipper@toystore.vn')
+                    BEGIN
+                        DECLARE @ShipperUserId nvarchar(450) = (SELECT TOP 1 [Id] FROM [dbo].[AspNetUsers] WHERE [Email] = 'shipper@toystore.vn');
+                        UPDATE [dbo].[Shippers] SET [UserId] = @ShipperUserId 
+                        WHERE [UserId] IS NULL AND ([PhoneNumber] = '0909123456' OR [FullName] LIKE N'%Nguyễn Văn Giao%');
+                    END
+                ");
             }
             catch (Exception ex)
             {
