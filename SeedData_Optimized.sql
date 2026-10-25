@@ -52,6 +52,21 @@ BEGIN
 END
 GO
 
+IF NOT EXISTS (SELECT 1 FROM sys.tables WHERE name = 'CungUng')
+BEGIN
+    CREATE TABLE [dbo].[CungUng] (
+        [Id] int IDENTITY(1,1) NOT NULL PRIMARY KEY,
+        [ProductId] int NOT NULL,
+        [SupplierId] int NOT NULL,
+        [GiaNhapThamKhao] decimal(18,2) NULL,
+        [MaHangNCC] nvarchar(50) NULL,
+        [IsDefault] bit NOT NULL DEFAULT 0,
+        [CreatedAt] datetime2 NOT NULL DEFAULT GETUTCDATE(),
+        [UpdatedAt] datetime2 NULL
+    );
+END
+GO
+
 IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID(N'[dbo].[Shippings]') AND name = 'DeliveryBatchCode')
     ALTER TABLE [dbo].[Shippings] ADD [DeliveryBatchCode] nvarchar(50) NULL;
 IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID(N'[dbo].[Shippings]') AND name = 'EstimatedDeliveryAt')
@@ -87,6 +102,7 @@ GO
 -- =============================================================
 -- BƯỚC 2: DỌN DẸP DỮ LIỆU CŨ AN TOÀN
 -- =============================================================
+IF OBJECT_ID(N'[dbo].[CungUng]', N'U') IS NOT NULL DELETE FROM [dbo].[CungUng];
 IF OBJECT_ID(N'[dbo].[OrderTrackingLogs]', N'U') IS NOT NULL DELETE FROM [dbo].[OrderTrackingLogs];
 IF OBJECT_ID(N'[dbo].[ProductReviews]', N'U') IS NOT NULL DELETE FROM [dbo].[ProductReviews];
 IF OBJECT_ID(N'[dbo].[VoucherUsages]', N'U') IS NOT NULL DELETE FROM [dbo].[VoucherUsages];
@@ -319,6 +335,31 @@ INSERT INTO [dbo].[ProductVariantAttributes] ([VariantAttributeId], [VariantId],
 (14, 14, N'Màu sắc', N'Xanh dương', 1),
 (15, 15, N'Màu hoa', N'Vàng hướng dương', 1);
 SET IDENTITY_INSERT [dbo].[ProductVariantAttributes] OFF;
+GO
+
+SET IDENTITY_INSERT [dbo].[CungUng] ON;
+INSERT INTO [dbo].[CungUng] ([Id], [ProductId], [SupplierId], [GiaNhapThamKhao], [MaHangNCC], [IsDefault], [CreatedAt], [UpdatedAt]) VALUES
+(1, 1, 1, 590000.00, 'NCC1-LEG-01', 1, GETUTCDATE(), NULL),
+(2, 1, 4, 595000.00, 'TC-LEG-CITY', 0, GETUTCDATE(), NULL),
+(3, 2, 1, 630000.00, 'NCC1-NINJA-02', 1, GETUTCDATE(), NULL),
+(4, 2, 2, 640000.00, 'AC-NINJA-02', 0, GETUTCDATE(), NULL),
+(5, 3, 2, 320000.00, 'AC-BARBIE-03', 1, GETUTCDATE(), NULL),
+(6, 3, 3, 325000.00, 'TT-BAR-03', 0, GETUTCDATE(), NULL),
+(7, 4, 2, 1950000.00, 'AC-DREAM-04', 1, GETUTCDATE(), NULL),
+(8, 5, 3, 250000.00, 'TT-HW-10P', 1, GETUTCDATE(), NULL),
+(9, 5, 4, 255000.00, 'TC-HW-05', 0, GETUTCDATE(), NULL),
+(10, 6, 3, 550000.00, 'TT-HW-LOOP', 1, GETUTCDATE(), NULL),
+(11, 7, 1, 180000.00, 'NCC1-FP-SHAPE', 1, GETUTCDATE(), NULL),
+(12, 7, 3, 185000.00, 'TT-FP-SHAPE', 0, GETUTCDATE(), NULL),
+(13, 8, 2, 110000.00, 'AC-FP-TOWER', 1, GETUTCDATE(), NULL),
+(14, 9, 4, 360000.00, 'TC-GND-AER', 1, GETUTCDATE(), NULL),
+(15, 9, 1, 365000.00, 'NCC1-GND-09', 0, GETUTCDATE(), NULL),
+(16, 10, 4, 410000.00, 'TC-GND-BARB', 1, GETUTCDATE(), NULL),
+(17, 11, 3, 480000.00, 'TT-RC-CRAWL', 1, GETUTCDATE(), NULL),
+(18, 11, 2, 490000.00, 'AC-RC-CRAWL', 0, GETUTCDATE(), NULL),
+(19, 12, 1, 270000.00, 'NCC1-LEG-FLW', 1, GETUTCDATE(), NULL),
+(20, 12, 4, 275000.00, 'TC-LEG-FLW', 0, GETUTCDATE(), NULL);
+SET IDENTITY_INSERT [dbo].[CungUng] OFF;
 GO
 
 SET IDENTITY_INSERT [dbo].[Inventories] ON;

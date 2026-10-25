@@ -83,6 +83,8 @@ namespace ToyStoreManagement.Infrastructure.Data
 
         public DbSet<OrderTrackingLog> OrderTrackingLogs { get; set; }
 
+        public DbSet<CungUng> CungUngs { get; set; }
+
         protected override void OnModelCreating(ModelBuilder modelBuilder)
         {
             base.OnModelCreating(modelBuilder);
@@ -107,6 +109,23 @@ namespace ToyStoreManagement.Infrastructure.Data
             {
                 entity.HasKey(x => x.TrackingLogId);
                 entity.ToTable("OrderTrackingLogs");
+            });
+
+            modelBuilder.Entity<CungUng>(entity =>
+            {
+                entity.ToTable("CungUng");
+                entity.HasKey(x => x.Id);
+                entity.HasIndex(x => new { x.ProductId, x.SupplierId }).IsUnique();
+
+                entity.HasOne(x => x.Product)
+                    .WithMany(x => x.CungUngs)
+                    .HasForeignKey(x => x.ProductId)
+                    .OnDelete(DeleteBehavior.Cascade);
+
+                entity.HasOne(x => x.Supplier)
+                    .WithMany(x => x.CungUngs)
+                    .HasForeignKey(x => x.SupplierId)
+                    .OnDelete(DeleteBehavior.Cascade);
             });
 
             modelBuilder.ApplyConfigurationsFromAssembly(

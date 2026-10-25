@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Text;
@@ -49,5 +49,10 @@ namespace ToyStoreManagement.Application.DTOs.Product
 
         public List<ProductVariantDto> ProductVariants { get; set; }
             = new List<ProductVariantDto>();
+
+        // Danh sách nhà cung cấp liên kết (Quan hệ Nhiều - Nhiều qua bảng CungUng)
+        public List<CungUngDto> Suppliers { get; set; } = new List<CungUngDto>();
+
+        public List<int> SupplierIds { get; set; } = new List<int>();
     }
 }

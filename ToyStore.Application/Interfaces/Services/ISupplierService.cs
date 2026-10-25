@@ -1,10 +1,11 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
 
 using ToyStoreManagement.Application.DTOs.Import;
+using ToyStoreManagement.Application.DTOs.Product;
 
 
 namespace ToyStoreManagement.Application.Interfaces.Services
@@ -22,5 +23,7 @@ namespace ToyStoreManagement.Application.Interfaces.Services
             UpdateSupplierDto dto);
 
         Task<bool> DeleteAsync(int id);
+
+        Task<IEnumerable<CungUngDto>> GetSuppliedProductsAsync(int id);
     }
 }

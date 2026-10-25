@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Text;
@@ -11,6 +11,7 @@ namespace ToyStoreManagement.Domain.Entities
         public Supplier()
         {
             ImportReceipts = new HashSet<ImportReceipt>();
+            CungUngs = new HashSet<CungUng>();
         }
 
         public int SupplierId { get; set; }
@@ -33,5 +34,7 @@ namespace ToyStoreManagement.Domain.Entities
 
         // Navigation
         public virtual ICollection<ImportReceipt> ImportReceipts { get; set; }
+
+        public virtual ICollection<CungUng> CungUngs { get; set; }
     }
 }

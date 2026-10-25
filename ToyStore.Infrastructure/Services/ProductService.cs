@@ -116,13 +116,47 @@ namespace ToyStoreManagement.Infrastructure.Services
                     "Có SKU biến thể đã tồn tại trong hệ thống.");
             }
 
+            // Chuẩn hóa danh sách nhà cung cấp từ DTO
+            var supplierItems = new List<CreateUpdateCungUngItemDto>();
+            if (dto.Suppliers != null && dto.Suppliers.Count > 0)
+            {
+                supplierItems.AddRange(dto.Suppliers);
+            }
+            else if (dto.SupplierIds != null && dto.SupplierIds.Count > 0)
+            {
+                foreach (var sId in dto.SupplierIds.Distinct())
+                {
+                    supplierItems.Add(new CreateUpdateCungUngItemDto
+                    {
+                        SupplierId = sId,
+                        IsDefault = sId == (dto.SupplierId ?? dto.SupplierIds.First())
+                    });
+                }
+            }
+            else if (dto.SupplierId.HasValue && dto.SupplierId.Value > 0)
+            {
+                supplierItems.Add(new CreateUpdateCungUngItemDto
+                {
+                    SupplierId = dto.SupplierId.Value,
+                    IsDefault = true
+                });
+            }
+
+            // Đảm bảo có ít nhất một nhà cung cấp mặc định nếu có danh sách NCC
+            if (supplierItems.Count > 0 && !supplierItems.Any(s => s.IsDefault))
+            {
+                supplierItems[0].IsDefault = true;
+            }
+
+            var defaultSupplier = supplierItems.FirstOrDefault(s => s.IsDefault) ?? supplierItems.FirstOrDefault();
+
             var product = new Product
             {
                 CategoryId = dto.CategoryId,
 
                 BrandId = dto.BrandId,
 
-                SupplierId = dto.SupplierId,
+                SupplierId = defaultSupplier?.SupplierId ?? dto.SupplierId,
 
                 Name = dto.Name,
 
@@ -156,6 +190,26 @@ namespace ToyStoreManagement.Infrastructure.Services
 
             await _unitOfWork
                 .SaveChangesAsync();
+
+            // Lưu danh sách cung ứng (CungUng)
+            if (supplierItems.Count > 0)
+            {
+                foreach (var s in supplierItems)
+                {
+                    var cungUng = new CungUng
+                    {
+                        ProductId = product.ProductId,
+                        SupplierId = s.SupplierId,
+                        GiaNhapThamKhao = s.GiaNhapThamKhao,
+                        MaHangNCC = s.MaHangNCC,
+                        IsDefault = s.IsDefault,
+                        CreatedAt = DateTime.UtcNow
+                    };
+                    await _context.CungUngs.AddAsync(cungUng);
+                }
+
+                await _unitOfWork.SaveChangesAsync();
+            }
 
             if (dto.Variants.Count > 0)
             {
@@ -220,8 +274,6 @@ namespace ToyStoreManagement.Infrastructure.Services
 
             product.BrandId = dto.BrandId;
 
-            product.SupplierId = dto.SupplierId;
-
             product.Name = dto.Name;
 
             product.Description = dto.Description;
@@ -232,6 +284,8 @@ namespace ToyStoreManagement.Infrastructure.Services
 
             product.Gender = dto.Gender;
 
+            product.Status = dto.Status;
+
             product.IsFeatured = dto.IsFeatured;
 
             product.IsNew = dto.IsNew;
@@ -239,6 +293,87 @@ namespace ToyStoreManagement.Infrastructure.Services
             product.ImageUrl = dto.ImageUrl;
 
             product.UpdatedAt = DateTime.UtcNow;
+
+            // Xử lý đồng bộ danh sách nhà cung cấp (CungUng) nếu DTO có cung cấp
+            var incomingSuppliers = new List<CreateUpdateCungUngItemDto>();
+            bool hasSupplierUpdate = false;
+
+            if (dto.Suppliers != null)
+            {
+                hasSupplierUpdate = true;
+                incomingSuppliers.AddRange(dto.Suppliers);
+            }
+            else if (dto.SupplierIds != null)
+            {
+                hasSupplierUpdate = true;
+                foreach (var sId in dto.SupplierIds.Distinct())
+                {
+                    incomingSuppliers.Add(new CreateUpdateCungUngItemDto
+                    {
+                        SupplierId = sId,
+                        IsDefault = sId == (dto.SupplierId ?? dto.SupplierIds.FirstOrDefault())
+                    });
+                }
+            }
+            else if (dto.SupplierId.HasValue)
+            {
+                hasSupplierUpdate = true;
+                incomingSuppliers.Add(new CreateUpdateCungUngItemDto
+                {
+                    SupplierId = dto.SupplierId.Value,
+                    IsDefault = true
+                });
+            }
+
+            if (hasSupplierUpdate)
+            {
+                if (incomingSuppliers.Count > 0 && !incomingSuppliers.Any(s => s.IsDefault))
+                {
+                    incomingSuppliers[0].IsDefault = true;
+                }
+
+                var defaultSupplier = incomingSuppliers.FirstOrDefault(s => s.IsDefault) ?? incomingSuppliers.FirstOrDefault();
+                product.SupplierId = defaultSupplier?.SupplierId;
+
+                var existingCungUngs = await _context.CungUngs
+                    .Where(c => c.ProductId == productId)
+                    .ToListAsync();
+
+                var incomingSupplierIds = incomingSuppliers.Select(s => s.SupplierId).ToHashSet();
+
+                // Xóa các NCC không còn trong danh sách
+                var toRemove = existingCungUngs.Where(c => !incomingSupplierIds.Contains(c.SupplierId)).ToList();
+                _context.CungUngs.RemoveRange(toRemove);
+
+                // Cập nhật hoặc thêm mới
+                foreach (var incoming in incomingSuppliers)
+                {
+                    var existing = existingCungUngs.FirstOrDefault(c => c.SupplierId == incoming.SupplierId);
+                    if (existing != null)
+                    {
+                        existing.IsDefault = incoming.IsDefault;
+                        if (incoming.GiaNhapThamKhao.HasValue) existing.GiaNhapThamKhao = incoming.GiaNhapThamKhao;
+                        if (!string.IsNullOrWhiteSpace(incoming.MaHangNCC)) existing.MaHangNCC = incoming.MaHangNCC;
+                        existing.UpdatedAt = DateTime.UtcNow;
+                    }
+                    else
+                    {
+                        await _context.CungUngs.AddAsync(new CungUng
+                        {
+                            ProductId = productId,
+                            SupplierId = incoming.SupplierId,
+                            GiaNhapThamKhao = incoming.GiaNhapThamKhao,
+                            MaHangNCC = incoming.MaHangNCC,
+                            IsDefault = incoming.IsDefault,
+                            CreatedAt = DateTime.UtcNow
+                        });
+                    }
+                }
+            }
+            else if (dto.SupplierId.HasValue)
+            {
+                product.SupplierId = dto.SupplierId.Value;
+            }
 
             _productRepository.Update(product);
 
@@ -675,6 +810,26 @@ namespace ToyStoreManagement.Infrastructure.Services
             Product product,
             IReadOnlyDictionary<int, PromotionPrice> promotionPrices)
         {
+            var cungUngDtos = product.CungUngs?
+                .Select(c => new CungUngDto
+                {
+                    Id = c.Id,
+                    ProductId = c.ProductId,
+                    SupplierId = c.SupplierId,
+                    SupplierName = c.Supplier?.Name,
+                    SupplierPhone = c.Supplier?.Phone,
+                    GiaNhapThamKhao = c.GiaNhapThamKhao,
+                    MaHangNCC = c.MaHangNCC,
+                    IsDefault = c.IsDefault,
+                    CreatedAt = c.CreatedAt,
+                    UpdatedAt = c.UpdatedAt
+                })
+                .ToList() ?? new List<CungUngDto>();
+
+            var defaultCungUng = cungUngDtos.FirstOrDefault(c => c.IsDefault) ?? cungUngDtos.FirstOrDefault();
+            var supplierId = defaultCungUng?.SupplierId ?? product.SupplierId;
+            var supplierName = defaultCungUng?.SupplierName ?? product.Supplier?.Name;
+
             return new ProductDto
             {
                 ProductId = product.ProductId,
@@ -686,13 +841,12 @@ namespace ToyStoreManagement.Infrastructure.Services
 
                 BrandId = product.BrandId,
 
-                SupplierId = product.SupplierId,
+                SupplierId = supplierId,
 
                 BrandName =
                     product.Brand?.Name,
 
-                SupplierName =
-                    product.Supplier?.Name,
+                SupplierName = supplierName,
 
                 Name = product.Name,
 
@@ -728,7 +882,11 @@ namespace ToyStoreManagement.Infrastructure.Services
                                 ? promotionPrice
                                 : null))
                         .ToList()
-                    ?? new List<ProductVariantDto>()
+                    ?? new List<ProductVariantDto>(),
+
+                Suppliers = cungUngDtos,
+
+                SupplierIds = cungUngDtos.Select(c => c.SupplierId).ToList()
             };
         }
 

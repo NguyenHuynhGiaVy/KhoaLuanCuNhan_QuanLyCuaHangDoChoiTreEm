@@ -32,7 +32,7 @@ const MODULES = {
   products: {
     title: 'Sản phẩm', kicker: 'HÀNG HÓA & KHO',
     endpoint: 'Product',
-    columns: ['Ảnh', 'Tên sản phẩm', 'Danh mục', 'Thương hiệu', 'Giá bán', 'Trạng thái'],
+    columns: ['Ảnh', 'Tên sản phẩm', 'Danh mục', 'Thương hiệu', 'Nhà cung cấp', 'Giá bán', 'Trạng thái'],
     canAdd: true, canEdit: true, canDelete: true
   },
   liquidation: {
@@ -1915,19 +1915,32 @@ function resetImportFilters() {
 
 function getRowCells(key, r) {
   switch (key) {
-    case 'products':
+    case 'products': {
       const img = r.imageUrl || r.thumbnailUrl || productVariantsOf(r)[0]?.imageUrl || 'https://placehold.co/80x80/e2e8f0/475569?text=Toy';
+      let suppHtml = '<span style="color:var(--slate-400);">Chưa gán</span>';
+      if (r.suppliers && r.suppliers.length > 0) {
+        const def = r.suppliers.find(s => s.isDefault) || r.suppliers[0];
+        suppHtml = `<strong>${esc(def.supplierName || 'NCC')}</strong>`;
+        if (r.suppliers.length > 1) {
+          suppHtml += ` <span style="display:inline-block;background:var(--slate-100);font-size:11px;padding:1px 6px;border-radius:10px;color:var(--slate-600);border:1px solid var(--slate-300);" title="${r.suppliers.map(s => esc(s.supplierName)).join(', ')}">+${r.suppliers.length - 1} NCC</span>`;
+        }
+      } else if (r.supplierName) {
+        suppHtml = `<strong>${esc(r.supplierName)}</strong>`;
+      }
+
       return [
         `<img src="${esc(img)}" style="width:42px;height:42px;object-fit:cover;border-radius:8px;border:1px solid var(--slate-200);">`,
         `<strong>${esc(r.name)}</strong><br><small style="color:var(--slate-400);">Mã: ${esc(r.productId)}</small>`,
         esc(r.categoryName || '—'),
         esc(r.brandName || '—'),
+        suppHtml,
         `<strong style="color:var(--primary);">${money(r.basePrice ?? productVariantsOf(r)[0]?.price)}</strong>`,
         pill(
-          r.status === 2 ? 'Thanh lý / Ngừng nhập' : (r.status === 3 ? 'Hết hàng' : (r.status === 1 ? 'Đang kinh doanh' : 'Tạm ngưng')),
+          r.status === 2 ? 'Ngừng kinh doanh' : (r.status === 3 ? 'Hết hàng' : (r.status === 1 ? 'Đang bán' : 'Chờ nhập hàng')),
           r.status === 2 ? 'danger' : (r.status === 3 ? 'warning' : (r.status === 1 ? 'success' : 'neutral'))
         )
       ];
+    }
 
     case 'categories':
     case 'brands':
@@ -2338,7 +2351,8 @@ let product2ColState = {
   product: null,
   attributes: [],
   matrixRows: [],
-  removedVariantIds: []
+  removedVariantIds: [],
+  selectedSuppliers: []
 };
 
 function openProduct2ColForm(index = null) {
@@ -2350,6 +2364,32 @@ function openProduct2ColForm(index = null) {
     product2ColState.productId = prod.productId;
     product2ColState.product = prod;
     product2ColState.removedVariantIds = [];
+
+    // Nạp danh sách nhà cung cấp liên kết (Many-to-Many CungUng)
+    if (prod.suppliers && Array.isArray(prod.suppliers) && prod.suppliers.length > 0) {
+      product2ColState.selectedSuppliers = prod.suppliers.map(s => ({
+        supplierId: Number(s.supplierId),
+        supplierName: s.supplierName || (ref.suppliers.find(rs => (rs.id || rs.supplierId) == s.supplierId)?.name) || `NCC #${s.supplierId}`,
+        isDefault: !!s.isDefault,
+        giaNhapThamKhao: s.giaNhapThamKhao ?? null,
+        maHangNCC: s.maHangNCC || ''
+      }));
+    } else if (prod.supplierId) {
+      const supObj = (ref.suppliers || []).find(rs => (rs.id || rs.supplierId) == prod.supplierId);
+      product2ColState.selectedSuppliers = [{
+        supplierId: Number(prod.supplierId),
+        supplierName: prod.supplierName || supObj?.name || `NCC #${prod.supplierId}`,
+        isDefault: true,
+        giaNhapThamKhao: null,
+        maHangNCC: ''
+      }];
+    } else {
+      product2ColState.selectedSuppliers = [];
+    }
+
+    if (product2ColState.selectedSuppliers.length > 0 && !product2ColState.selectedSuppliers.some(s => s.isDefault)) {
+      product2ColState.selectedSuppliers[0].isDefault = true;
+    }
 
     const variants = productVariantsOf(prod);
     const attrMap = new Map();
@@ -2412,6 +2452,7 @@ function openProduct2ColForm(index = null) {
     product2ColState.productId = null;
     product2ColState.product = null;
     product2ColState.removedVariantIds = [];
+    product2ColState.selectedSuppliers = [];
 
     product2ColState.attributes = [
       { name: 'Màu sắc', values: ['Đỏ', 'Xanh'] },
@@ -2504,12 +2545,25 @@ function renderProduct2ColView() {
                 </div>
               </div>
 
-              <div class="form-group" style="margin-bottom:14px;">
-                <label>Nhà cung cấp</label>
-                <select id="p2c_supplier" class="input-control">
-                  <option value="">-- Chọn nhà cung cấp (nếu có) --</option>
-                  ${(ref.suppliers || []).map(s => `<option value="${s.id || s.supplierId}" ${p.supplierId == (s.id || s.supplierId) ? 'selected' : ''}>${esc(s.name)}</option>`).join('')}
-                </select>
+              <div class="form-group" style="margin-bottom:16px;">
+                <label style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;">
+                  <span>Nhà cung cấp liên kết</span>
+                  <span style="font-weight:400;color:var(--slate-500);font-size:12px;">(Không bắt buộc - Có thể chọn nhiều NCC)</span>
+                </label>
+                <div style="display:flex;gap:8px;margin-bottom:8px;">
+                  <select id="p2c_supplier_picker" class="input-control" onchange="handleAddSupplierToProduct(this.value)">
+                    <option value="">+ Chọn nhà cung cấp để liên kết...</option>
+                    ${(ref.suppliers || []).map(s => {
+                      const sId = s.id || s.supplierId;
+                      const isSel = (product2ColState.selectedSuppliers || []).some(x => x.supplierId == sId);
+                      return `<option value="${sId}" data-base-name="${esc(s.name)}" ${isSel ? 'disabled' : ''}>${esc(s.name)}${isSel ? ' (Đã chọn)' : ''}</option>`;
+                    }).join('')}
+                  </select>
+                  <button type="button" class="secondary-btn" title="Thêm nhanh nhà cung cấp mới" onclick="quickAddRef('supplier')">+</button>
+                </div>
+                <div id="p2c_supplier_chips_container" style="display:flex;flex-wrap:wrap;gap:8px;min-height:42px;padding:8px 10px;background:var(--slate-50,#f8fafc);border:1px dashed var(--slate-300,#cbd5e1);border-radius:8px;align-items:center;">
+                  <!-- Rendered by renderP2CSupplierChips() -->
+                </div>
               </div>
 
               <div class="form-group" style="margin-bottom:14px;">
@@ -2603,7 +2657,95 @@ function renderProduct2ColView() {
   `;
 
   renderProduct2ColRight();
+  renderP2CSupplierChips();
 }
+
+function renderP2CSupplierChips() {
+  const container = document.getElementById('p2c_supplier_chips_container');
+  const picker = document.getElementById('p2c_supplier_picker');
+  if (!container) return;
+
+  const list = product2ColState.selectedSuppliers || [];
+  if (list.length === 0) {
+    container.innerHTML = `<span style="color:var(--slate-400);font-size:12.5px;font-style:italic;display:flex;align-items:center;gap:6px;padding:4px 2px;">
+      <span style="font-size:15px;">ℹ</span> Chưa liên kết nhà cung cấp nào (Không bắt buộc). Bạn có thể thêm sau hoặc hệ thống sẽ tự liên kết khi nhập kho.
+    </span>`;
+  } else {
+    container.innerHTML = list.map(s => {
+      const isDef = !!s.isDefault;
+      return `
+        <div class="supplier-chip" style="display:inline-flex;align-items:center;gap:8px;padding:6px 12px;border-radius:20px;background:${isDef ? 'var(--primary-light, #e0e7ff)' : '#fff'};border:1px solid ${isDef ? 'var(--primary, #6366f1)' : 'var(--slate-200, #e2e8f0)'};box-shadow:0 1px 2px rgba(0,0,0,0.05);font-size:13px;transition:all 0.2s ease;">
+          <span style="font-weight:${isDef ? '600' : '500'};color:${isDef ? 'var(--primary-dark, #4338ca)' : 'var(--slate-800, #1e293b)'};">
+            🏢 ${esc(s.supplierName || 'NCC #' + s.supplierId)}
+          </span>
+          ${list.length > 1 ? `
+            <button type="button" onclick="handleSetDefaultSupplier(${s.supplierId})" title="${isDef ? 'Nhà cung cấp chính' : 'Nhấp để đặt làm NCC mặc định'}" style="background:none;border:none;cursor:pointer;padding:2px 8px;border-radius:12px;font-size:11px;font-weight:600;display:inline-flex;align-items:center;gap:3px;${isDef ? 'background:var(--primary, #6366f1);color:#fff;' : 'background:var(--slate-100, #f1f5f9);color:var(--slate-600, #475569);'}">
+              ${isDef ? '★ NCC Chính' : '☆ Đặt làm chính'}
+            </button>
+          ` : `
+            <span style="background:var(--primary, #6366f1);color:#fff;font-size:11px;font-weight:600;padding:2px 8px;border-radius:12px;">★ NCC Chính</span>
+          `}
+          <button type="button" onclick="handleRemoveSupplierFromProduct(${s.supplierId})" title="Gỡ liên kết nhà cung cấp này" style="background:none;border:none;cursor:pointer;color:var(--slate-400, #94a3b8);font-size:15px;line-height:1;display:flex;align-items:center;padding:0 2px;">
+            ✕
+          </button>
+        </div>
+      `;
+    }).join('');
+  }
+
+  if (picker) {
+    const selectedIds = new Set(list.map(x => String(x.supplierId)));
+    Array.from(picker.options).forEach(opt => {
+      if (opt.value) {
+        const isSel = selectedIds.has(String(opt.value));
+        opt.disabled = isSel;
+        const baseName = opt.getAttribute('data-base-name') || opt.textContent.replace(' (Đã chọn)', '').trim();
+        opt.setAttribute('data-base-name', baseName);
+        opt.textContent = isSel ? `${baseName} (Đã chọn)` : baseName;
+      }
+    });
+    picker.value = '';
+  }
+}
+
+window.handleAddSupplierToProduct = function(supplierId) {
+  if (!supplierId) return;
+  const sId = Number(supplierId);
+  if (!product2ColState.selectedSuppliers) product2ColState.selectedSuppliers = [];
+  if (product2ColState.selectedSuppliers.some(x => x.supplierId === sId)) return;
+
+  const supObj = (ref.suppliers || []).find(s => (s.id || s.supplierId) === sId);
+  const isDefault = product2ColState.selectedSuppliers.length === 0;
+  product2ColState.selectedSuppliers.push({
+    supplierId: sId,
+    supplierName: supObj?.name || `NCC #${sId}`,
+    isDefault: isDefault,
+    giaNhapThamKhao: null,
+    maHangNCC: ''
+  });
+
+  renderP2CSupplierChips();
+};
+
+window.handleRemoveSupplierFromProduct = function(supplierId) {
+  const sId = Number(supplierId);
+  if (!product2ColState.selectedSuppliers) return;
+  const wasDefault = product2ColState.selectedSuppliers.some(x => x.supplierId === sId && x.isDefault);
+  product2ColState.selectedSuppliers = product2ColState.selectedSuppliers.filter(x => x.supplierId !== sId);
+  if (wasDefault && product2ColState.selectedSuppliers.length > 0) {
+    product2ColState.selectedSuppliers[0].isDefault = true;
+  }
+  renderP2CSupplierChips();
+};
+
+window.handleSetDefaultSupplier = function(supplierId) {
+  const sId = Number(supplierId);
+  if (!product2ColState.selectedSuppliers) return;
+  product2ColState.selectedSuppliers.forEach(x => {
+    x.isDefault = (x.supplierId === sId);
+  });
+  renderP2CSupplierChips();
+};
 
 function renderProduct2ColRight() {
   const container = document.getElementById('productColRight');
@@ -3075,7 +3217,16 @@ async function saveProduct2ColForm() {
   const name = document.getElementById('p2c_name')?.value.trim();
   const catId = document.getElementById('p2c_cat')?.value;
   const brandId = document.getElementById('p2c_brand')?.value;
-  const supplierId = document.getElementById('p2c_supplier')?.value;
+  const selectedSuppliers = product2ColState.selectedSuppliers || [];
+  const defaultSupplier = selectedSuppliers.find(s => s.isDefault) || selectedSuppliers[0] || null;
+  const supplierId = defaultSupplier ? defaultSupplier.supplierId : null;
+  const supplierIds = selectedSuppliers.map(s => s.supplierId);
+  const suppliersPayload = selectedSuppliers.map(s => ({
+    supplierId: s.supplierId,
+    giaNhapThamKhao: s.giaNhapThamKhao ?? null,
+    maHangNCC: s.maHangNCC || null,
+    isDefault: !!s.isDefault
+  }));
   const desc = document.getElementById('p2c_desc')?.value.trim();
   const gender = Number(document.getElementById('p2c_gender')?.value || 3);
   const imageUrl = document.getElementById('p2c_imageUrl')?.value.trim() || null;
@@ -3157,6 +3308,8 @@ async function saveProduct2ColForm() {
         categoryId: Number(catId),
         brandId: Number(brandId),
         supplierId: supplierId ? Number(supplierId) : null,
+        supplierIds: supplierIds,
+        suppliers: suppliersPayload,
         name,
         description: desc,
         ageFrom,
@@ -3217,6 +3370,8 @@ async function saveProduct2ColForm() {
         categoryId: Number(catId),
         brandId: Number(brandId),
         supplierId: supplierId ? Number(supplierId) : null,
+        supplierIds: supplierIds,
+        suppliers: suppliersPayload,
         name,
         description: desc,
         ageFrom,
@@ -4164,7 +4319,7 @@ function renderPurchaseOrderForm(v) {
     <div class="form-grid-2" style="margin-bottom:24px;">
       <div class="form-group">
         <label>Nhà cung cấp *</label>
-        <select name="supplierId" class="input-control" required id="poSupplierSelect">
+        <select name="supplierId" class="input-control" required id="poSupplierSelect" onchange="handlePOSupplierChange(this.value)">
           <option value="">-- Chọn nhà cung cấp --</option>
           ${ref.suppliers.map(s => `<option value="${s.id || s.supplierId}" ${v.supplierId == (s.id || s.supplierId) ? 'selected' : ''}>${esc(s.name)}</option>`).join('')}
         </select>
@@ -4204,7 +4359,7 @@ function renderPurchaseOrderForm(v) {
             </tr>
           </thead>
           <tbody id="poItemsBody">
-            ${existingDetails.length > 0 ? existingDetails.map((item, idx) => renderPurchaseOrderItemRow(item, idx)).join('') : ''}
+            ${existingDetails.length > 0 ? existingDetails.map((item, idx) => renderPurchaseOrderItemRow(item, idx, v.supplierId)).join('') : ''}
           </tbody>
           <tfoot>
             <tr style="background:var(--slate-50);font-weight:700;">
@@ -4220,17 +4375,69 @@ function renderPurchaseOrderForm(v) {
 }
 
 let poRowIndex = 0;
-function renderPurchaseOrderItemRow(item = {}, idx = null) {
-  const rIdx = idx !== null ? idx : poRowIndex++;
-  const variantOptions = (ref.products || []).map(p => {
-    return `<optgroup label="${esc(p.name)}">
-      ${productVariantsOf(p).map(vr => {
+
+function generatePOVariantOptionsHtml(supplierId, selectedVariantId) {
+  const sIdNum = supplierId ? Number(supplierId) : null;
+  const products = ref.products || [];
+
+  let supplied = [];
+  let others = [];
+
+  if (sIdNum) {
+    products.forEach(p => {
+      const isSupplied = (p.suppliers && Array.isArray(p.suppliers) && p.suppliers.some(s => s.supplierId === sIdNum)) ||
+                         (p.supplierIds && Array.isArray(p.supplierIds) && p.supplierIds.includes(sIdNum)) ||
+                         (p.supplierId === sIdNum);
+      if (isSupplied) {
+        supplied.push(p);
+      } else {
+        others.push(p);
+      }
+    });
+  } else {
+    others = products;
+  }
+
+  let html = '';
+  if (supplied.length > 0) {
+    html += `<optgroup label="⭐ Sản phẩm của nhà cung cấp này (${supplied.length} sản phẩm)">`;
+    supplied.forEach(p => {
+      const supInfo = p.suppliers ? p.suppliers.find(s => s.supplierId === sIdNum) : null;
+      const refCost = supInfo?.giaNhapThamKhao;
+      const skuCode = supInfo?.maHangNCC ? ` [Mã NCC: ${supInfo.maHangNCC}]` : '';
+      productVariantsOf(p).forEach(vr => {
         const vId = vr.variantId || vr.id;
-        const isSel = item.variantId == vId;
-        return `<option value="${vId}" ${isSel ? 'selected' : ''}>${esc(p.name)} - SKU: ${esc(vr.sku || 'N/A')}</option>`;
-      }).join('')}
-    </optgroup>`;
-  }).join('');
+        const isSel = selectedVariantId == vId;
+        const costVal = refCost ?? vr.costPrice ?? '';
+        html += `<option value="${vId}" data-ref-cost="${costVal}" ${isSel ? 'selected' : ''}>⭐ ${esc(p.name)} - SKU: ${esc(vr.sku || 'N/A')}${skuCode}${costVal ? ` (Giá tham khảo: ${money(costVal)})` : ''}</option>`;
+      });
+    });
+    html += `</optgroup>`;
+  }
+
+  if (others.length > 0) {
+    const groupLabel = supplied.length > 0
+      ? '📦 Các sản phẩm khác trong hệ thống (Nhập phát sinh ngoài danh mục)'
+      : '📦 Tất cả sản phẩm trong hệ thống';
+    html += `<optgroup label="${groupLabel}">`;
+    others.forEach(p => {
+      productVariantsOf(p).forEach(vr => {
+        const vId = vr.variantId || vr.id;
+        const isSel = selectedVariantId == vId;
+        const costVal = vr.costPrice ?? '';
+        html += `<option value="${vId}" data-ref-cost="${costVal}" ${isSel ? 'selected' : ''}>${esc(p.name)} - SKU: ${esc(vr.sku || 'N/A')}${costVal ? ` (${money(costVal)})` : ''}</option>`;
+      });
+    });
+    html += `</optgroup>`;
+  }
+
+  return html;
+}
+
+function renderPurchaseOrderItemRow(item = {}, idx = null, supplierId = null) {
+  const rIdx = idx !== null ? idx : poRowIndex++;
+  const sId = supplierId || document.getElementById('poSupplierSelect')?.value || null;
+  const variantOptions = generatePOVariantOptionsHtml(sId, item.variantId);
 
   const qty = item.quantity || 10;
   const cost = item.unitCost || 0;
@@ -4239,7 +4446,7 @@ function renderPurchaseOrderItemRow(item = {}, idx = null) {
   return `
     <tr class="po-item-row" id="poRow_${rIdx}">
       <td>
-        <select class="input-control po-variant-select" required onchange="calculatePOTotals()">
+        <select class="input-control po-variant-select" required onchange="handlePOVariantSelectChange(this)">
           <option value="">-- Chọn sản phẩm & SKU --</option>
           ${variantOptions}
         </select>
@@ -4260,11 +4467,41 @@ function renderPurchaseOrderItemRow(item = {}, idx = null) {
   `;
 }
 
+window.handlePOVariantSelectChange = function(selectEl) {
+  if (selectEl) {
+    const opt = selectEl.options[selectEl.selectedIndex];
+    if (opt) {
+      const refCost = opt.getAttribute('data-ref-cost');
+      const row = selectEl.closest('.po-item-row');
+      if (row && refCost) {
+        const costInput = row.querySelector('.po-cost-input');
+        if (costInput && (!costInput.value || costInput.value === '0')) {
+          costInput.value = refCost;
+        }
+      }
+    }
+  }
+  calculatePOTotals();
+};
+
+window.handlePOSupplierChange = function(supplierId) {
+  const selects = document.querySelectorAll('.po-variant-select');
+  selects.forEach(sel => {
+    const currentVal = sel.value;
+    sel.innerHTML = '<option value="">-- Chọn sản phẩm & SKU --</option>' + generatePOVariantOptionsHtml(supplierId, currentVal);
+    sel.value = currentVal;
+  });
+  if (supplierId) {
+    toast('Đã ưu tiên hiển thị danh sách sản phẩm cung ứng của nhà cung cấp này.', 'info');
+  }
+};
+
 window.addPurchaseOrderItemRow = function() {
   const tbody = document.getElementById('poItemsBody');
   if (!tbody) return;
+  const sId = document.getElementById('poSupplierSelect')?.value || null;
   const temp = document.createElement('tbody');
-  temp.innerHTML = renderPurchaseOrderItemRow({}, poRowIndex++);
+  temp.innerHTML = renderPurchaseOrderItemRow({}, poRowIndex++, sId);
   tbody.appendChild(temp.firstElementChild);
   calculatePOTotals();
 };

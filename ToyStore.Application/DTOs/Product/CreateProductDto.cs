@@ -1,4 +1,4 @@
-﻿using System.Collections.Generic;
+using System.Collections.Generic;
 using System.ComponentModel.DataAnnotations;
 
 namespace ToyStoreManagement.Application.DTOs.Product
@@ -26,7 +26,7 @@ namespace ToyStoreManagement.Application.DTOs.Product
 
         public int? Gender { get; set; }
 
-        public int Status { get; set; } = 1;
+        public int Status { get; set; } = 0;
 
         public bool IsFeatured { get; set; }
 
@@ -40,5 +40,10 @@ namespace ToyStoreManagement.Application.DTOs.Product
         // Danh sách biến thể
         public List<CreateProductVariantDto> Variants { get; set; }
             = new List<CreateProductVariantDto>();
+
+        // Danh sách nhà cung cấp (Quan hệ Nhiều - Nhiều qua bảng CungUng)
+        public List<CreateUpdateCungUngItemDto>? Suppliers { get; set; }
+
+        public List<int>? SupplierIds { get; set; }
     }
 }

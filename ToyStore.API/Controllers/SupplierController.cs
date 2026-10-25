@@ -1,4 +1,4 @@
-﻿using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.Mvc;
 
 using Microsoft.AspNetCore.Authorization;
 using ToyStoreManagement.Application.DTOs.Import;
@@ -97,6 +97,14 @@ namespace ToyStoreManagement.API.Controllers
             {
                 message = "Đã vô hiệu hóa nhà cung cấp."
             });
+        }
+
+        // GET: api/Supplier/1/products
+        [HttpGet("{id}/products")]
+        public async Task<IActionResult> GetProductsBySupplier(int id)
+        {
+            var suppliedProducts = await _service.GetSuppliedProductsAsync(id);
+            return Ok(suppliedProducts);
         }
     }
 }

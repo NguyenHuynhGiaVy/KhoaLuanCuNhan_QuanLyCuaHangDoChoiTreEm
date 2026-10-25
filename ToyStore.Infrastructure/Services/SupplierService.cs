@@ -1,13 +1,16 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
 using ToyStoreManagement.Application.DTOs.Import;
+using ToyStoreManagement.Application.DTOs.Product;
 using ToyStoreManagement.Application.Interfaces.Repositories;
 using ToyStoreManagement.Application.Interfaces.Services;
 using ToyStoreManagement.Domain.Entities;
 using ToyStore.Application.Interfaces.Repositories;
+using ToyStoreManagement.Infrastructure.Data;
+using Microsoft.EntityFrameworkCore;
 
 namespace ToyStoreManagement.Infrastructure.Services
 {
@@ -15,13 +18,16 @@ namespace ToyStoreManagement.Infrastructure.Services
     {
         private readonly ISupplierRepository _repository;
         private readonly IUnitOfWork _unitOfWork;
+        private readonly ApplicationDbContext _context;
 
         public SupplierService(
             ISupplierRepository repository,
-            IUnitOfWork unitOfWork)
+            IUnitOfWork unitOfWork,
+            ApplicationDbContext context)
         {
             _repository = repository;
             _unitOfWork = unitOfWork;
+            _context = context;
         }
 
         public async Task<IEnumerable<SupplierDto>> GetAllAsync()
@@ -131,6 +137,27 @@ namespace ToyStoreManagement.Infrastructure.Services
             await _unitOfWork.SaveChangesAsync();
 
             return true;
+        }
+
+        public async Task<IEnumerable<CungUngDto>> GetSuppliedProductsAsync(int id)
+        {
+            return await _context.CungUngs
+                .Where(c => c.SupplierId == id)
+                .Include(c => c.Supplier)
+                .Select(c => new CungUngDto
+                {
+                    Id = c.Id,
+                    ProductId = c.ProductId,
+                    SupplierId = c.SupplierId,
+                    SupplierName = c.Supplier.Name,
+                    SupplierPhone = c.Supplier.Phone,
+                    GiaNhapThamKhao = c.GiaNhapThamKhao,
+                    MaHangNCC = c.MaHangNCC,
+                    IsDefault = c.IsDefault,
+                    CreatedAt = c.CreatedAt,
+                    UpdatedAt = c.UpdatedAt
+                })
+                .ToListAsync();
         }
     }
 }

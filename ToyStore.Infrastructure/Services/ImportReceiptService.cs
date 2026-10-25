@@ -351,13 +351,47 @@ namespace ToyStoreManagement.Infrastructure.Services
                     if (product == null)
                         continue;
 
+                    // 1. Tự động thêm vào bảng CungUng nếu chưa có cặp (ProductId, SupplierId) này
+                    var existingCungUng = await _context.CungUngs
+                        .FirstOrDefaultAsync(c => c.ProductId == productId && c.SupplierId == receipt.SupplierId);
+
+                    if (existingCungUng == null)
+                    {
+                        var hasDefault = await _context.CungUngs.AnyAsync(c => c.ProductId == productId && c.IsDefault);
+                        var detailForProduct = receipt.ImportReceiptDetails
+                            .FirstOrDefault(d => d.ProductVariant != null && d.ProductVariant.ProductId == productId);
+                        var refCost = detailForProduct?.UnitCost ?? 0;
+
+                        var newCungUng = new CungUng
+                        {
+                            ProductId = productId,
+                            SupplierId = receipt.SupplierId,
+                            GiaNhapThamKhao = refCost > 0 ? refCost : null,
+                            IsDefault = !hasDefault,
+                            CreatedAt = DateTime.UtcNow
+                        };
+                        await _context.CungUngs.AddAsync(newCungUng);
+
+                        if (!hasDefault && product.SupplierId == null)
+                        {
+                            product.SupplierId = receipt.SupplierId;
+                        }
+                    }
+
+                    // 2. Tính tổng tồn kho và tự động kích hoạt trạng thái bán hàng
                     var totalQuantity = await _context.Inventories
                         .Where(x => x.ProductVariant.ProductId == productId)
                         .SumAsync(x => (int?)x.Quantity) ?? 0;
 
-                    // Giữ trạng thái thanh lý/ngừng nhập mới do Admin đã chọn.
-                    if (product.Status != 2)
+                    // Kiểm tra nếu Product.Quantity > 0 và trạng thái hiện tại là Chờ nhập hàng (0) -> Kích hoạt Đang bán (1)
+                    if (totalQuantity > 0 && product.Status == 0)
+                    {
+                        product.Status = 1; // Đang bán
+                    }
+                    else if (product.Status != 2)
+                    {
                         ProductStockStatus.Synchronize(product, totalQuantity);
+                    }
 
                     product.UpdatedAt = DateTime.UtcNow;
                 }

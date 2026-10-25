@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 
 namespace ToyStoreManagement.Domain.Entities
@@ -9,6 +9,7 @@ namespace ToyStoreManagement.Domain.Entities
         {
             ProductVariants = new HashSet<ProductVariant>();
             ProductReviews = new HashSet<ProductReview>();
+            CungUngs = new HashSet<CungUng>();
         }
 
         public int ProductId { get; set; }
@@ -51,7 +52,7 @@ namespace ToyStoreManagement.Domain.Entities
         public virtual ICollection<ProductVariant> ProductVariants { get; set; }
 
         public virtual ICollection<ProductReview> ProductReviews { get; set; }
-        
 
+        public virtual ICollection<CungUng> CungUngs { get; set; }
     }
 }

@@ -227,6 +227,46 @@ namespace ToyStoreManagement.Infrastructure.Data
                         WHERE [UserId] IS NULL AND ([PhoneNumber] = '0909123456' OR [FullName] LIKE N'%Nguyễn Văn Giao%');
                     END
                 ");
+
+                // 8. Bổ sung bảng CungUng (Quan hệ Nhiều - Nhiều giữa Product và Supplier)
+                await context.Database.ExecuteSqlRawAsync(@"
+                    IF NOT EXISTS (SELECT 1 FROM sys.tables WHERE name = 'CungUng')
+                    BEGIN
+                        CREATE TABLE [dbo].[CungUng] (
+                            [Id] int IDENTITY(1,1) NOT NULL PRIMARY KEY,
+                            [ProductId] int NOT NULL,
+                            [SupplierId] int NOT NULL,
+                            [GiaNhapThamKhao] decimal(18,2) NULL,
+                            [MaHangNCC] nvarchar(50) NULL,
+                            [IsDefault] bit NOT NULL DEFAULT 0,
+                            [CreatedAt] datetime2 NOT NULL DEFAULT GETUTCDATE(),
+                            [UpdatedAt] datetime2 NULL,
+                            CONSTRAINT [FK_CungUng_Products_ProductId] FOREIGN KEY ([ProductId]) 
+                                REFERENCES [dbo].[Products]([ProductId]) ON DELETE CASCADE,
+                            CONSTRAINT [FK_CungUng_Suppliers_SupplierId] FOREIGN KEY ([SupplierId]) 
+                                REFERENCES [dbo].[Suppliers]([SupplierId]) ON DELETE CASCADE,
+                            CONSTRAINT [UQ_CungUng_Product_Supplier] UNIQUE ([ProductId], [SupplierId])
+                        );
+                    END
+
+                    -- Tự động migrate dữ liệu cũ từ Products.SupplierId sang CungUng nếu chưa có
+                    IF EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID(N'[dbo].[Products]') AND name = 'SupplierId')
+                    BEGIN
+                        INSERT INTO [dbo].[CungUng] ([ProductId], [SupplierId], [GiaNhapThamKhao], [IsDefault], [CreatedAt])
+                        SELECT 
+                            p.[ProductId], 
+                            p.[SupplierId], 
+                            (SELECT TOP 1 pv.[CostPrice] FROM [dbo].[ProductVariants] pv WHERE pv.[ProductId] = p.[ProductId] AND pv.[CostPrice] > 0),
+                            1, 
+                            GETUTCDATE()
+                        FROM [dbo].[Products] p
+                        WHERE p.[SupplierId] IS NOT NULL
+                          AND NOT EXISTS (
+                              SELECT 1 FROM [dbo].[CungUng] c 
+                              WHERE c.[ProductId] = p.[ProductId] AND c.[SupplierId] = p.[SupplierId]
+                          );
+                    END
+                ");
             }
             catch (Exception ex)
             {
