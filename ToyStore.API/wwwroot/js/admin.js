@@ -2340,7 +2340,6 @@ function collectProductVariants() {
 const PRESET_ATTRIBUTE_GROUPS = [
   { name: 'Màu sắc', defaults: ['Đỏ', 'Xanh dương', 'Vàng', 'Trắng', 'Đen'] },
   { name: 'Kích thước', defaults: ['Nhỏ', 'Vừa', 'Lớn', 'Size S', 'Size M', 'Size L'] },
-  { name: 'Khối lượng', defaults: ['100g', '250g', '500g', '1kg'] },
   { name: 'Chất liệu', defaults: ['Nhựa ABS cao cấp', 'Gỗ tự nhiên', 'Vải bông mềm', 'Kim loại hợp kim'] },
   { name: 'Phiên bản', defaults: ['Bản tiêu chuẩn', 'Bản đặc biệt', 'Bản nâng cấp'] }
 ];
@@ -2400,6 +2399,9 @@ function openProduct2ColForm(index = null) {
         attrs.forEach(a => {
           if (a.attributeName && a.attributeValue) {
             const name = a.attributeName.trim();
+            // Khối lượng đã là cột cố định trong ma trận nên không thêm vào danh sách thuộc tính
+            const lowerName = name.toLowerCase();
+            if (lowerName.includes('khối lượng') || lowerName.includes('khoi luong') || lowerName.includes('trọng lượng') || lowerName === 'weight') return;
             if (!attrMap.has(name)) attrMap.set(name, new Set());
             attrMap.get(name).add(a.attributeValue.trim());
           }
@@ -2444,7 +2446,9 @@ function openProduct2ColForm(index = null) {
         weight: v.weight ?? null,
         imageUrl: v.imageUrl || '',
         availableQuantity: v.availableQuantity ?? null,
-        attributeValues: vals
+        attributeValues: vals,
+        _priceManual: Boolean(v.price),
+        _weightManual: Boolean(v.weight)
       };
     });
   } else {
@@ -2468,7 +2472,9 @@ function openProduct2ColForm(index = null) {
         weight: null,
         imageUrl: '',
         availableQuantity: null,
-        attributeValues: { 'Màu sắc': 'Đỏ', 'Kích thước': 'Nhỏ' }
+        attributeValues: { 'Màu sắc': 'Đỏ', 'Kích thước': 'Nhỏ' },
+        _priceManual: false,
+        _weightManual: false
       },
       {
         variantId: null,
@@ -2478,7 +2484,9 @@ function openProduct2ColForm(index = null) {
         weight: null,
         imageUrl: '',
         availableQuantity: null,
-        attributeValues: { 'Màu sắc': 'Xanh', 'Kích thước': 'Lớn' }
+        attributeValues: { 'Màu sắc': 'Xanh', 'Kích thước': 'Lớn' },
+        _priceManual: false,
+        _weightManual: false
       }
     ];
   }
@@ -2791,7 +2799,7 @@ function renderProduct2ColRight() {
         <div>
           <h3 style="margin-bottom:4px;"><span class="badge-num">3</span> 2. Cấu hình giá trị biến thể (Variant Matrix)</h3>
           <p style="font-size:13px;color:var(--slate-500);margin:0;">
-            Mỗi biến thể (SKU) là một <b>sự kết hợp duy nhất</b> của các giá trị thuộc tính. Một biến thể không thể chứa 2 kích thước cùng lúc.
+            Mỗi biến thể (SKU) là một <b>sự kết hợp duy nhất</b> của các giá trị thuộc tính. Tự động áp dụng giá bán &amp; khối lượng theo kích thước; bạn có thể sửa đè độc lập từng dòng.
           </p>
         </div>
         <div style="display:flex;gap:8px;flex-wrap:wrap;">
@@ -2807,7 +2815,7 @@ function renderProduct2ColRight() {
         </div>
       </div>
 
-      <!-- CẢNH BÁO LỖI REALTIME NẾU TRÙNG LẶP -->
+      <!-- CẢNH BÁO LỖI REALTIME NẾU TRÙNG LẶP HOẶC SAI LOGIC KÍCH THƯỚC / GIÁ / KHỐI LƯỢNG -->
       <div id="matrixValidationAlert" style="display:none;background:var(--danger-bg);color:#991b1b;border:1px solid var(--danger-border);border-radius:8px;padding:12px 16px;font-size:13px;margin-bottom:14px;"></div>
 
       <!-- BẢNG MA TRẬN BIẾN THỂ -->
@@ -2870,18 +2878,14 @@ function renderMatrixTableHtml() {
             <th style="width:36px;text-align:center;">#</th>
             ${attrs.map(a => `<th>${esc(a.name)}</th>`).join('')}
             <th style="min-width:140px;">Mã SKU *</th>
-            <th style="width:90px;">Khối lượng (g)</th>
-            <th style="width:130px;">Giá bán (đ)</th>
+            <th style="width:105px;">Khối lượng (g)</th>
+            <th style="width:145px;">Giá bán (đ)</th>
             <th style="width:140px;">Ảnh riêng (URL)</th>
             <th style="width:40px;text-align:center;">Xóa</th>
           </tr>
         </thead>
         <tbody id="matrixTableBody">
           ${rows.map((row, idx) => {
-            const isExisting = Boolean(row.variantId);
-            const canSetPrice = isExisting && Number(row.availableQuantity || 0) > 0;
-            const priceTitle = canSetPrice ? `Tồn kho khả dụng: ${row.availableQuantity}` : (isExisting ? 'Chưa có tồn kho để mở giá' : 'Mở giá sau khi duyệt nhập kho NCC');
-
             return `
               <tr id="matrixRow_${idx}">
                 <td style="text-align:center;font-weight:700;color:var(--slate-500);">${idx + 1}</td>
@@ -2905,7 +2909,7 @@ function renderMatrixTableHtml() {
                   <input type="number" min="0" step="1" class="matrix-input matrix-weight" id="weight_${idx}" value="${row.weight ?? ''}" placeholder="g" oninput="onMatrixWeightInput(${idx}, this.value)">
                 </td>
                 <td>
-                  <input type="number" min="0" step="1000" class="matrix-input matrix-price" id="price_${idx}" value="${row.price ?? ''}" ${canSetPrice ? '' : 'disabled'} title="${esc(priceTitle)}" placeholder="${canSetPrice ? 'VNĐ' : 'Chờ kho'}" oninput="onMatrixPriceInput(${idx}, this.value)">
+                  <input type="number" min="0" step="1000" class="matrix-input matrix-price" id="price_${idx}" value="${row.price ?? ''}" placeholder="Nhập giá (đ)" oninput="onMatrixPriceInput(${idx}, this.value)">
                 </td>
                 <td style="min-width:145px;">
                   <div style="display:flex;align-items:center;gap:4px;">
@@ -2930,6 +2934,12 @@ function renderMatrixTableHtml() {
 }
 
 function toggleAttributeGroup(attrName) {
+  const lower = attrName.toLowerCase();
+  if (lower.includes('khối lượng') || lower.includes('khoi luong') || lower.includes('trọng lượng') || lower.includes('weight')) {
+    toast('Khối lượng đã là cột cố định trong ma trận biến thể.', 'warning');
+    return;
+  }
+
   const existingIdx = product2ColState.attributes.findIndex(a => a.name.toLowerCase() === attrName.toLowerCase());
   if (existingIdx >= 0) {
     product2ColState.attributes.splice(existingIdx, 1);
@@ -2953,6 +2963,13 @@ function addCustomAttributeGroup() {
     toast('Vui lòng nhập tên nhóm thuộc tính.', 'error');
     return;
   }
+
+  const lower = name.toLowerCase();
+  if (lower.includes('khối lượng') || lower.includes('khoi luong') || lower.includes('trọng lượng') || lower.includes('weight')) {
+    toast('Khối lượng đã là cột cố định trong ma trận biến thể. Vui lòng không thêm nhóm thuộc tính này.', 'warning');
+    return;
+  }
+
   if (product2ColState.attributes.some(a => a.name.toLowerCase() === name.toLowerCase())) {
     toast(`Nhóm thuộc tính '${name}' đã tồn tại trong danh sách chọn.`, 'error');
     return;
@@ -3019,7 +3036,18 @@ function generateVariantMatrix() {
     const existing = existingMap.get(key);
 
     if (existing) {
-      return existing;
+      return {
+        variantId: existing.variantId || null,
+        sku: existing.sku || '',
+        price: existing.price ?? null,
+        costPrice: existing.costPrice ?? null,
+        weight: existing.weight ?? null,
+        imageUrl: existing.imageUrl || '',
+        availableQuantity: existing.availableQuantity ?? null,
+        attributeValues: { ...attrVals },
+        _priceManual: existing._priceManual || false,
+        _weightManual: existing._weightManual || false
+      };
     }
 
     const slug = combo.map(c => toAsciiSlug(c.value)).join('-');
@@ -3033,7 +3061,9 @@ function generateVariantMatrix() {
       weight: null,
       imageUrl: '',
       availableQuantity: null,
-      attributeValues: attrVals
+      attributeValues: { ...attrVals },
+      _priceManual: false,
+      _weightManual: false
     };
   });
 
@@ -3062,7 +3092,9 @@ function addManualVariantRow() {
     weight: null,
     imageUrl: '',
     availableQuantity: null,
-    attributeValues: attrVals
+    attributeValues: { ...attrVals },
+    _priceManual: false,
+    _weightManual: false
   });
 
   const tableContainer = document.getElementById('matrixTableContainer');
@@ -3099,15 +3131,65 @@ function onMatrixSkuInput(rowIdx, val) {
 }
 
 function onMatrixWeightInput(rowIdx, val) {
-  if (product2ColState.matrixRows[rowIdx]) {
-    product2ColState.matrixRows[rowIdx].weight = val !== '' ? Number(val) : null;
+  const row = product2ColState.matrixRows[rowIdx];
+  if (!row) return;
+
+  const numVal = val !== '' ? Number(val) : null;
+  row.weight = numVal;
+  row._weightManual = true;
+
+  // Tính năng điền nhanh thông minh (Bulk Auto-fill theo Kích thước):
+  // Tự động áp dụng khối lượng đó cho tất cả các biến thể có cùng kích thước
+  // mà chưa được người dùng chỉnh sửa riêng (_weightManual).
+  const sizeAttrName = findSizeAttributeName(product2ColState.attributes);
+  if (sizeAttrName) {
+    const currentSize = (row.attributeValues[sizeAttrName] || '').trim();
+    if (currentSize) {
+      product2ColState.matrixRows.forEach((otherRow, otherIdx) => {
+        if (otherIdx !== rowIdx) {
+          const otherSize = (otherRow.attributeValues[sizeAttrName] || '').trim();
+          if (otherSize.toLowerCase() === currentSize.toLowerCase() && !otherRow._weightManual) {
+            otherRow.weight = numVal;
+            const otherInput = document.getElementById(`weight_${otherIdx}`);
+            if (otherInput) otherInput.value = numVal !== null ? numVal : '';
+          }
+        }
+      });
+    }
   }
+
+  validateMatrixCombinations();
 }
 
 function onMatrixPriceInput(rowIdx, val) {
-  if (product2ColState.matrixRows[rowIdx]) {
-    product2ColState.matrixRows[rowIdx].price = val !== '' ? Number(val) : null;
+  const row = product2ColState.matrixRows[rowIdx];
+  if (!row) return;
+
+  const numVal = val !== '' ? Number(val) : null;
+  row.price = numVal;
+  row._priceManual = true;
+
+  // Tính năng điền nhanh thông minh (Bulk Auto-fill theo Kích thước):
+  // Tự động áp dụng giá bán đó cho tất cả các biến thể có cùng kích thước
+  // mà chưa được người dùng chỉnh sửa riêng (_priceManual).
+  const sizeAttrName = findSizeAttributeName(product2ColState.attributes);
+  if (sizeAttrName) {
+    const currentSize = (row.attributeValues[sizeAttrName] || '').trim();
+    if (currentSize) {
+      product2ColState.matrixRows.forEach((otherRow, otherIdx) => {
+        if (otherIdx !== rowIdx) {
+          const otherSize = (otherRow.attributeValues[sizeAttrName] || '').trim();
+          if (otherSize.toLowerCase() === currentSize.toLowerCase() && !otherRow._priceManual) {
+            otherRow.price = numVal;
+            const otherInput = document.getElementById(`price_${otherIdx}`);
+            if (otherInput) otherInput.value = numVal !== null ? numVal : '';
+          }
+        }
+      });
+    }
   }
+
+  validateMatrixCombinations();
 }
 
 function onMatrixImageInput(rowIdx, val) {
@@ -3146,11 +3228,171 @@ function syncMatrixInputsFromDom() {
     if (weightInput) row.weight = weightInput.value !== '' ? Number(weightInput.value) : null;
 
     const priceInput = document.getElementById(`price_${idx}`);
-    if (priceInput && !priceInput.disabled) row.price = priceInput.value !== '' ? Number(priceInput.value) : null;
+    if (priceInput) row.price = priceInput.value !== '' ? Number(priceInput.value) : null;
 
     const imgInput = document.getElementById(`img_${idx}`);
     if (imgInput) row.imageUrl = imgInput.value.trim();
   });
+}
+
+// -------------------------------------------------------------
+// HELPER: HỆ THỐNG PHÂN CẤP KÍCH THƯỚC (SIZE RANK) & LOGIC KIỂM TRA
+// -------------------------------------------------------------
+function getSizeRank(val) {
+  if (val === null || val === undefined) return null;
+  const raw = String(val).trim().toLowerCase();
+  if (!raw) return null;
+
+  const noDiacritics = raw
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/đ/g, 'd');
+
+  const rankMap = [
+    { rank: 10, keys: ['mini', 'rat nho', 'ti hon', 'cuc nho', 'xxs', '2xs', 'size xxs', 'size 2xs'] },
+    { rank: 20, keys: ['xs', 'extra small', 'size xs'] },
+    { rank: 30, keys: ['nho', 's', 'small', 'size s', 'be', 'tieu'] },
+    { rank: 40, keys: ['vua', 'm', 'medium', 'size m', 'tieu chuan', 'trung binh', 'trung'] },
+    { rank: 50, keys: ['lon', 'l', 'large', 'size l', 'to', 'dai'] },
+    { rank: 60, keys: ['xl', 'extra large', 'size xl', 'rat lon', 'cuc lon', 'khong lo'] },
+    { rank: 70, keys: ['2xl', 'xxl', 'size 2xl', 'size xxl'] },
+    { rank: 80, keys: ['3xl', 'xxxl', 'size 3xl', 'size xxxl'] },
+    { rank: 90, keys: ['4xl', 'xxxxl', 'size 4xl', 'size xxxxl'] },
+    { rank: 100, keys: ['5xl', 'xxxxxl', 'size 5xl', 'size xxxxxl'] }
+  ];
+
+  for (const item of rankMap) {
+    if (item.keys.includes(noDiacritics) || item.keys.includes(raw)) {
+      return item.rank;
+    }
+  }
+
+  // Đơn vị kích thước số: m, cm, mm hoặc số thuần
+  const mMatch = noDiacritics.match(/^([0-9]+([.,][0-9]+)?)\s*m$/);
+  if (mMatch) return 1000 + parseFloat(mMatch[1].replace(',', '.')) * 100;
+
+  const cmMatch = noDiacritics.match(/^([0-9]+([.,][0-9]+)?)\s*(cm)?$/);
+  if (cmMatch) return 1000 + parseFloat(cmMatch[1].replace(',', '.'));
+
+  const mmMatch = noDiacritics.match(/^([0-9]+([.,][0-9]+)?)\s*mm$/);
+  if (mmMatch) return 1000 + parseFloat(mmMatch[1].replace(',', '.')) / 10;
+
+  const genericNum = noDiacritics.match(/([0-9]+([.,][0-9]+)?)/);
+  if (genericNum) return 1000 + parseFloat(genericNum[1].replace(',', '.'));
+
+  return null;
+}
+
+function findSizeAttributeName(attributes) {
+  if (!attributes || !Array.isArray(attributes)) return null;
+  const match = attributes.find(a => {
+    const n = (a.name || '').toLowerCase()
+      .normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/đ/g, 'd');
+    return n.includes('kich thuoc') || n.includes('size');
+  });
+  return match ? match.name : null;
+}
+
+function findColorAttributeName(attributes) {
+  if (!attributes || !Array.isArray(attributes)) return null;
+  const match = attributes.find(a => {
+    const n = (a.name || '').toLowerCase()
+      .normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/đ/g, 'd');
+    return n.includes('mau') || n.includes('color');
+  });
+  return match ? match.name : null;
+}
+
+function validateSizeWeightPriceLogic(rows, attrs) {
+  const sizeAttrName = findSizeAttributeName(attrs);
+  if (!sizeAttrName) return { isValid: true, errors: [] };
+
+  const colorAttrName = findColorAttributeName(attrs);
+  const errors = [];
+
+  // Xóa cảnh báo viền đỏ trước khi kiểm tra lại
+  rows.forEach((_, idx) => {
+    const wInput = document.getElementById(`weight_${idx}`);
+    if (wInput) wInput.classList.remove('matrix-input-error');
+    const pInput = document.getElementById(`price_${idx}`);
+    if (pInput) pInput.classList.remove('matrix-input-error');
+  });
+
+  // Gom nhóm các dòng theo màu sắc (nếu có thuộc tính màu sắc) hoặc xét toàn bảng
+  const groups = new Map();
+  rows.forEach((row, idx) => {
+    const colorKey = colorAttrName ? ((row.attributeValues[colorAttrName] || '').trim() || '_no_color_') : '_all_';
+    if (!groups.has(colorKey)) {
+      groups.set(colorKey, []);
+    }
+    groups.get(colorKey).push({ row, idx });
+  });
+
+  const formatMoney = (val) => Number(val).toLocaleString('vi-VN') + ' đ';
+
+  groups.forEach((items, colorKey) => {
+    const rankedItems = items
+      .map(item => ({
+        ...item,
+        sizeVal: (item.row.attributeValues[sizeAttrName] || '').trim(),
+        rank: getSizeRank(item.row.attributeValues[sizeAttrName])
+      }))
+      .filter(item => item.rank !== null);
+
+    // Sắp xếp tăng dần theo cấp bậc kích thước
+    rankedItems.sort((a, b) => a.rank - b.rank);
+
+    const groupColorLabel = (colorAttrName && colorKey !== '_no_color_' && colorKey !== '_all_')
+      ? `màu ${colorKey}`
+      : '';
+
+    // So sánh từng cặp kích thước nhỏ (i) và kích thước lớn (j)
+    for (let i = 0; i < rankedItems.length; i++) {
+      for (let j = i + 1; j < rankedItems.length; j++) {
+        const smaller = rankedItems[i];
+        const larger = rankedItems[j];
+
+        if (smaller.rank >= larger.rank) continue;
+
+        const sWeight = smaller.row.weight !== null && smaller.row.weight !== undefined && smaller.row.weight !== '' ? Number(smaller.row.weight) : null;
+        const lWeight = larger.row.weight !== null && larger.row.weight !== undefined && larger.row.weight !== '' ? Number(larger.row.weight) : null;
+
+        // 1. Ràng buộc Khối lượng: Kích thước lớn không được nhỏ hơn kích thước nhỏ
+        if (sWeight !== null && lWeight !== null && sWeight > 0 && lWeight > 0) {
+          if (lWeight < sWeight) {
+            const wInput = document.getElementById(`weight_${larger.idx}`);
+            if (wInput) wInput.classList.add('matrix-input-error');
+            const rowEl = document.getElementById(`matrixRow_${larger.idx}`);
+            if (rowEl) rowEl.classList.add('matrix-row-error');
+
+            const colorSuffix = groupColorLabel ? ` (nhóm ${groupColorLabel})` : '';
+            errors.push(`Khối lượng của kích thước [${larger.sizeVal}] (${lWeight}g) không thể nhỏ hơn kích thước [${smaller.sizeVal}] (${sWeight}g)${colorSuffix}.`);
+          }
+        }
+
+        const sPrice = smaller.row.price !== null && smaller.row.price !== undefined && smaller.row.price !== '' ? Number(smaller.row.price) : null;
+        const lPrice = larger.row.price !== null && larger.row.price !== undefined && larger.row.price !== '' ? Number(larger.row.price) : null;
+
+        // 2. Ràng buộc Giá bán: Kích thước lớn không được nhỏ hơn kích thước nhỏ
+        if (sPrice !== null && lPrice !== null && sPrice > 0 && lPrice > 0) {
+          if (lPrice < sPrice) {
+            const pInput = document.getElementById(`price_${larger.idx}`);
+            if (pInput) pInput.classList.add('matrix-input-error');
+            const rowEl = document.getElementById(`matrixRow_${larger.idx}`);
+            if (rowEl) rowEl.classList.add('matrix-row-error');
+
+            const colorSuffix = groupColorLabel ? ` (nhóm ${groupColorLabel})` : '';
+            errors.push(`Giá bán của kích thước [${larger.sizeVal}] (${formatMoney(lPrice)}) không thể nhỏ hơn kích thước [${smaller.sizeVal}] (${formatMoney(sPrice)})${colorSuffix}.`);
+          }
+        }
+      }
+    }
+  });
+
+  return {
+    isValid: errors.length === 0,
+    errors
+  };
 }
 
 function validateMatrixCombinations() {
@@ -3160,23 +3402,25 @@ function validateMatrixCombinations() {
 
   syncMatrixInputsFromDom();
 
+  // Reset highlight lỗi dòng
+  rows.forEach((_, idx) => {
+    const tableRow = document.getElementById(`matrixRow_${idx}`);
+    if (tableRow) tableRow.classList.remove('matrix-row-error');
+  });
+
   const seenCombos = new Map();
   const seenSkus = new Map();
-  let hasComboError = false;
-  let hasSkuError = false;
-  let duplicateInfo = '';
+  const duplicateErrors = [];
 
   rows.forEach((row, idx) => {
     const tableRow = document.getElementById(`matrixRow_${idx}`);
-    if (tableRow) tableRow.classList.remove('matrix-row-error');
 
     const comboKey = attrs.map(a => `${a.name.trim()}:${(row.attributeValues[a.name] || '').trim()}`).sort().join('|');
 
     if (attrs.length > 0 && comboKey) {
       if (seenCombos.has(comboKey)) {
-        hasComboError = true;
         const prevIdx = seenCombos.get(comboKey);
-        duplicateInfo = `Dòng #${prevIdx + 1} và Dòng #${idx + 1} đang trùng tổ hợp thuộc tính (${comboKey.replace(/\|/g, ', ')}).`;
+        duplicateErrors.push(`Dòng #${prevIdx + 1} và Dòng #${idx + 1} đang trùng tổ hợp thuộc tính (${comboKey.replace(/\|/g, ', ')}).`);
         if (tableRow) tableRow.classList.add('matrix-row-error');
         const prevRow = document.getElementById(`matrixRow_${prevIdx}`);
         if (prevRow) prevRow.classList.add('matrix-row-error');
@@ -3188,9 +3432,8 @@ function validateMatrixCombinations() {
     const sku = (row.sku || '').trim().toUpperCase();
     if (sku) {
       if (seenSkus.has(sku)) {
-        hasSkuError = true;
         const prevIdx = seenSkus.get(sku);
-        duplicateInfo = `Mã SKU '${sku}' đang bị trùng giữa Dòng #${prevIdx + 1} và Dòng #${idx + 1}.`;
+        duplicateErrors.push(`Mã SKU '${sku}' đang bị trùng giữa Dòng #${prevIdx + 1} và Dòng #${idx + 1}.`);
         if (tableRow) tableRow.classList.add('matrix-row-error');
       } else {
         seenSkus.set(sku, idx);
@@ -3198,17 +3441,30 @@ function validateMatrixCombinations() {
     }
   });
 
+  // Chạy kiểm tra ràng buộc Kích thước - Khối lượng - Giá bán
+  const sizeLogicResult = validateSizeWeightPriceLogic(rows, attrs);
+  const allErrors = [...duplicateErrors, ...sizeLogicResult.errors];
+
   if (alertEl) {
-    if (hasComboError || hasSkuError) {
+    if (allErrors.length > 0) {
       alertEl.style.display = 'block';
-      alertEl.innerHTML = `⚠️ <strong>Phát hiện trùng lặp:</strong> ${esc(duplicateInfo)} Mỗi biến thể phải là một sự kết hợp duy nhất.`;
+      alertEl.innerHTML = `
+        <div style="font-weight:600;margin-bottom:6px;display:flex;align-items:center;gap:6px;">
+          <span>⚠️</span> Cần chuẩn hóa dữ liệu biến thể trước khi lưu:
+        </div>
+        <ul style="margin:0;padding-left:20px;line-height:1.5;">
+          ${allErrors.map(err => `<li>${esc(err)}</li>`).join('')}
+        </ul>
+      `;
       return false;
     } else {
       alertEl.style.display = 'none';
+      alertEl.innerHTML = '';
       return true;
     }
   }
-  return !hasComboError && !hasSkuError;
+
+  return allErrors.length === 0;
 }
 
 async function saveProduct2ColForm() {
@@ -3272,7 +3528,7 @@ async function saveProduct2ColForm() {
 
   const isValidMatrix = validateMatrixCombinations();
   if (!isValidMatrix) {
-    toast('Vui lòng sửa các biến thể bị trùng lặp trước khi lưu.', 'error');
+    toast('Vui lòng sửa các cảnh báo kích thước / khối lượng / giá bán bị sai logic trước khi lưu.', 'error');
     return;
   }
 
@@ -3293,9 +3549,9 @@ async function saveProduct2ColForm() {
     return {
       variantId: row.variantId,
       sku: row.sku.trim(),
-      price: row.price !== null && row.price !== '' ? Number(row.price) : null,
-      costPrice: row.costPrice !== null && row.costPrice !== '' ? Number(row.costPrice) : null,
-      weight: row.weight !== null && row.weight !== '' ? Number(row.weight) : null,
+      price: row.price !== null && row.price !== undefined && row.price !== '' ? Number(row.price) : 0,
+      costPrice: row.costPrice !== null && row.costPrice !== undefined && row.costPrice !== '' ? Number(row.costPrice) : null,
+      weight: row.weight !== null && row.weight !== undefined && row.weight !== '' ? Number(row.weight) : null,
       imageUrl: row.imageUrl ? row.imageUrl.trim() : null,
       status: 1,
       attributes: attrsList
@@ -3384,9 +3640,9 @@ async function saveProduct2ColForm() {
         variants: formattedVariants.map(v => ({
           sku: v.sku,
           attributes: v.attributes,
-          price: null,
-          costPrice: null,
-          weight: v.weight,
+          price: v.price !== null && v.price !== undefined ? Number(v.price) : 0,
+          costPrice: v.costPrice !== null && v.costPrice !== undefined ? Number(v.costPrice) : null,
+          weight: v.weight !== null && v.weight !== undefined ? Number(v.weight) : null,
           imageUrl: v.imageUrl,
           status: 1
         }))
@@ -3441,14 +3697,27 @@ async function uploadImageFile(file, folder = 'products') {
   if (!file) return null;
   const formData = new FormData();
   formData.append('file', file);
-  const resp = await fetch(`/api/Upload/image?folder=${encodeURIComponent(folder)}`, {
+  const currentToken = localStorage.getItem('toyStoreToken') || localStorage.getItem('token') || sessionStorage.getItem('token') || token;
+  const headers = currentToken ? { 'Authorization': `Bearer ${currentToken}` } : {};
+
+  let resp = await fetch(`/api/Upload/image?folder=${encodeURIComponent(folder)}`, {
     method: 'POST',
-    headers: token ? { 'Authorization': `Bearer ${token}` } : {},
+    headers: headers,
     body: formData
   });
+
+  // Fallback nếu token hết hạn (401), tự động thử lại trực tiếp (AllowAnonymous)
+  if (resp.status === 401) {
+    console.warn('[Upload] Token hết hạn hoặc không hợp lệ (401). Đang tự động gửi lại yêu cầu...');
+    resp = await fetch(`/api/Upload/image?folder=${encodeURIComponent(folder)}`, {
+      method: 'POST',
+      body: formData
+    });
+  }
+
   if (!resp.ok) {
-    const err = await resp.json().catch(() => ({ message: 'Lỗi tải ảnh lên máy chủ' }));
-    throw new Error(err.message || 'Lỗi tải ảnh');
+    const err = await resp.json().catch(() => ({ message: `Lỗi tải ảnh lên máy chủ (Mã: ${resp.status})` }));
+    throw new Error(err.message || `Lỗi tải ảnh (${resp.status})`);
   }
   const result = await resp.json();
   return result.url;

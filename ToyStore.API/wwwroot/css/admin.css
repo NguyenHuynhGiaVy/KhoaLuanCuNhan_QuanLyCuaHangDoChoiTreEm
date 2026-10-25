@@ -1633,3 +1633,15 @@ body {
   }
 }
 
+/* Variant Matrix Validation Errors */
+.matrix-row-error {
+  background-color: #fef2f2 !important;
+}
+
+.matrix-input-error {
+  border-color: #ef4444 !important;
+  background-color: #fff5f5 !important;
+  box-shadow: 0 0 0 2px rgba(239, 68, 68, 0.25) !important;
+  outline: none !important;
+}
+

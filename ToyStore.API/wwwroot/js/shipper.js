@@ -627,12 +627,18 @@ async function handleProofImageSelected(input) {
   try {
     toast('Đang tải ảnh minh chứng lên máy chủ...', 'info');
     const token = localStorage.getItem('toyStoreToken') || localStorage.getItem('token');
-    const res = await fetch('/api/Upload/image', {
+    let res = await fetch('/api/Upload/image', {
       method: 'POST',
-      headers: { Authorization: `Bearer ${token}` },
+      headers: token ? { Authorization: `Bearer ${token}` } : {},
       body: formData
     });
-    if (!res.ok) throw new Error('Không thể tải ảnh lên');
+    if (res.status === 401) {
+      res = await fetch('/api/Upload/image', {
+        method: 'POST',
+        body: formData
+      });
+    }
+    if (!res.ok) throw new Error(`Không thể tải ảnh lên (Mã: ${res.status})`);
     const data = await res.json();
     completeModalState.uploadedProofUrl = data.url;
     toast('Đã tải ảnh minh chứng thành công!', 'success');

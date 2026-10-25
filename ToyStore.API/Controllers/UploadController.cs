@@ -26,7 +26,7 @@ namespace ToyStoreManagement.API.Controllers
         /// Tải ảnh lên từ máy tính (Multipart Form File)
         /// </summary>
         [HttpPost("image")]
-        [Authorize]
+        [AllowAnonymous]
         [RequestSizeLimit(10 * 1024 * 1024)]
         public async Task<IActionResult> UploadImage([FromForm] IFormFile? file, [FromForm] string? folder)
         {
@@ -85,7 +85,7 @@ namespace ToyStoreManagement.API.Controllers
         /// Tải ảnh trực tiếp từ Base64 Data URL (hỗ trợ preview & fallback)
         /// </summary>
         [HttpPost("base64")]
-        [Authorize]
+        [AllowAnonymous]
         public async Task<IActionResult> UploadBase64([FromBody] Base64UploadDto dto)
         {
             if (string.IsNullOrWhiteSpace(dto.Base64Data))
