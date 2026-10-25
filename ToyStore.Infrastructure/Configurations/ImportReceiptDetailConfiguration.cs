@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Text;
@@ -21,6 +21,10 @@ namespace ToyStoreManagement.Infrastructure.Configurations
 
             builder.Property(x => x.TotalAmount)
                 .HasColumnType("decimal(18,2)");
+
+            builder.Property(x => x.NewPrice)
+                .HasColumnType("decimal(18,2)")
+                .IsRequired(false);
 
             builder.HasOne(x => x.ImportReceipt)
                 .WithMany(x => x.ImportReceiptDetails)

@@ -82,7 +82,9 @@ namespace ToyStoreManagement.Infrastructure.Services
                     Quantity = x.Quantity,
                     ReceivedQuantity = receivedLookup.GetValueOrDefault((receipt.ImportReceiptId, x.VariantId)),
                     UnitCost = x.UnitCost,
-                    TotalAmount = x.TotalAmount
+                    TotalAmount = x.TotalAmount,
+                    CurrentPrice = x.ProductVariant?.Price,
+                    NewPrice = x.NewPrice ?? x.ProductVariant?.Price
                 }).ToList()
             }).ToList();
         }
@@ -166,6 +168,7 @@ namespace ToyStoreManagement.Infrastructure.Services
                     VariantId = item.VariantId,
                     Quantity = item.Quantity,
                     UnitCost = item.UnitCost,
+                    NewPrice = item.NewPrice,
                     TotalAmount = detailTotal
                 };
 
@@ -178,6 +181,23 @@ namespace ToyStoreManagement.Infrastructure.Services
 
             await _repository.AddAsync(receipt);
             await _unitOfWork.SaveChangesAsync();
+
+            // Nếu tạo phiếu với trạng thái Hoàn tất nhập kho ngay (Status = 3)
+            if (dto.Status == 3)
+            {
+                var receiveDto = new ReceiveImportReceiptDto
+                {
+                    Details = receipt.ImportReceiptDetails.Select(d => new ReceiveImportReceiptDetailDto
+                    {
+                        ImportReceiptDetailId = d.ImportReceiptDetailId,
+                        Quantity = d.Quantity,
+                        NewPrice = d.NewPrice
+                    }).ToList()
+                };
+
+                var completed = await ReceiveAsync(receipt.ImportReceiptId, receiveDto);
+                return completed ?? await MapToDtoAsync(receipt);
+            }
 
             var result =
                 await _repository
@@ -232,6 +252,7 @@ namespace ToyStoreManagement.Infrastructure.Services
                     VariantId = item.VariantId,
                     Quantity = item.Quantity,
                     UnitCost = item.UnitCost,
+                    NewPrice = item.NewPrice,
                     TotalAmount = detailTotal
                 });
                 receipt.TotalAmount += detailTotal;
@@ -315,9 +336,23 @@ namespace ToyStoreManagement.Infrastructure.Services
 
                     inventory.Quantity += received.Quantity;
                     inventory.UpdatedAt = DateTime.UtcNow;
+
                     detail.ProductVariant.CostPrice = detail.UnitCost;
+
+                    // Cập nhật Giá bán mới: Nếu NewPrice > 0, cập nhật trực tiếp vào trường giá bán của biến thể
+                    var effectiveNewPrice = received.NewPrice ?? detail.NewPrice;
+                    if (effectiveNewPrice.HasValue && effectiveNewPrice.Value > 0)
+                    {
+                        detail.ProductVariant.Price = effectiveNewPrice.Value;
+                        detail.NewPrice = effectiveNewPrice.Value;
+                    }
+
                     detail.ProductVariant.UpdatedAt = DateTime.UtcNow;
                     affectedProductIds.Add(detail.ProductVariant.ProductId);
+
+                    var priceLogNote = (effectiveNewPrice.HasValue && effectiveNewPrice.Value > 0)
+                        ? $", Giá bán lẻ mới: {effectiveNewPrice.Value:N0} đ"
+                        : "";
 
                     _context.InventoryTransactions.Add(new InventoryTransaction
                     {
@@ -326,7 +361,7 @@ namespace ToyStoreManagement.Infrastructure.Services
                         Quantity = received.Quantity,
                         ReferenceType = "ImportReceipt",
                         ReferenceId = receipt.ImportReceiptId,
-                        Note = $"Nhập hàng từ phiếu {receipt.ReceiptCode}",
+                        Note = $"Nhập hàng từ phiếu {receipt.ReceiptCode}. Đơn giá vốn: {detail.UnitCost:N0} đ{priceLogNote}",
                         CreatedAt = DateTime.UtcNow
                     });
                 }
@@ -347,7 +382,9 @@ namespace ToyStoreManagement.Infrastructure.Services
 
                 foreach (var productId in affectedProductIds)
                 {
-                    var product = await _context.Products.FindAsync(productId);
+                    var product = await _context.Products
+                        .Include(p => p.ProductVariants)
+                        .FirstOrDefaultAsync(p => p.ProductId == productId);
                     if (product == null)
                         continue;
 
@@ -378,15 +415,29 @@ namespace ToyStoreManagement.Infrastructure.Services
                         }
                     }
 
-                    // 2. Tính tổng tồn kho và tự động kích hoạt trạng thái bán hàng
+                    // 2. Tính tổng tồn kho và đồng bộ BasePrice theo giá bán nhỏ nhất của biến thể
                     var totalQuantity = await _context.Inventories
                         .Where(x => x.ProductVariant.ProductId == productId)
                         .SumAsync(x => (int?)x.Quantity) ?? 0;
 
-                    // Kiểm tra nếu Product.Quantity > 0 và trạng thái hiện tại là Chờ nhập hàng (0) -> Kích hoạt Đang bán (1)
-                    if (totalQuantity > 0 && product.Status == 0)
+                    var activeVariantPrices = product.ProductVariants
+                        .Where(v => v.Price > 0)
+                        .Select(v => v.Price)
+                        .ToList();
+
+                    if (activeVariantPrices.Count > 0)
                     {
-                        product.Status = 1; // Đang bán
+                        product.BasePrice = activeVariantPrices.Min();
+                    }
+
+                    // 3. Tự động kích hoạt trạng thái "Đang bán" (1):
+                    // Khi tồn kho > 0 VÀ có biến thể có giá bán > 0:
+                    if (totalQuantity > 0 && activeVariantPrices.Count > 0)
+                    {
+                        if (product.Status == 0 || product.Status == 3)
+                        {
+                            product.Status = 1; // Đang bán
+                        }
                     }
                     else if (product.Status != 2)
                     {
@@ -408,7 +459,7 @@ namespace ToyStoreManagement.Infrastructure.Services
             }
         }
 
-        public async Task<ImportReceiptDto?> ApproveAsync(int id)
+        public async Task<ImportReceiptDto?> ApproveAsync(int id, ReceiveImportReceiptDto? dto = null)
         {
             var receipt = await _context.ImportReceipts
                 .Include(x => x.ImportReceiptDetails)
@@ -437,10 +488,17 @@ namespace ToyStoreManagement.Infrastructure.Services
                 var remaining = detail.Quantity - alreadyReceived;
                 if (remaining > 0)
                 {
+                    var matchingDtoDetail = dto?.Details?.FirstOrDefault(d => d.ImportReceiptDetailId == detail.ImportReceiptDetailId);
+                    var newPriceVal = matchingDtoDetail?.NewPrice ?? detail.NewPrice;
+                    var qtyToReceive = (matchingDtoDetail != null && matchingDtoDetail.Quantity > 0)
+                        ? Math.Min(matchingDtoDetail.Quantity, remaining)
+                        : remaining;
+
                     detailsToReceive.Add(new ReceiveImportReceiptDetailDto
                     {
                         ImportReceiptDetailId = detail.ImportReceiptDetailId,
-                        Quantity = remaining
+                        Quantity = qtyToReceive,
+                        NewPrice = newPriceVal
                     });
                 }
             }
@@ -541,7 +599,13 @@ namespace ToyStoreManagement.Infrastructure.Services
                                 x.UnitCost,
 
                             TotalAmount =
-                                x.TotalAmount
+                                x.TotalAmount,
+
+                            CurrentPrice =
+                                x.ProductVariant?.Price,
+
+                            NewPrice =
+                                x.NewPrice ?? x.ProductVariant?.Price
                         })
                         .ToList()
             };

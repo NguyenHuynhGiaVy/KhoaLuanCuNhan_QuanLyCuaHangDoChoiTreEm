@@ -2154,7 +2154,16 @@ function showForm(key, index = null) {
         </div>
         <div class="form-footer-actions">
           <button type="button" class="ghost-btn" onclick="renderList('${key}')">Hủy bỏ</button>
-          <button type="submit" class="primary-btn">Lưu ${m.title}</button>
+          ${key === 'imports' ? `
+            <button type="button" class="secondary-btn" onclick="submitImportReceiptForm(false, ${index})" style="background:var(--slate-100);color:var(--slate-700);border:1px solid var(--slate-300);">
+              💾 Lưu tạm (Chờ duyệt)
+            </button>
+            <button type="button" class="success-btn" onclick="submitImportReceiptForm(true, ${index})">
+              ✓ Hoàn tất nhập kho &amp; Mở bán
+            </button>
+          ` : `
+            <button type="submit" class="primary-btn">Lưu ${m.title}</button>
+          `}
         </div>
       </form>
     </div>
@@ -2879,7 +2888,10 @@ function renderMatrixTableHtml() {
             ${attrs.map(a => `<th>${esc(a.name)}</th>`).join('')}
             <th style="min-width:140px;">Mã SKU *</th>
             <th style="width:105px;">Khối lượng (g)</th>
-            <th style="width:145px;">Giá bán (đ)</th>
+            <th style="width:150px;">
+              Giá bán dự kiến (đ)
+              <div style="font-size:10.5px;font-weight:400;color:var(--slate-400);line-height:1.2;margin-top:2px;">(Không bắt buộc)</div>
+            </th>
             <th style="width:140px;">Ảnh riêng (URL)</th>
             <th style="width:40px;text-align:center;">Xóa</th>
           </tr>
@@ -2909,7 +2921,7 @@ function renderMatrixTableHtml() {
                   <input type="number" min="0" step="1" class="matrix-input matrix-weight" id="weight_${idx}" value="${row.weight ?? ''}" placeholder="g" oninput="onMatrixWeightInput(${idx}, this.value)">
                 </td>
                 <td>
-                  <input type="number" min="0" step="1000" class="matrix-input matrix-price" id="price_${idx}" value="${row.price ?? ''}" placeholder="Nhập giá (đ)" oninput="onMatrixPriceInput(${idx}, this.value)">
+                  <input type="number" min="0" step="1000" class="matrix-input matrix-price" id="price_${idx}" value="${row.price ?? ''}" placeholder="Dự kiến (đ)" oninput="onMatrixPriceInput(${idx}, this.value)">
                 </td>
                 <td style="min-width:145px;">
                   <div style="display:flex;align-items:center;gap:4px;">
@@ -2929,6 +2941,10 @@ function renderMatrixTableHtml() {
           }).join('')}
         </tbody>
       </table>
+    </div>
+    <div style="margin-top:8px;font-size:12px;color:var(--slate-500);font-style:italic;display:flex;align-items:center;gap:6px;">
+      <span>💡</span>
+      <span>* <b>Giá bán dự kiến</b>: Có thể để trống và cập nhật chính thức khi làm phiếu nhập kho.</span>
     </div>
   `;
 }
@@ -4577,7 +4593,38 @@ async function loadCustomerOrdersForAdmin(customerId) {
 }
 
 // ── 4. PURCHASE ORDER (PHIẾU ĐẶT HÀNG NCC) BUILDER ───────────
-function renderPurchaseOrderForm(v) {
+function getVariantInfoById(variantId) {
+  if (!variantId) return null;
+  const vIdNum = Number(variantId);
+  const products = ref.products || [];
+  for (const p of products) {
+    const variants = productVariantsOf(p);
+    for (const v of variants) {
+      if ((v.variantId || v.id) === vIdNum) {
+        let variantName = '';
+        if (Array.isArray(v.attributes) && v.attributes.length > 0) {
+          variantName = v.attributes.map(a => a.attributeValue || a.value).filter(Boolean).join(' - ');
+        }
+        if (!variantName && (v.color || v.size)) {
+          variantName = [v.color, v.size].filter(Boolean).join(' - ');
+        }
+        return {
+          product: p,
+          variant: v,
+          productId: p.productId || p.id,
+          productName: p.name || 'Sản phẩm',
+          variantName: variantName,
+          sku: v.sku || 'N/A',
+          currentPrice: v.price != null && Number(v.price) > 0 ? Number(v.price) : 0,
+          costPrice: v.costPrice != null ? Number(v.costPrice) : null
+        };
+      }
+    }
+  }
+  return null;
+}
+
+function renderPurchaseOrderForm(v = {}) {
   const today = new Date().toISOString().split('T')[0];
   const randomCode = 'PO-' + new Date().getFullYear() + String(new Date().getMonth()+1).padStart(2,'0') + String(new Date().getDate()).padStart(2,'0') + '-' + Math.floor(1000 + Math.random() * 9000);
   const code = v.receiptCode || randomCode;
@@ -4605,26 +4652,29 @@ function renderPurchaseOrderForm(v) {
         <label>Người đặt</label>
         <input class="input-control" value="${esc(orderedByName)}" readonly aria-label="Người đặt hàng">
       </div>
-      <div class="form-group">
+      <div class="form-group full">
         <label>Ghi chú đặt hàng</label>
         <input name="note" class="input-control" value="${esc(v.note || '')}" placeholder="Ghi chú điều khoản, thời gian dự kiến giao hàng...">
       </div>
     </div>
 
     <div class="form-section-card">
-      <h4>
-        <span>Danh sách sản phẩm đặt hàng từ nhà cung cấp</span>
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;flex-wrap:wrap;gap:8px;">
+        <h4 style="margin:0;">Danh sách mặt hàng &amp; thiết lập giá bán nhập kho</h4>
         <button type="button" class="primary-btn" style="padding:6px 14px;font-size:12px;" onclick="addPurchaseOrderItemRow()">+ Thêm mặt hàng</button>
-      </h4>
+      </div>
       <div class="order-items-builder">
         <table class="order-items-table">
           <thead>
             <tr>
-              <th>Sản phẩm & Biến thể SKU *</th>
-              <th style="width:140px;">Số lượng đặt *</th>
-              <th style="width:180px;">Đơn giá nhập (đ) *</th>
-              <th style="width:180px;">Thành tiền (đ)</th>
-              <th style="width:50px;"></th>
+              <th style="width:120px;">STT / Mã SKU</th>
+              <th style="min-width:220px;">Tên sản phẩm &amp; Biến thể *</th>
+              <th style="width:110px;">Số lượng nhập *</th>
+              <th style="width:140px;">Đơn giá nhập (đ) *</th>
+              <th style="width:135px;">Thành tiền nhập (đ)</th>
+              <th style="width:130px;">Giá bán hiện tại</th>
+              <th style="width:160px;">Giá bán mới (Bán lẻ) *</th>
+              <th style="width:40px;text-align:center;"></th>
             </tr>
           </thead>
           <tbody id="poItemsBody">
@@ -4632,9 +4682,9 @@ function renderPurchaseOrderForm(v) {
           </tbody>
           <tfoot>
             <tr style="background:var(--slate-50);font-weight:700;">
-              <td colspan="3" style="text-align:right;padding:12px 14px;">Tổng giá trị đơn đặt hàng:</td>
+              <td colspan="4" style="text-align:right;padding:12px 14px;">Tổng giá trị nhập kho:</td>
               <td style="padding:12px 14px;color:var(--primary);font-size:16px;" id="poTotalAmountDisplay">0 đ</td>
-              <td></td>
+              <td colspan="3"></td>
             </tr>
           </tfoot>
         </table>
@@ -4667,6 +4717,30 @@ function generatePOVariantOptionsHtml(supplierId, selectedVariantId) {
     others = products;
   }
 
+  const renderOpt = (p, vr, isSupplierMatch, refCostOverride, skuCode) => {
+    const vId = vr.variantId || vr.id;
+    const isSel = selectedVariantId == vId;
+    const costVal = refCostOverride ?? vr.costPrice ?? '';
+    const currentPrice = vr.price != null && Number(vr.price) > 0 ? Number(vr.price) : 0;
+    let varDesc = '';
+    if (Array.isArray(vr.attributes) && vr.attributes.length > 0) {
+      varDesc = vr.attributes.map(a => a.attributeValue || a.value).filter(Boolean).join(' - ');
+    } else if (vr.color || vr.size) {
+      varDesc = [vr.color, vr.size].filter(Boolean).join(' - ');
+    }
+    const fullDisplayName = varDesc ? `${p.name} - ${varDesc}` : p.name;
+    const sku = vr.sku || 'N/A';
+
+    return `<option value="${vId}" 
+      data-sku="${esc(sku)}" 
+      data-ref-cost="${costVal}" 
+      data-current-price="${currentPrice}" 
+      data-full-name="${esc(fullDisplayName)}" 
+      ${isSel ? 'selected' : ''}>
+      ${isSupplierMatch ? '⭐ ' : ''}${esc(fullDisplayName)} [${esc(sku)}]${costVal ? ` (Giá vốn: ${money(costVal)})` : ''}
+    </option>`;
+  };
+
   let html = '';
   if (supplied.length > 0) {
     html += `<optgroup label="⭐ Sản phẩm của nhà cung cấp này (${supplied.length} sản phẩm)">`;
@@ -4675,10 +4749,7 @@ function generatePOVariantOptionsHtml(supplierId, selectedVariantId) {
       const refCost = supInfo?.giaNhapThamKhao;
       const skuCode = supInfo?.maHangNCC ? ` [Mã NCC: ${supInfo.maHangNCC}]` : '';
       productVariantsOf(p).forEach(vr => {
-        const vId = vr.variantId || vr.id;
-        const isSel = selectedVariantId == vId;
-        const costVal = refCost ?? vr.costPrice ?? '';
-        html += `<option value="${vId}" data-ref-cost="${costVal}" ${isSel ? 'selected' : ''}>⭐ ${esc(p.name)} - SKU: ${esc(vr.sku || 'N/A')}${skuCode}${costVal ? ` (Giá tham khảo: ${money(costVal)})` : ''}</option>`;
+        html += renderOpt(p, vr, true, refCost, skuCode);
       });
     });
     html += `</optgroup>`;
@@ -4691,10 +4762,7 @@ function generatePOVariantOptionsHtml(supplierId, selectedVariantId) {
     html += `<optgroup label="${groupLabel}">`;
     others.forEach(p => {
       productVariantsOf(p).forEach(vr => {
-        const vId = vr.variantId || vr.id;
-        const isSel = selectedVariantId == vId;
-        const costVal = vr.costPrice ?? '';
-        html += `<option value="${vId}" data-ref-cost="${costVal}" ${isSel ? 'selected' : ''}>${esc(p.name)} - SKU: ${esc(vr.sku || 'N/A')}${costVal ? ` (${money(costVal)})` : ''}</option>`;
+        html += renderOpt(p, vr, false, null, '');
       });
     });
     html += `</optgroup>`;
@@ -4708,56 +4776,120 @@ function renderPurchaseOrderItemRow(item = {}, idx = null, supplierId = null) {
   const sId = supplierId || document.getElementById('poSupplierSelect')?.value || null;
   const variantOptions = generatePOVariantOptionsHtml(sId, item.variantId);
 
+  const vInfo = item.variantId ? getVariantInfoById(item.variantId) : null;
+  const sku = item.sku || vInfo?.sku || '—';
   const qty = item.quantity || 10;
-  const cost = item.unitCost || 0;
+  const cost = item.unitCost || (vInfo?.costPrice ?? 0);
   const total = qty * cost;
+
+  const currentPrice = item.currentPrice != null && Number(item.currentPrice) > 0 
+    ? Number(item.currentPrice) 
+    : (vInfo?.currentPrice || 0);
+
+  const currentPriceText = currentPrice > 0 
+    ? money(currentPrice) 
+    : `<span style="color:var(--slate-400);font-style:italic;">Chưa thiết lập</span>`;
+
+  const newPriceVal = (item.newPrice != null && Number(item.newPrice) > 0)
+    ? Number(item.newPrice)
+    : (currentPrice > 0 ? currentPrice : '');
 
   return `
     <tr class="po-item-row" id="poRow_${rIdx}">
+      <!-- 1. STT / Mã SKU -->
+      <td style="vertical-align:middle;">
+        <div style="font-weight:700;color:var(--slate-500);font-size:11.5px;margin-bottom:2px;">#${Number(rIdx) + 1}</div>
+        <code class="po-sku-badge" id="poSku_${rIdx}">${esc(sku)}</code>
+      </td>
+      <!-- 2. Tên sản phẩm & Biến thể -->
       <td>
-        <select class="input-control po-variant-select" required onchange="handlePOVariantSelectChange(this)">
-          <option value="">-- Chọn sản phẩm & SKU --</option>
+        <select class="input-control po-variant-select" required onchange="handlePOVariantSelectChange(this, ${rIdx})">
+          <option value="">-- Chọn sản phẩm & biến thể --</option>
           ${variantOptions}
         </select>
       </td>
+      <!-- 3. Số lượng nhập -->
       <td>
         <input type="number" min="1" class="input-control po-qty-input" value="${qty}" required oninput="calculatePOTotals()">
       </td>
+      <!-- 4. Đơn giá nhập -->
       <td>
         <input type="number" min="0" step="1000" class="input-control po-cost-input" value="${cost}" required oninput="calculatePOTotals()">
       </td>
-      <td>
+      <!-- 5. Thành tiền nhập -->
+      <td style="vertical-align:middle;">
         <span class="po-row-subtotal" style="font-weight:700;color:var(--slate-800);">${money(total)}</span>
       </td>
-      <td style="text-align:center;">
+      <!-- 6. Giá bán hiện tại -->
+      <td style="vertical-align:middle;">
+        <span class="po-current-price-badge" id="poCurrentPrice_${rIdx}">${currentPriceText}</span>
+      </td>
+      <!-- 7. Giá bán mới (Bán lẻ) -->
+      <td>
+        <input type="number" min="0" step="1000" class="input-control po-new-price-input" id="poNewPrice_${rIdx}" value="${newPriceVal}" placeholder="Nhập giá bán mới..." oninput="onPONewPriceInput(this)">
+      </td>
+      <!-- 8. Nút Xóa dòng -->
+      <td style="text-align:center;vertical-align:middle;">
         <button type="button" class="icon-action-btn del" title="Xóa dòng" onclick="removePurchaseOrderItemRow('poRow_${rIdx}')">✕</button>
       </td>
     </tr>
   `;
 }
 
-window.handlePOVariantSelectChange = function(selectEl) {
-  if (selectEl) {
-    const opt = selectEl.options[selectEl.selectedIndex];
-    if (opt) {
-      const refCost = opt.getAttribute('data-ref-cost');
-      const row = selectEl.closest('.po-item-row');
-      if (row && refCost) {
-        const costInput = row.querySelector('.po-cost-input');
-        if (costInput && (!costInput.value || costInput.value === '0')) {
-          costInput.value = refCost;
-        }
+window.handlePOVariantSelectChange = function(selectEl, rIdx) {
+  if (!selectEl) return;
+  const row = selectEl.closest('.po-item-row');
+  if (!row) return;
+
+  const opt = selectEl.options[selectEl.selectedIndex];
+  if (opt && opt.value) {
+    const vId = Number(opt.value);
+    const sku = opt.getAttribute('data-sku') || '';
+    const refCost = opt.getAttribute('data-ref-cost');
+    const currentPrice = Number(opt.getAttribute('data-current-price') || 0);
+
+    const skuBadge = row.querySelector('.po-sku-badge');
+    if (skuBadge) skuBadge.textContent = sku || '—';
+
+    const costInput = row.querySelector('.po-cost-input');
+    if (costInput && (!costInput.value || costInput.value === '0') && refCost) {
+      costInput.value = refCost;
+    }
+
+    const currentPriceBadge = row.querySelector('.po-current-price-badge');
+    if (currentPriceBadge) {
+      currentPriceBadge.innerHTML = currentPrice > 0 
+        ? money(currentPrice) 
+        : '<span style="color:var(--slate-400);font-style:italic;">Chưa thiết lập</span>';
+    }
+
+    const newPriceInput = row.querySelector('.po-new-price-input');
+    if (newPriceInput) {
+      newPriceInput.classList.remove('po-input-error');
+      if (!newPriceInput.value || newPriceInput.value === '0') {
+        newPriceInput.value = currentPrice > 0 ? currentPrice : '';
       }
     }
+  } else {
+    const skuBadge = row.querySelector('.po-sku-badge');
+    if (skuBadge) skuBadge.textContent = '—';
+    const currentPriceBadge = row.querySelector('.po-current-price-badge');
+    if (currentPriceBadge) currentPriceBadge.innerHTML = '<span style="color:var(--slate-400);font-style:italic;">Chưa thiết lập</span>';
   }
   calculatePOTotals();
+};
+
+window.onPONewPriceInput = function(inputEl) {
+  if (inputEl && Number(inputEl.value) > 0) {
+    inputEl.classList.remove('po-input-error');
+  }
 };
 
 window.handlePOSupplierChange = function(supplierId) {
   const selects = document.querySelectorAll('.po-variant-select');
   selects.forEach(sel => {
     const currentVal = sel.value;
-    sel.innerHTML = '<option value="">-- Chọn sản phẩm & SKU --</option>' + generatePOVariantOptionsHtml(supplierId, currentVal);
+    sel.innerHTML = '<option value="">-- Chọn sản phẩm & biến thể --</option>' + generatePOVariantOptionsHtml(supplierId, currentVal);
     sel.value = currentVal;
   });
   if (supplierId) {
@@ -4797,6 +4929,126 @@ window.calculatePOTotals = function() {
   if (display) display.textContent = money(grandTotal);
 };
 
+window.submitImportReceiptForm = async function(isComplete, index) {
+  const form = document.getElementById('activeInPageForm');
+  if (!form) return;
+
+  const supplierSelect = document.getElementById('poSupplierSelect');
+  const supplierId = Number(supplierSelect?.value);
+  if (!supplierId) {
+    toast('Vui lòng chọn nhà cung cấp.', 'error');
+    supplierSelect?.focus();
+    return;
+  }
+
+  const receiptCodeInput = form.querySelector('[name="receiptCode"]');
+  const receiptCode = (receiptCodeInput?.value || '').trim();
+  if (!receiptCode) {
+    toast('Vui lòng nhập mã phiếu đặt hàng.', 'error');
+    receiptCodeInput?.focus();
+    return;
+  }
+
+  const importDateInput = form.querySelector('[name="importDate"]');
+  const importDate = importDateInput?.value ? new Date(importDateInput.value).toISOString() : new Date().toISOString();
+  const note = (form.querySelector('[name="note"]')?.value || '').trim();
+
+  const rows = document.querySelectorAll('.po-item-row');
+  if (rows.length === 0) {
+    toast('Phiếu nhập kho phải có ít nhất một mặt hàng.', 'error');
+    return;
+  }
+
+  const details = [];
+  for (const r of rows) {
+    const vSelect = r.querySelector('.po-variant-select');
+    const variantId = Number(vSelect?.value);
+    const qtyInput = r.querySelector('.po-qty-input');
+    const quantity = Number(qtyInput?.value || 0);
+    const costInput = r.querySelector('.po-cost-input');
+    const unitCost = Number(costInput?.value || 0);
+    const newPriceInput = r.querySelector('.po-new-price-input');
+    const newPrice = newPriceInput?.value !== '' ? Number(newPriceInput.value) : null;
+    const skuText = r.querySelector('.po-sku-badge')?.textContent?.trim() || `SKU #${variantId}`;
+
+    if (!variantId) {
+      toast('Vui lòng chọn sản phẩm và biến thể cho từng dòng.', 'error');
+      vSelect?.focus();
+      return;
+    }
+
+    if (quantity <= 0) {
+      toast(`Số lượng nhập của sản phẩm [${skuText}] phải lớn hơn 0.`, 'error');
+      qtyInput?.focus();
+      return;
+    }
+
+    // Validation khi Hoàn tất nhập kho: Cột Giá bán mới bắt buộc > 0
+    if (isComplete) {
+      if (!newPrice || newPrice <= 0) {
+        if (newPriceInput) {
+          newPriceInput.classList.add('po-input-error');
+          newPriceInput.focus();
+        }
+        toast(`Vui lòng nhập giá bán cho sản phẩm [${skuText}] trước khi nhập kho và mở bán`, 'error');
+        return;
+      }
+    }
+
+    details.push({
+      variantId,
+      quantity,
+      unitCost,
+      newPrice: newPrice && newPrice > 0 ? newPrice : null
+    });
+  }
+
+  const isEdit = index !== null;
+  const existingRecord = isEdit && cache.imports ? cache.imports[index] : null;
+
+  const payload = {
+    supplierId,
+    receiptCode,
+    importDate,
+    note,
+    status: isComplete ? 3 : 1, // 3: Đã duyệt & Nhập kho (Hoàn tất), 1: Chờ duyệt
+    details
+  };
+
+  try {
+    if (isEdit && existingRecord) {
+      await api(`ImportReceipt/${existingRecord.importReceiptId}`, {
+        method: 'PUT',
+        body: JSON.stringify(payload)
+      });
+      if (isComplete) {
+        await api(`ImportReceipt/${existingRecord.importReceiptId}/approve`, {
+          method: 'POST',
+          body: JSON.stringify({
+            details: details.map(d => ({
+              variantId: d.variantId,
+              receivedQuantity: d.quantity,
+              newPrice: d.newPrice
+            }))
+          })
+        });
+      }
+      toast(isComplete ? 'Đã hoàn tất nhập kho & cập nhật giá bán, mở bán thành công!' : 'Đã cập nhật phiếu nhập kho thành công!', 'success');
+    } else {
+      await api('ImportReceipt', {
+        method: 'POST',
+        body: JSON.stringify(payload)
+      });
+      toast(isComplete ? 'Tạo phiếu & Hoàn tất nhập kho thành công! Giá bán và trạng thái đang bán đã kích hoạt.' : 'Tạo phiếu nhập kho tạm (chờ duyệt) thành công!', 'success');
+    }
+
+    await loadRef();
+    renderList('imports');
+  } catch (err) {
+    toast(`Lỗi lưu phiếu: ${err.message}`, 'error');
+  }
+};
+
 // ── 5. FORM SUBMISSION HANDLER ──────────────────────────────
 async function handleFormSubmit(e, key, index) {
   e.preventDefault();
@@ -4808,45 +5060,8 @@ async function handleFormSubmit(e, key, index) {
   let payload = Object.fromEntries(fd.entries());
 
   if (key === 'imports') {
-    const supplierId = Number(payload.supplierId);
-    if (!supplierId) {
-      toast('Vui lòng chọn nhà cung cấp.', 'error');
-      return;
-    }
-
-    const details = [];
-    const rows = document.querySelectorAll('.po-item-row');
-    if (rows.length === 0) {
-      toast('Phiếu đặt hàng phải có ít nhất một mặt hàng.', 'error');
-      return;
-    }
-
-    for (const r of rows) {
-      const vSelect = r.querySelector('.po-variant-select');
-      const variantId = Number(vSelect?.value);
-      const quantity = Number(r.querySelector('.po-qty-input')?.value);
-      const unitCost = Number(r.querySelector('.po-cost-input')?.value);
-
-      if (!variantId) {
-        toast('Vui lòng chọn sản phẩm cho từng dòng.', 'error');
-        return;
-      }
-      if (quantity <= 0) {
-        toast('Số lượng đặt hàng phải lớn hơn 0.', 'error');
-        return;
-      }
-
-      details.push({ variantId, quantity, unitCost });
-    }
-
-    payload = {
-      supplierId: supplierId,
-      receiptCode: payload.receiptCode,
-      importDate: new Date(payload.importDate).toISOString(),
-      note: payload.note || '',
-      status: 1, // Chờ duyệt
-      details: details
-    };
+    await submitImportReceiptForm(false, index);
+    return;
   } else if (key === 'products') {
     try {
       payload.categoryId = Number(payload.categoryId);
@@ -5000,25 +5215,56 @@ async function showImportDetail(id) {
               <table class="data-table">
                 <thead>
                   <tr>
+                    <th style="width:120px;">STT / Mã SKU</th>
                     <th>Sản phẩm / Biến thể</th>
-                    <th>Mã SKU</th>
-                    <th>Số lượng đặt</th>
-                    <th>Đã nhận vào kho</th>
-                    <th>Đơn giá nhập</th>
-                    <th>Thành tiền</th>
+                    <th style="width:110px;">Số lượng đặt</th>
+                    <th style="width:120px;">Đã nhận vào kho</th>
+                    <th style="width:130px;">Đơn giá nhập</th>
+                    <th style="width:135px;">Thành tiền</th>
+                    <th style="width:130px;">Giá bán hiện tại</th>
+                    <th style="width:160px;">Giá bán mới (Bán lẻ)</th>
                   </tr>
                 </thead>
                 <tbody>
-                  ${(receipt.importReceiptDetails || []).map(d => `
-                    <tr>
-                      <td><strong>${esc(d.productName || 'Sản phẩm')}</strong></td>
-                      <td><code>${esc(d.sku || 'SKU')}</code></td>
-                      <td><strong>${d.quantity}</strong></td>
-                      <td><span style="color:${d.receivedQuantity >= d.quantity ? 'var(--success)' : 'var(--warning)'};font-weight:700;">${d.receivedQuantity || 0}</span> / ${d.quantity}</td>
-                      <td>${money(d.unitCost)}</td>
-                      <td><strong style="color:var(--primary);">${money(d.totalAmount)}</strong></td>
-                    </tr>
-                  `).join('')}
+                  ${(receipt.importReceiptDetails || []).map((d, dIdx) => {
+                    const currentPrice = d.currentPrice != null && Number(d.currentPrice) > 0 ? Number(d.currentPrice) : 0;
+                    const currentPriceHtml = currentPrice > 0 
+                      ? money(currentPrice) 
+                      : '<span style="color:var(--slate-400);font-style:italic;">Chưa thiết lập</span>';
+                    const newPriceVal = (d.newPrice != null && Number(d.newPrice) > 0)
+                      ? Number(d.newPrice)
+                      : (currentPrice > 0 ? currentPrice : '');
+
+                    return `
+                      <tr>
+                        <td>
+                          <div style="font-weight:700;color:var(--slate-500);font-size:11.5px;margin-bottom:2px;">#${dIdx + 1}</div>
+                          <code class="po-sku-badge">${esc(d.sku || 'SKU')}</code>
+                        </td>
+                        <td><strong>${esc(d.productName || 'Sản phẩm')}</strong></td>
+                        <td><strong>${d.quantity}</strong></td>
+                        <td><span style="color:${d.receivedQuantity >= d.quantity ? 'var(--success)' : 'var(--warning)'};font-weight:700;">${d.receivedQuantity || 0}</span> / ${d.quantity}</td>
+                        <td>${money(d.unitCost)}</td>
+                        <td><strong style="color:var(--primary);">${money(d.totalAmount)}</strong></td>
+                        <td><span class="po-current-price-badge">${currentPriceHtml}</span></td>
+                        <td>
+                          ${canApprove ? `
+                            <input type="number" min="0" step="1000" 
+                              class="input-control po-detail-new-price" 
+                              data-detail-id="${d.importReceiptDetailId}" 
+                              data-variant-id="${d.variantId}" 
+                              data-sku="${esc(d.sku || '')}" 
+                              value="${newPriceVal}" 
+                              placeholder="Nhập giá bán mới..." 
+                              oninput="this.classList.remove('po-input-error')"
+                              style="width:145px;padding:6px 10px;font-size:13px;">
+                          ` : `
+                            <strong style="color:var(--slate-800);">${d.newPrice > 0 ? money(d.newPrice) : (currentPrice > 0 ? money(currentPrice) : '—')}</strong>
+                          `}
+                        </td>
+                      </tr>
+                    `;
+                  }).join('')}
                 </tbody>
               </table>
             </div>
@@ -5038,21 +5284,47 @@ window.approvePurchaseOrder = async function(id) {
   notice.innerHTML = `
     <div class="inline-confirm-box success">
       <div class="confirm-text">
-        <b>Xác nhận duyệt phiếu & nhập hàng vào kho?</b>
-        <p>Hệ thống sẽ cập nhật số lượng tồn kho thực tế của các sản phẩm trong phiếu và ghi nhận lịch sử giao dịch kho.</p>
+        <b>Xác nhận duyệt phiếu &amp; Hoàn tất nhập kho?</b>
+        <p>Hệ thống sẽ cập nhật số lượng tồn kho, áp dụng <b>Giá bán mới</b> cho các biến thể và tự động chuyển trạng thái sản phẩm sang <b>Đang bán</b>.</p>
       </div>
       <div class="confirm-actions">
         <button class="ghost-btn" onclick="document.getElementById('inlineApprovalNotice').innerHTML=''">Hủy</button>
-        <button class="success-btn" onclick="executeApprovePurchaseOrder(${id})">Xác nhận Duyệt</button>
+        <button class="success-btn" onclick="executeApprovePurchaseOrder(${id})">Xác nhận Hoàn tất</button>
       </div>
     </div>
   `;
 };
 
 window.executeApprovePurchaseOrder = async function(id) {
+  const detailInputs = document.querySelectorAll('.po-detail-new-price');
+  const detailsPayload = [];
+
+  for (const input of detailInputs) {
+    const val = Number(input.value || 0);
+    const sku = input.getAttribute('data-sku') || 'Sản phẩm';
+    const detailId = Number(input.getAttribute('data-detail-id'));
+    const variantId = Number(input.getAttribute('data-variant-id'));
+
+    if (!val || val <= 0) {
+      input.classList.add('po-input-error');
+      input.focus();
+      toast(`Vui lòng nhập giá bán cho sản phẩm [${sku}] trước khi nhập kho và mở bán`, 'error');
+      return;
+    }
+
+    detailsPayload.push({
+      importReceiptDetailId: detailId,
+      variantId: variantId,
+      newPrice: val
+    });
+  }
+
   try {
-    await api(`ImportReceipt/${id}/approve`, { method: 'POST' });
-    toast('Duyệt phiếu & Nhập tồn kho thành công!', 'success');
+    await api(`ImportReceipt/${id}/approve`, {
+      method: 'POST',
+      body: JSON.stringify({ details: detailsPayload })
+    });
+    toast('Duyệt phiếu, cập nhật tồn kho & thiết lập giá bán mới thành công!', 'success');
     await loadRef();
     showImportDetail(id);
   } catch (err) {

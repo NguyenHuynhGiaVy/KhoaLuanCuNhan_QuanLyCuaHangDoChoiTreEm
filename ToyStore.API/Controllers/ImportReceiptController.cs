@@ -132,11 +132,11 @@ namespace ToyStoreManagement.API.Controllers
 
         [HttpPost("{id}/approve")]
         [Authorize(Policy = "AdminOrManager")]
-        public async Task<IActionResult> Approve(int id)
+        public async Task<IActionResult> Approve(int id, [FromBody] ReceiveImportReceiptDto? dto = null)
         {
             try
             {
-                var receipt = await _service.ApproveAsync(id);
+                var receipt = await _service.ApproveAsync(id, dto);
                 if (receipt == null)
                     return NotFound(new { message = "Không tìm thấy phiếu nhập." });
 

@@ -13,5 +13,6 @@ namespace ToyStoreManagement.Application.DTOs.Import
         public int ImportReceiptDetailId { get; set; }
 
         public int Quantity { get; set; }
+        public decimal? NewPrice { get; set; }
     }
 }

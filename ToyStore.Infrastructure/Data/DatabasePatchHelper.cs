@@ -267,6 +267,14 @@ namespace ToyStoreManagement.Infrastructure.Data
                           );
                     END
                 ");
+
+                // 9. Bổ sung cột NewPrice cho bảng ImportReceiptDetails (Giá bán mới thiết lập khi nhập kho)
+                await context.Database.ExecuteSqlRawAsync(@"
+                    IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID(N'[dbo].[ImportReceiptDetails]') AND name = 'NewPrice')
+                    BEGIN
+                        ALTER TABLE [dbo].[ImportReceiptDetails] ADD [NewPrice] decimal(18,2) NULL;
+                    END
+                ");
             }
             catch (Exception ex)
             {

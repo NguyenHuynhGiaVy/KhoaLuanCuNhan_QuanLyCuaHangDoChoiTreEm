@@ -27,7 +27,7 @@ namespace ToyStoreManagement.Application.Interfaces.Services
             int id,
             ReceiveImportReceiptDto dto);
 
-        Task<ImportReceiptDto?> ApproveAsync(int id);
+        Task<ImportReceiptDto?> ApproveAsync(int id, ReceiveImportReceiptDto? dto = null);
 
         Task<bool> CancelAsync(int id);
 

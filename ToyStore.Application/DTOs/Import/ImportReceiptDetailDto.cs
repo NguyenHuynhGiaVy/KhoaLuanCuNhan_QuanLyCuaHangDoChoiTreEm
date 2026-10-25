@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Text;
@@ -25,5 +25,7 @@ namespace ToyStoreManagement.Application.DTOs.Import
         public decimal UnitCost { get; set; }
 
         public decimal TotalAmount { get; set; }
+        public decimal? CurrentPrice { get; set; }
+        public decimal? NewPrice { get; set; }
     }
 }
