@@ -516,10 +516,6 @@ namespace ToyStoreManagement.Infrastructure.Services
                     "SKU đã tồn tại.");
             }
 
-            if (dto.Price.HasValue)
-                throw new InvalidOperationException(
-                    "Biến thể mới chỉ được nhập giá bán sau khi đã có tồn kho từ phiếu nhập NCC.");
-
             ValidateVariantAttributes(dto.Attributes);
 
             // Kiểm tra trùng tổ hợp thuộc tính với các biến thể đã có của sản phẩm này
@@ -590,6 +586,18 @@ namespace ToyStoreManagement.Infrastructure.Services
 
             await _unitOfWork
                 .SaveChangesAsync();
+
+            if (variant.Price > 0)
+            {
+                var parentProduct = await _productRepository.GetByIdAsync(productId);
+                if (parentProduct != null && (parentProduct.BasePrice == null || parentProduct.BasePrice <= 0 || variant.Price < parentProduct.BasePrice))
+                {
+                    parentProduct.BasePrice = variant.Price;
+                    parentProduct.UpdatedAt = DateTime.UtcNow;
+                    _productRepository.Update(parentProduct);
+                    await _unitOfWork.SaveChangesAsync();
+                }
+            }
 
             return MapVariantToDto(variant, null);
         }
@@ -663,11 +671,6 @@ namespace ToyStoreManagement.Infrastructure.Services
 
             if (dto.Price.HasValue)
             {
-                var hasInventory = await HasVariantAvailableInventoryAsync(variantId);
-                if (!hasInventory)
-                    throw new InvalidOperationException(
-                        "Chỉ có thể nhập giá bán cho biến thể khi biến thể đã có tồn kho từ phiếu nhập NCC.");
-
                 variant.Price = dto.Price.Value;
             }
 
@@ -696,6 +699,20 @@ namespace ToyStoreManagement.Infrastructure.Services
 
             await _unitOfWork
                 .SaveChangesAsync();
+
+            // Đồng bộ BasePrice của sản phẩm cha theo giá nhỏ nhất trong các biến thể có giá > 0
+            var allProductVariants = await _context.ProductVariants
+                .Where(v => v.ProductId == variant.ProductId)
+                .ToListAsync();
+            var validPrices = allProductVariants.Where(v => v.Price > 0).Select(v => v.Price).ToList();
+            var parentProduct = await _productRepository.GetByIdAsync(variant.ProductId);
+            if (parentProduct != null && validPrices.Any())
+            {
+                parentProduct.BasePrice = validPrices.Min();
+                parentProduct.UpdatedAt = DateTime.UtcNow;
+                _productRepository.Update(parentProduct);
+                await _unitOfWork.SaveChangesAsync();
+            }
 
             return true;
         }

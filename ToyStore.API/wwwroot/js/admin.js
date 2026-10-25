@@ -2183,20 +2183,17 @@ function renderProductVariantEditor(variant = {}) {
   const rowKey = `variant_${productVariantRowIndex++}`;
   const variantId = variant.variantId || variant.id || '';
   const isExisting = Boolean(variantId);
-  const canSetPrice = isExisting && Number(variant.availableQuantity || 0) > 0;
   const attributes = Array.isArray(variant.attributes) && variant.attributes.length > 0
     ? variant.attributes
     : [{}];
-  const priceHint = canSetPrice
-    ? `Tồn kho có thể bán: ${variant.availableQuantity}`
-    : 'Chưa có tồn kho. Duyệt phiếu nhập NCC cho biến thể này để nhập giá bán.';
+  const priceHint = 'Giá bán dự kiến (không bắt buộc, có thể để trống và cập nhật khi nhập kho).';
 
   return `
     <section class="product-variant-editor" data-variant-id="${esc(variantId)}" style="border:1px solid var(--slate-200);border-radius:12px;padding:16px;margin-top:14px;background:var(--slate-50);">
       <div style="display:flex;justify-content:space-between;gap:12px;align-items:flex-start;margin-bottom:12px;">
         <div>
           <strong>${isExisting ? `Biến thể SKU: ${esc(variant.sku)}` : 'Biến thể mới'}</strong>
-          <div style="font-size:12px;color:var(--slate-500);margin-top:3px;">${isExisting ? 'Cập nhật thông tin biến thể hiện có.' : 'Biến thể mới sẽ nhận giá bán sau khi đã nhập kho.'}</div>
+          <div style="font-size:12px;color:var(--slate-500);margin-top:3px;">${isExisting ? 'Cập nhật thông tin biến thể hiện có.' : 'Khai báo thông số kỹ thuật và giá bán dự kiến cho biến thể mới.'}</div>
         </div>
         ${isExisting ? '' : `<button type="button" class="ghost-btn" style="padding:7px 10px;color:var(--danger);" onclick="removeProductVariantRow(this)">Bỏ biến thể</button>`}
       </div>
@@ -2206,9 +2203,9 @@ function renderProductVariantEditor(variant = {}) {
           <input type="text" class="input-control variant-sku" value="${esc(variant.sku)}" required placeholder="Ví dụ: LEGO-CITY-RED">
         </div>
         <div class="form-group">
-          <label>Giá bán biến thể (VNĐ)</label>
-          <input type="number" min="0" step="1000" class="input-control variant-price" value="${variant.price ?? ''}" ${canSetPrice ? '' : 'disabled'} title="${esc(priceHint)}" placeholder="Nhập sau khi có tồn kho">
-          <small style="display:block;margin-top:5px;color:${canSetPrice ? 'var(--success)' : 'var(--slate-500)'};">${esc(priceHint)}</small>
+          <label>Giá bán dự kiến (VNĐ)</label>
+          <input type="number" min="0" step="1000" class="input-control variant-price" value="${variant.price ?? ''}" placeholder="Dự kiến (đ)" title="${esc(priceHint)}">
+          <small style="display:block;margin-top:5px;color:var(--slate-500);">${esc(priceHint)}</small>
         </div>
         <div class="form-group">
           <label>Khối lượng (gram)</label>
@@ -2248,7 +2245,7 @@ function renderProductVariantsSection(product) {
       <div style="display:flex;justify-content:space-between;gap:16px;align-items:flex-start;">
         <div>
           <h3 style="margin:0;">Biến thể sản phẩm *</h3>
-          <p style="margin:5px 0 0;color:var(--slate-500);font-size:13px;">Khai báo đúng các tổ hợp có bán, ví dụ Đỏ-S và Đỏ-M; không cần ép mọi màu phải có mọi kích cỡ. Khách sẽ chọn màu và kích cỡ độc lập. Giá vốn được lấy từ phiếu nhập, giá bán chỉ mở sau khi đã có tồn kho.</p>
+          <p style="margin:5px 0 0;color:var(--slate-500);font-size:13px;">Khai báo đúng các tổ hợp có bán. Giá bán dự kiến có thể nhập trước hoặc để trống và cập nhật chính thức khi làm phiếu nhập kho.</p>
         </div>
         <button type="button" class="secondary-btn" onclick="addProductVariantRow()">+ Thêm biến thể</button>
       </div>
@@ -2653,7 +2650,7 @@ function renderProduct2ColView() {
                 </div>
               ` : `
                 <div style="background:var(--slate-100);padding:10px 14px;border-radius:8px;font-size:12.5px;color:var(--slate-600);margin-top:12px;">
-                  ℹ Sản phẩm mới sẽ nhận trạng thái <b>Chờ nhập kho (0)</b> và mở giá bán sau khi có phiếu nhập NCC.
+                  ℹ Sản phẩm mới sẽ nhận trạng thái <b>Chờ nhập kho (0)</b> và tự động kích hoạt <b>Đang bán</b> khi hoàn tất phiếu nhập kho.
                 </div>
               `}
             </div>
