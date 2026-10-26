@@ -322,6 +322,53 @@ function renderWorkflowStepper(shippingStatus, isCod, codStatus) {
   `;
 }
 
+function renderOrdersGroupedByBatch(orders, renderOrderCard) {
+  const groups = new Map();
+  for (const order of orders) {
+    const batchCode = order.shipping?.deliveryBatchCode?.trim() || '';
+    const key = batchCode || `order-${order.orderId}`;
+    if (!groups.has(key)) groups.set(key, { batchCode, orders: [] });
+    groups.get(key).orders.push(order);
+  }
+
+  return Array.from(groups.values()).map(group => {
+    const orderCards = group.orders.map(renderOrderCard).join('');
+    if (!group.batchCode) return orderCards;
+
+    const products = new Map();
+    for (const order of group.orders) {
+      for (const detail of order.orderDetails || []) {
+        const name = detail.productName || 'Sản phẩm';
+        const variant = detail.variantAttributes || '';
+        const key = `${name}|${variant}`;
+        const item = products.get(key) || { name, variant, quantity: 0 };
+        item.quantity += Number(detail.quantity) || 0;
+        products.set(key, item);
+      }
+    }
+
+    const productSummary = products.size
+      ? Array.from(products.values()).map(item =>
+        `${esc(item.name)}${item.variant ? ` (${esc(item.variant)})` : ''} × ${item.quantity}`
+      ).join(' · ')
+      : 'Chưa có thông tin sản phẩm';
+    const totalItems = Array.from(products.values()).reduce((sum, item) => sum + item.quantity, 0);
+
+    return `
+      <section style="margin-bottom:18px;padding:14px;background:#eef2ff;border:1px solid #c7d2fe;border-radius:16px;">
+        <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;margin:0 2px 8px;">
+          <strong style="font-size:14px;color:#3730a3;">📦 Lô ${esc(group.batchCode)}</strong>
+          <span style="font-size:12px;color:#4338ca;font-weight:700;">${group.orders.length} đơn · ${totalItems} sản phẩm</span>
+        </div>
+        <div style="font-size:12px;line-height:1.6;color:#3730a3;margin:0 2px 10px;">
+          <b>Mặt hàng trong lô:</b> ${productSummary}
+        </div>
+        <div style="display:flex;flex-direction:column;gap:10px;">${orderCards}</div>
+      </section>
+    `;
+  }).join('');
+}
+
 function renderActiveOrders(orders, container) {
   if (!orders.length) {
     container.innerHTML = `
@@ -334,7 +381,10 @@ function renderActiveOrders(orders, container) {
     return;
   }
 
-  container.innerHTML = orders.map(order => {
+  container.innerHTML = renderOrdersGroupedByBatch(orders, renderActiveOrderCard);
+}
+
+function renderActiveOrderCard(order) {
     const shipping = order.shipping || {};
     const payment = order.payment || {};
     const isCod = payment.paymentMethod === 0;
@@ -420,7 +470,6 @@ function renderActiveOrders(orders, container) {
         </div>
       </div>
     `;
-  }).join('');
 }
 
 function renderHistoryOrders(orders, container) {
@@ -433,7 +482,10 @@ function renderHistoryOrders(orders, container) {
     return;
   }
 
-  container.innerHTML = orders.map(order => {
+  container.innerHTML = renderOrdersGroupedByBatch(orders, renderHistoryOrderCard);
+}
+
+function renderHistoryOrderCard(order) {
     const shipping = order.shipping || {};
     const payment = order.payment || {};
     const isSuccess = Number(order.status) === 4 || shipping.status === 4;
@@ -486,7 +538,6 @@ function renderHistoryOrders(orders, container) {
         </div>
       </div>
     `;
-  }).join('');
 }
 
 // ── 3. VÍ COD CỦA SHIPPER (ĐỒNG NHẤT GIỮA CÁC MÁY TÍNH) ─────

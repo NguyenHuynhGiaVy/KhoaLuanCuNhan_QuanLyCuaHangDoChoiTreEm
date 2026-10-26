@@ -3986,7 +3986,7 @@ async function showAssignShipperModal(orderId, batchCode) {
       <div style="padding:18px 24px;border-bottom:1px solid var(--slate-200);display:flex;justify-content:space-between;align-items:center;">
         <div>
           <h3 style="margin:0;font-size:17px;font-weight:700;">🚚 Phân công Shipper giao hàng</h3>
-          <p style="margin:4px 0 0;font-size:13px;color:var(--slate-500);">${orderId ? `Đơn hàng #${orderId}` : ''} ${batchCode ? `· Mã lô: <b>${batchCode}</b>` : ''}</p>
+          <p style="margin:4px 0 0;font-size:13px;color:var(--slate-500);">${batchCode ? `Gán shipper cho toàn bộ đơn trong lô <b>${batchCode}</b>` : orderId ? `Đơn hàng #${orderId}` : ''}</p>
         </div>
         <button type="button" class="icon-action-btn del" onclick="document.getElementById('${modalId}').remove()" style="font-size:18px;">✕</button>
       </div>
@@ -4006,7 +4006,7 @@ async function showAssignShipperModal(orderId, batchCode) {
     }
 
     container.innerHTML = `
-      <div style="margin-bottom:14px;font-size:13px;color:var(--slate-600);font-weight:600;">Chọn nhân viên giao hàng nhận chuyến:</div>
+      <div style="margin-bottom:14px;font-size:13px;color:var(--slate-600);font-weight:600;">${batchCode ? 'Chọn shipper nhận tất cả đơn trong lô:' : 'Chọn nhân viên giao hàng nhận chuyến:'}</div>
       <div style="display:flex;flex-direction:column;gap:10px;">
         ${shippers.filter(s => s.isActive).map((s, idx) => `
           <label style="display:flex;align-items:center;justify-content:space-between;padding:12px 16px;border:1.5px solid var(--slate-200);border-radius:10px;cursor:pointer;transition:all 0.2s ease;" onmouseover="this.style.borderColor='var(--primary)'" onmouseout="this.style.borderColor='var(--slate-200)'">
@@ -4050,7 +4050,7 @@ async function executeAssignShipper(orderId, batchCode) {
       method: 'POST',
       body: JSON.stringify({
         shipperId,
-        orderId: orderId || null,
+        orderId: batchCode ? null : (orderId || null),
         deliveryBatchCode: batchCode || null
       })
     });

@@ -217,33 +217,6 @@ namespace ToyStoreManagement.Infrastructure.Services
                 throw new InvalidOperationException("Shipper không tồn tại hoặc đã tạm dừng hoạt động.");
             }
 
-            if (dto.OrderId.HasValue && dto.OrderId.Value > 0)
-            {
-                var shipping = await _context.Shippings.FirstOrDefaultAsync(s => s.OrderId == dto.OrderId.Value);
-                if (shipping == null) throw new KeyNotFoundException($"Không tìm thấy thông tin giao hàng của đơn #{dto.OrderId.Value}");
-
-                var prevStatus = shipping.Status == 0 ? "Chờ phân công" : $"Trạng thái {shipping.Status}";
-                shipping.ShipperId = dto.ShipperId;
-                shipping.Status = 0; // Chờ shipper xác nhận nhận đơn.
-
-                await _context.SaveChangesAsync();
-
-                // Lưu Audit Tracking Log
-                await AddOrderTrackingLogAsync(
-                    dto.OrderId.Value,
-                    shipping.ShippingId,
-                    "Phân công Shipper",
-                    prevStatus,
-                    $"Đã phân công cho shipper: {shipper.FullName} ({shipper.PhoneNumber})",
-                    performedByUserId,
-                    performedByName ?? "Quản trị viên",
-                    "Admin/Manager",
-                    $"Phân công nhân viên {shipper.FullName} phụ trách giao hàng"
-                );
-
-                return true;
-            }
-
             if (!string.IsNullOrWhiteSpace(dto.DeliveryBatchCode))
             {
                 var shippings = await _context.Shippings
@@ -257,13 +230,14 @@ namespace ToyStoreManagement.Infrastructure.Services
 
                 foreach (var sh in shippings)
                 {
+                    var previousStatus = GetShippingStatusText(sh.Status);
                     sh.ShipperId = dto.ShipperId;
                     sh.Status = 0;
                     await AddOrderTrackingLogAsync(
                         sh.OrderId,
                         sh.ShippingId,
                         "Phân công Shipper theo Lô",
-                        "Chờ phân công",
+                        previousStatus,
                         $"Đã phân công theo lô {dto.DeliveryBatchCode} cho shipper {shipper.FullName}; chờ xác nhận nhận đơn",
                         performedByUserId,
                         performedByName ?? "Quản trị viên",
@@ -272,6 +246,32 @@ namespace ToyStoreManagement.Infrastructure.Services
                     );
                 }
                 await _context.SaveChangesAsync();
+                return true;
+            }
+
+            if (dto.OrderId.HasValue && dto.OrderId.Value > 0)
+            {
+                var shipping = await _context.Shippings.FirstOrDefaultAsync(s => s.OrderId == dto.OrderId.Value);
+                if (shipping == null) throw new KeyNotFoundException($"Không tìm thấy thông tin giao hàng của đơn #{dto.OrderId.Value}");
+
+                var prevStatus = shipping.Status == 0 ? "Chờ phân công" : GetShippingStatusText(shipping.Status);
+                shipping.ShipperId = dto.ShipperId;
+                shipping.Status = 0; // Chờ shipper xác nhận nhận đơn.
+
+                await _context.SaveChangesAsync();
+
+                await AddOrderTrackingLogAsync(
+                    dto.OrderId.Value,
+                    shipping.ShippingId,
+                    "Phân công Shipper",
+                    prevStatus,
+                    $"Đã phân công cho shipper: {shipper.FullName} ({shipper.PhoneNumber})",
+                    performedByUserId,
+                    performedByName ?? "Quản trị viên",
+                    "Admin/Manager",
+                    $"Phân công nhân viên {shipper.FullName} phụ trách giao hàng"
+                );
+
                 return true;
             }
 

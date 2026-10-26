@@ -147,7 +147,9 @@ namespace ToyStoreManagement.API.Controllers
                     {
                         orderId = dto.OrderId,
                         deliveryBatchCode = dto.DeliveryBatchCode,
-                        message = $"Bạn vừa được phân công giao đơn #{dto.OrderId ?? 0} (Lô {dto.DeliveryBatchCode ?? "—"})"
+                        message = !string.IsNullOrWhiteSpace(dto.DeliveryBatchCode)
+                            ? $"Bạn vừa được phân công giao lô {dto.DeliveryBatchCode}; vui lòng xem danh sách các đơn trong lô."
+                            : $"Bạn vừa được phân công giao đơn #{dto.OrderId}"
                     });
 
                 await _orderTrackingHub.Clients.Group(OrderTrackingHub.AdminGroup)
