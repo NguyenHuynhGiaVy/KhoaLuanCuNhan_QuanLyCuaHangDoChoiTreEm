@@ -14,6 +14,7 @@ namespace ToyStoreManagement.Application.DTOs.Dashboard
         public decimal PaidAmount { get; set; }             // Tổng thực thu = Online đã trả + COD đã nộp về shop
         public decimal OnlinePaidAmount { get; set; }       // Tiền thực thu từ cổng Online (ZaloPay, Chuyển khoản)
         public decimal CodSubmittedAmount { get; set; }     // Tiền COD Shipper đã đối soát nộp về quỹ
+        public decimal CodPendingVerificationAmount { get; set; } // Shipper đã báo nộp, chờ cửa hàng kiểm tra
         public decimal UnpaidAmount { get; set; }           // Tổng tiền chưa thu / công nợ
         public decimal CodHoldingAmount { get; set; }       // Tiền mặt COD Shipper đang giữ ngoài thực địa
         public decimal PendingCollectionAmount { get; set; } // Tiền COD từ các đơn đang xử lý / đang giao

@@ -14,6 +14,7 @@ namespace ToyStoreManagement.Application.DTOs.Dashboard
         public decimal TotalPaidAmount { get; set; }
         public decimal TotalOnlineAmount { get; set; }
         public decimal TotalCodSubmittedAmount { get; set; }
+        public decimal TotalCodPendingVerificationAmount { get; set; }
         public decimal TotalCodHoldingAmount { get; set; }
         public decimal TotalPendingAmount { get; set; }
 
@@ -37,6 +38,7 @@ namespace ToyStoreManagement.Application.DTOs.Dashboard
         public decimal PaidAmount { get; set; }
         public decimal OnlineAmount { get; set; }
         public decimal CodSubmittedAmount { get; set; }
+        public decimal CodPendingVerificationAmount { get; set; }
         public decimal CodHoldingAmount { get; set; }
         public decimal PendingAmount { get; set; }
         public double CollectionRate { get; set; }
@@ -62,6 +64,7 @@ namespace ToyStoreManagement.Application.DTOs.Dashboard
         public int FailedDeliveries { get; set; }
         public int InTransitCount { get; set; }
         public decimal CodHoldingAmount { get; set; }
+        public decimal CodPendingVerificationAmount { get; set; }
         public decimal CodSubmittedAmount { get; set; }
         public double SuccessRate { get; set; }
     }

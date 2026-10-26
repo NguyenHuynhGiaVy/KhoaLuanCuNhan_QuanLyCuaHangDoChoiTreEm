@@ -49,14 +49,19 @@ namespace ToyStoreManagement.Infrastructure.Repositories
             public DateTime OrderDate { get; set; }
             public int Status { get; set; }
             public decimal TotalAmount { get; set; }
+            public decimal ShippingFee { get; set; }
             public int PaymentMethod { get; set; }
             public int PaymentStatus { get; set; }
             public decimal PaymentAmount { get; set; }
             public int CodStatus { get; set; }
             public int ShippingStatus { get; set; }
             public decimal RefundAmount { get; set; }
-            public decimal NetRevenue => NetOf(TotalAmount, RefundAmount);
-            public decimal NetPaymentAmount => NetOf(PaymentAmount, RefundAmount);
+            public decimal NetRevenue => NetOf(TotalAmount - ShippingFee, RefundAmount);
+            public decimal NetPaymentAmount => NetOf(PaymentAmount - ShippingFee, RefundAmount);
+            public decimal RecognizedRevenue =>
+                Status == 4 && (PaymentMethod != 0 || CodStatus == 3)
+                    ? NetRevenue
+                    : 0;
         }
 
         private async Task<List<DashboardOrder>> GetOrdersAsync(IQueryable<Order> query)
@@ -69,6 +74,7 @@ namespace ToyStoreManagement.Infrastructure.Repositories
                     OrderDate = x.OrderDate,
                     Status = x.Status,
                     TotalAmount = x.TotalAmount,
+                    ShippingFee = x.Shipping != null ? x.Shipping.ShippingFee : x.ShippingFee,
                     PaymentMethod = x.Payment != null ? x.Payment.PaymentMethod : 0,
                     PaymentStatus = x.Payment != null ? x.Payment.Status : 0,
                     PaymentAmount = x.Payment != null ? x.Payment.Amount : x.TotalAmount,
@@ -96,7 +102,7 @@ namespace ToyStoreManagement.Infrastructure.Repositories
             }
 
             var orders = await GetOrdersAsync(query);
-            return orders.Sum(x => x.NetRevenue);
+            return orders.Sum(x => x.RecognizedRevenue);
         }
 
         public async Task<DashboardSummaryDto> GetSummaryAsync(DateTime? from = null, DateTime? to = null)
@@ -119,12 +125,12 @@ namespace ToyStoreManagement.Infrastructure.Repositories
 
             var totalOrders = orders.Count;
             var completedOrders = orders.Count(x => x.Status == 4);
-            var shippingOrders = orders.Count(x => x.Status == 3 || x.ShippingStatus == 1 || x.ShippingStatus == 4);
+            var shippingOrders = orders.Count(x => x.Status == 3 || x.ShippingStatus == 1 || x.ShippingStatus == 2 || x.ShippingStatus == 3);
             var processingOrders = orders.Count(x => x.Status == 1 || x.Status == 2);
             var failedOrders = orders.Count(x => x.ShippingStatus == 3 || x.ShippingStatus == 5);
             var cancelledOrders = orders.Count(x => x.Status == 5);
 
-            var totalRevenue = orders.Where(x => x.Status == 4).Sum(x => x.NetRevenue);
+            var totalRevenue = orders.Sum(x => x.RecognizedRevenue);
             var expectedRevenue = orders.Where(x => x.Status != 5).Sum(x => x.NetRevenue);
 
             // Dòng tiền thực tế:
@@ -133,25 +139,28 @@ namespace ToyStoreManagement.Infrastructure.Repositories
                 .Where(x => (x.PaymentMethod == 1 || x.PaymentMethod == 2) && (x.PaymentStatus == 1 || x.Status == 4))
                 .Sum(x => x.NetPaymentAmount);
 
-            // 2. COD đã nộp về shop: PaymentMethod == 0 and CodStatus == 2
+            // 2. COD chỉ tính vào quỹ cửa hàng sau khi admin xác nhận.
             var codSubmittedAmount = orders
-                .Where(x => x.PaymentMethod == 0 && x.CodStatus == 2)
+                .Where(x => x.PaymentMethod == 0 && x.CodStatus == 3)
                 .Sum(x => x.NetPaymentAmount);
 
             // Tổng thực thu = Online đã thanh toán + COD đã nộp quỹ
             var paidAmount = onlinePaidAmount + codSubmittedAmount;
 
-            // 3. Tiền COD Shipper đang giữ ngoài thực địa: CodStatus == 1
+            // COD shipper đang giữ và đã báo nộp nhưng chưa được cửa hàng xác nhận.
             var codHoldingAmount = orders
                 .Where(x => x.PaymentMethod == 0 && x.CodStatus == 1)
-                .Sum(x => x.PaymentAmount);
+                .Sum(x => x.NetPaymentAmount);
+            var codPendingVerificationAmount = orders
+                .Where(x => x.PaymentMethod == 0 && x.CodStatus == 2)
+                .Sum(x => x.NetPaymentAmount);
 
             // 4. Chờ thu COD (các đơn chưa hoàn tất giao):
             var pendingCollectionAmount = orders
                 .Where(x => x.PaymentMethod == 0 && x.CodStatus == 0 && x.Status != 5 && x.Status != 4)
-                .Sum(x => x.PaymentAmount);
+                .Sum(x => x.NetPaymentAmount);
 
-            var unpaidAmount = codHoldingAmount + pendingCollectionAmount;
+            var unpaidAmount = codHoldingAmount + codPendingVerificationAmount + pendingCollectionAmount;
 
             // Sản phẩm đã bán trong kỳ
             var orderDetailsQuery = _context.OrderDetails
@@ -173,8 +182,8 @@ namespace ToyStoreManagement.Infrastructure.Repositories
             var totalCustomers = await _context.Customers.CountAsync();
 
             // Tỷ lệ vận chuyển logistics
-            var deliveredCount = orders.Count(x => x.Status == 4 || x.ShippingStatus == 2);
-            var failedCount = orders.Count(x => x.ShippingStatus == 3 || x.ShippingStatus == 5);
+            var deliveredCount = orders.Count(x => x.Status == 4 || x.ShippingStatus == 4);
+            var failedCount = orders.Count(x => x.ShippingStatus == 5 || x.ShippingStatus == 6);
             var totalCompletedShipping = deliveredCount + failedCount;
             var successRate = totalCompletedShipping > 0
                 ? Math.Round((double)deliveredCount / totalCompletedShipping * 100, 1)
@@ -190,6 +199,7 @@ namespace ToyStoreManagement.Infrastructure.Repositories
                 PaidAmount = paidAmount,
                 OnlinePaidAmount = onlinePaidAmount,
                 CodSubmittedAmount = codSubmittedAmount,
+                CodPendingVerificationAmount = codPendingVerificationAmount,
                 UnpaidAmount = unpaidAmount,
                 CodHoldingAmount = codHoldingAmount,
                 PendingCollectionAmount = pendingCollectionAmount,
@@ -215,8 +225,8 @@ namespace ToyStoreManagement.Infrastructure.Repositories
             string groupBy = "day")
         {
             var now = DateTime.UtcNow;
-            var startDate = from?.Date ?? now.Date.AddDays(-29);
-            var endDate = to?.Date ?? now.Date;
+            var endDate = to?.Date ?? now.Date.AddDays(-1);
+            var startDate = from?.Date ?? endDate.AddDays(-29);
 
             if (endDate < startDate)
             {
@@ -238,19 +248,22 @@ namespace ToyStoreManagement.Infrastructure.Repositories
                 FromDate = startDate,
                 ToDate = endDate,
                 GroupBy = groupBy,
-                TotalGrossRevenue = ordersInPeriod.Where(x => x.Status == 4).Sum(x => x.NetRevenue),
+                TotalGrossRevenue = ordersInPeriod.Sum(x => x.RecognizedRevenue),
                 TotalOnlineAmount = ordersInPeriod
                     .Where(x => (x.PaymentMethod == 1 || x.PaymentMethod == 2) && (x.PaymentStatus == 1 || x.Status == 4))
                     .Sum(x => x.NetPaymentAmount),
                 TotalCodSubmittedAmount = ordersInPeriod
+                    .Where(x => x.PaymentMethod == 0 && x.CodStatus == 3)
+                    .Sum(x => x.NetPaymentAmount),
+                TotalCodPendingVerificationAmount = ordersInPeriod
                     .Where(x => x.PaymentMethod == 0 && x.CodStatus == 2)
                     .Sum(x => x.NetPaymentAmount),
                 TotalCodHoldingAmount = ordersInPeriod
                     .Where(x => x.PaymentMethod == 0 && x.CodStatus == 1)
-                    .Sum(x => x.PaymentAmount),
+                    .Sum(x => x.NetPaymentAmount),
                 TotalPendingAmount = ordersInPeriod
                     .Where(x => x.PaymentMethod == 0 && x.CodStatus == 0 && x.Status != 5 && x.Status != 4)
-                    .Sum(x => x.PaymentAmount)
+                    .Sum(x => x.NetPaymentAmount)
             };
 
             report.TotalPaidAmount = report.TotalOnlineAmount + report.TotalCodSubmittedAmount;
@@ -265,11 +278,12 @@ namespace ToyStoreManagement.Infrastructure.Repositories
                 for (var date = startDate; date <= endDate; date = date.AddDays(1))
                 {
                     var dayOrders = groupedByDay.GetValueOrDefault(date) ?? new();
-                    var grossRev = dayOrders.Where(x => x.Status == 4).Sum(x => x.NetRevenue);
+                    var grossRev = dayOrders.Sum(x => x.RecognizedRevenue);
                     var online = dayOrders.Where(x => (x.PaymentMethod == 1 || x.PaymentMethod == 2) && (x.PaymentStatus == 1 || x.Status == 4)).Sum(x => x.NetPaymentAmount);
-                    var codSub = dayOrders.Where(x => x.PaymentMethod == 0 && x.CodStatus == 2).Sum(x => x.NetPaymentAmount);
-                    var codHold = dayOrders.Where(x => x.PaymentMethod == 0 && x.CodStatus == 1).Sum(x => x.PaymentAmount);
-                    var pend = dayOrders.Where(x => x.PaymentMethod == 0 && x.CodStatus == 0 && x.Status != 5 && x.Status != 4).Sum(x => x.PaymentAmount);
+                    var codSub = dayOrders.Where(x => x.PaymentMethod == 0 && x.CodStatus == 3).Sum(x => x.NetPaymentAmount);
+                    var codReview = dayOrders.Where(x => x.PaymentMethod == 0 && x.CodStatus == 2).Sum(x => x.NetPaymentAmount);
+                    var codHold = dayOrders.Where(x => x.PaymentMethod == 0 && x.CodStatus == 1).Sum(x => x.NetPaymentAmount);
+                    var pend = dayOrders.Where(x => x.PaymentMethod == 0 && x.CodStatus == 0 && x.Status != 5 && x.Status != 4).Sum(x => x.NetPaymentAmount);
                     var paid = online + codSub;
                     var collectionRate = grossRev > 0 ? Math.Round((double)paid / (double)grossRev * 100, 1) : 100.0;
 
@@ -283,6 +297,7 @@ namespace ToyStoreManagement.Infrastructure.Repositories
                         PaidAmount = paid,
                         OnlineAmount = online,
                         CodSubmittedAmount = codSub,
+                        CodPendingVerificationAmount = codReview,
                         CodHoldingAmount = codHold,
                         PendingAmount = pend,
                         CollectionRate = collectionRate
@@ -302,11 +317,12 @@ namespace ToyStoreManagement.Infrastructure.Repositories
                 {
                     var key = (currentMonth.Year, currentMonth.Month);
                     var mOrders = groupedByMonth.GetValueOrDefault(key) ?? new();
-                    var grossRev = mOrders.Where(x => x.Status == 4).Sum(x => x.NetRevenue);
+                    var grossRev = mOrders.Sum(x => x.RecognizedRevenue);
                     var online = mOrders.Where(x => (x.PaymentMethod == 1 || x.PaymentMethod == 2) && (x.PaymentStatus == 1 || x.Status == 4)).Sum(x => x.NetPaymentAmount);
-                    var codSub = mOrders.Where(x => x.PaymentMethod == 0 && x.CodStatus == 2).Sum(x => x.NetPaymentAmount);
-                    var codHold = mOrders.Where(x => x.PaymentMethod == 0 && x.CodStatus == 1).Sum(x => x.PaymentAmount);
-                    var pend = mOrders.Where(x => x.PaymentMethod == 0 && x.CodStatus == 0 && x.Status != 5 && x.Status != 4).Sum(x => x.PaymentAmount);
+                    var codSub = mOrders.Where(x => x.PaymentMethod == 0 && x.CodStatus == 3).Sum(x => x.NetPaymentAmount);
+                    var codReview = mOrders.Where(x => x.PaymentMethod == 0 && x.CodStatus == 2).Sum(x => x.NetPaymentAmount);
+                    var codHold = mOrders.Where(x => x.PaymentMethod == 0 && x.CodStatus == 1).Sum(x => x.NetPaymentAmount);
+                    var pend = mOrders.Where(x => x.PaymentMethod == 0 && x.CodStatus == 0 && x.Status != 5 && x.Status != 4).Sum(x => x.NetPaymentAmount);
                     var paid = online + codSub;
                     var collectionRate = grossRev > 0 ? Math.Round((double)paid / (double)grossRev * 100, 1) : 100.0;
 
@@ -320,6 +336,7 @@ namespace ToyStoreManagement.Infrastructure.Repositories
                         PaidAmount = paid,
                         OnlineAmount = online,
                         CodSubmittedAmount = codSub,
+                        CodPendingVerificationAmount = codReview,
                         CodHoldingAmount = codHold,
                         PendingAmount = pend,
                         CollectionRate = collectionRate
@@ -337,11 +354,12 @@ namespace ToyStoreManagement.Infrastructure.Repositories
                 for (var y = startDate.Year; y <= endDate.Year; y++)
                 {
                     var yOrders = groupedByYear.GetValueOrDefault(y) ?? new();
-                    var grossRev = yOrders.Where(x => x.Status == 4).Sum(x => x.NetRevenue);
+                    var grossRev = yOrders.Sum(x => x.RecognizedRevenue);
                     var online = yOrders.Where(x => (x.PaymentMethod == 1 || x.PaymentMethod == 2) && (x.PaymentStatus == 1 || x.Status == 4)).Sum(x => x.NetPaymentAmount);
-                    var codSub = yOrders.Where(x => x.PaymentMethod == 0 && x.CodStatus == 2).Sum(x => x.NetPaymentAmount);
-                    var codHold = yOrders.Where(x => x.PaymentMethod == 0 && x.CodStatus == 1).Sum(x => x.PaymentAmount);
-                    var pend = yOrders.Where(x => x.PaymentMethod == 0 && x.CodStatus == 0 && x.Status != 5 && x.Status != 4).Sum(x => x.PaymentAmount);
+                    var codSub = yOrders.Where(x => x.PaymentMethod == 0 && x.CodStatus == 3).Sum(x => x.NetPaymentAmount);
+                    var codReview = yOrders.Where(x => x.PaymentMethod == 0 && x.CodStatus == 2).Sum(x => x.NetPaymentAmount);
+                    var codHold = yOrders.Where(x => x.PaymentMethod == 0 && x.CodStatus == 1).Sum(x => x.NetPaymentAmount);
+                    var pend = yOrders.Where(x => x.PaymentMethod == 0 && x.CodStatus == 0 && x.Status != 5 && x.Status != 4).Sum(x => x.NetPaymentAmount);
                     var paid = online + codSub;
                     var collectionRate = grossRev > 0 ? Math.Round((double)paid / (double)grossRev * 100, 1) : 100.0;
 
@@ -355,6 +373,7 @@ namespace ToyStoreManagement.Infrastructure.Repositories
                         PaidAmount = paid,
                         OnlineAmount = online,
                         CodSubmittedAmount = codSub,
+                        CodPendingVerificationAmount = codReview,
                         CodHoldingAmount = codHold,
                         PendingAmount = pend,
                         CollectionRate = collectionRate
@@ -364,7 +383,11 @@ namespace ToyStoreManagement.Infrastructure.Repositories
 
             // Cơ cấu doanh thu theo Danh mục
             var categorySales = await _context.OrderDetails
-                .Where(od => od.Order.Status == 4 && od.Order.OrderDate >= startDate && od.Order.OrderDate < endExclusive)
+                .Where(od => od.Order.Status == 4
+                    && od.Order.OrderDate >= startDate
+                    && od.Order.OrderDate < endExclusive
+                    && od.Order.Payment != null
+                    && (od.Order.Payment.PaymentMethod != 0 || od.Order.Payment.CodStatus == 3))
                 .GroupBy(od => new
                 {
                     CategoryId = od.ProductVariant.Product.CategoryId,
@@ -430,15 +453,18 @@ namespace ToyStoreManagement.Infrastructure.Repositories
                     .Where(sh => sh.Order != null && sh.Order.OrderDate >= startDate && sh.Order.OrderDate < endExclusive)
                     .ToList();
 
-                var completed = shipperDeliveries.Count(sh => sh.Status == 2 || (sh.Order != null && sh.Order.Status == 4));
-                var failed = shipperDeliveries.Count(sh => sh.Status == 3 || sh.Status == 5);
-                var inTransit = shipperDeliveries.Count(sh => sh.Status == 1 || sh.Status == 4);
+                var completed = shipperDeliveries.Count(sh => sh.Status == 4 || (sh.Order != null && sh.Order.Status == 4));
+                var failed = shipperDeliveries.Count(sh => sh.Status == 5 || sh.Status == 6);
+                var inTransit = shipperDeliveries.Count(sh => sh.Status >= 0 && sh.Status <= 3);
                 var codHolding = shipperDeliveries
                     .Where(sh => sh.Order?.Payment != null && sh.Order.Payment.CodStatus == 1)
-                    .Sum(sh => sh.Order.Payment.Amount);
-                var codSubmitted = shipperDeliveries
+                    .Sum(sh => Math.Max(0, sh.Order.Payment.Amount - sh.ShippingFee));
+                var codPendingVerification = shipperDeliveries
                     .Where(sh => sh.Order?.Payment != null && sh.Order.Payment.CodStatus == 2)
-                    .Sum(sh => sh.Order.Payment.Amount);
+                    .Sum(sh => Math.Max(0, sh.Order.Payment.Amount - sh.ShippingFee));
+                var codSubmitted = shipperDeliveries
+                    .Where(sh => sh.Order?.Payment != null && sh.Order.Payment.CodStatus == 3)
+                    .Sum(sh => Math.Max(0, sh.Order.Payment.Amount - sh.ShippingFee));
                 var finished = completed + failed;
                 var sRate = finished > 0 ? Math.Round((double)completed / finished * 100, 1) : 100.0;
 
@@ -453,6 +479,7 @@ namespace ToyStoreManagement.Infrastructure.Repositories
                     FailedDeliveries = failed,
                     InTransitCount = inTransit,
                     CodHoldingAmount = codHolding,
+                    CodPendingVerificationAmount = codPendingVerification,
                     CodSubmittedAmount = codSubmitted,
                     SuccessRate = sRate
                 };
@@ -512,7 +539,7 @@ namespace ToyStoreManagement.Infrastructure.Repositories
                 {
                     var revenueByDay = completedOrders
                         .GroupBy(x => x.OrderDate.Date)
-                        .ToDictionary(x => x.Key, x => x.Sum(order => order.NetRevenue));
+                        .ToDictionary(x => x.Key, x => x.Sum(order => order.RecognizedRevenue));
 
                     for (var date = startDate; date <= endDate; date = date.AddDays(1))
                     {
@@ -524,7 +551,7 @@ namespace ToyStoreManagement.Infrastructure.Repositories
                 {
                     var revenueByMonth = completedOrders
                         .GroupBy(x => new { x.OrderDate.Year, x.OrderDate.Month })
-                        .ToDictionary(x => (x.Key.Year, x.Key.Month), x => x.Sum(order => order.NetRevenue));
+                        .ToDictionary(x => (x.Key.Year, x.Key.Month), x => x.Sum(order => order.RecognizedRevenue));
                     var month = new DateTime(startDate.Year, startDate.Month, 1);
                     var lastMonth = new DateTime(endDate.Year, endDate.Month, 1);
 
@@ -539,7 +566,7 @@ namespace ToyStoreManagement.Infrastructure.Repositories
                 {
                     var revenueByYear = completedOrders
                         .GroupBy(x => x.OrderDate.Year)
-                        .ToDictionary(x => x.Key, x => x.Sum(order => order.NetRevenue));
+                        .ToDictionary(x => x.Key, x => x.Sum(order => order.RecognizedRevenue));
 
                     for (var year = startDate.Year; year <= endDate.Year; year++)
                     {
@@ -554,15 +581,15 @@ namespace ToyStoreManagement.Infrastructure.Repositories
             if (period == "day" || period == "day30")
             {
                 var dayCount = period == "day30" ? 30 : 7;
-                var firstDate = now.Date.AddDays(-(dayCount - 1));
+                var firstDate = now.Date.AddDays(-dayCount);
                 var completedOrders = await GetOrdersAsync(_context.Orders
-                    .Where(x => x.Status == 4 && x.OrderDate >= firstDate));
+                    .Where(x => x.Status == 4 && x.OrderDate >= firstDate && x.OrderDate < now.Date));
 
                 var revenuesByDate = completedOrders
                     .GroupBy(x => x.OrderDate.Date)
-                    .ToDictionary(x => x.Key, x => x.Sum(order => order.NetRevenue));
+                    .ToDictionary(x => x.Key, x => x.Sum(order => order.RecognizedRevenue));
 
-                for (int i = dayCount - 1; i >= 0; i--)
+                for (int i = dayCount; i >= 1; i--)
                 {
                     var date = now.Date.AddDays(-i);
                     var revenue = revenuesByDate.GetValueOrDefault(date);
@@ -580,7 +607,7 @@ namespace ToyStoreManagement.Infrastructure.Repositories
                 {
                     var revenue = yearOrders
                         .Where(x => x.OrderDate.Month == i)
-                        .Sum(x => x.NetRevenue);
+                        .Sum(x => x.RecognizedRevenue);
 
                     result.Labels.Add($"Tháng {i}");
                     result.Data.Add(revenue);
@@ -596,7 +623,7 @@ namespace ToyStoreManagement.Infrastructure.Repositories
                     var year = now.Year - i;
                     var revenue = yearlyOrders
                         .Where(x => x.OrderDate.Year == year)
-                        .Sum(x => x.NetRevenue);
+                        .Sum(x => x.RecognizedRevenue);
 
                     result.Labels.Add(year.ToString());
                     result.Data.Add(revenue);

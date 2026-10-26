@@ -215,6 +215,24 @@
       gap: 12px;
       margin-bottom: 16px;
     }
+    .profile-actions {
+      display: flex;
+      align-items: center;
+      justify-content: flex-end;
+      gap: 10px;
+    }
+    .shipper-selector {
+      min-width: 220px;
+      max-width: 300px;
+      padding: 9px 12px;
+      border: 1px solid var(--slate-300);
+      border-radius: 10px;
+      background: #fff;
+      color: var(--slate-800);
+      font: inherit;
+      font-size: 13px;
+      font-weight: 700;
+    }
     .profile-info {
       display: flex;
       align-items: center;
@@ -239,6 +257,11 @@
     .profile-sub {
       font-size: 12px;
       color: var(--slate-500);
+    }
+    @media (max-width: 540px) {
+      .profile-card { align-items: flex-start; flex-direction: column; }
+      .profile-actions { width: 100%; justify-content: space-between; }
+      .shipper-selector { min-width: 0; max-width: none; flex: 1; }
     }
     .profile-select {
       padding: 6px 10px;
@@ -728,7 +751,8 @@
           <div class="profile-sub" id="currentShipperPhone">SĐT: — · Xe: —</div>
         </div>
       </div>
-      <div>
+      <div class="profile-actions">
+        <select id="shipperSelector" class="shipper-selector" aria-label="Chọn shipper" style="display:none;"></select>
         <span class="badge" style="background:#ecfdf5;color:#047857;font-weight:700;font-size:12px;padding:6px 12px;border-radius:20px;border:1px solid #a7f3d0;display:inline-flex;align-items:center;gap:6px;">
           <span style="width:7px;height:7px;background:#059669;border-radius:50%;display:inline-block;"></span>
           <span id="shipperStatusBadge">Đang trực tuyến</span>
@@ -762,6 +786,6 @@
   <!-- SignalR Library -->
   <script src="https://cdn.jsdelivr.net/npm/@microsoft/signalr@8.0.7/dist/browser/signalr.min.js"></script>
   <!-- Shipper Portal JS -->
-  <script src="/js/shipper.js?v=20261019-1"></script>
+  <script src="/js/shipper.js?v=20261026-2"></script>
 </body>
 </html>

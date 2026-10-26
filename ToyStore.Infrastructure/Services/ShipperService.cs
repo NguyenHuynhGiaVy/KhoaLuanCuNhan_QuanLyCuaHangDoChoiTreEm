@@ -42,18 +42,16 @@ namespace ToyStoreManagement.Infrastructure.Services
             // Tối ưu N+1: Truy vấn tổng tiền COD đang giữ trong 1 query duy nhất
             var pendingCodMap = await (from p in _context.Payments
                                        join s in _context.Shippings on p.OrderId equals s.OrderId
-                                       where p.PaymentMethod == 0 && p.CodStatus == 1 && s.ShipperId != null
-                                       group p by s.ShipperId.Value into g
-                                       select new { ShipperId = g.Key, Total = g.Sum(x => x.Amount) })
+                                       where p.PaymentMethod == 0 && (p.CodStatus == 1 || p.CodStatus == 2) && s.ShipperId.HasValue
+                                       group new { p, s } by s.ShipperId.GetValueOrDefault() into g
+                                       select new { ShipperId = g.Key, Total = g.Sum(x => x.p.Amount - x.s.ShippingFee) })
                                        .ToDictionaryAsync(x => x.ShipperId, x => x.Total);
 
             var result = new List<ShipperDto>();
             foreach (var s in shippers)
             {
-                // active orders: status 0 (chờ), 1 (đã nhận đơn), 2 (đã lấy hàng), 3 (đang giao), 4 (giao lại)
-                var activeOrders = s.Shippings.Count(sh => sh.Status == 0 || sh.Status == 1 || sh.Status == 2 || sh.Status == 3 || sh.Status == 4);
-                // completed: status 4 (hoàn tất giao) hoặc 2 theo chuẩn cũ
-                var completedOrders = s.Shippings.Count(sh => sh.Status == 2 || sh.Status == 4);
+                var activeOrders = s.Shippings.Count(sh => sh.Status >= 0 && sh.Status <= 3);
+                var completedOrders = s.Shippings.Count(sh => sh.Status == 4);
                 var pendingCod = pendingCodMap.GetValueOrDefault(s.ShipperId, 0);
 
                 result.Add(new ShipperDto
@@ -84,13 +82,17 @@ namespace ToyStoreManagement.Infrastructure.Services
 
             if (s == null) return null;
 
-            var activeOrders = s.Shippings.Count(sh => sh.Status == 0 || sh.Status == 1 || sh.Status == 2 || sh.Status == 3 || sh.Status == 4);
-            var completedOrders = s.Shippings.Count(sh => sh.Status == 2 || sh.Status == 4);
+            var activeOrders = s.Shippings.Count(sh => sh.Status >= 0 && sh.Status <= 3);
+            var completedOrders = s.Shippings.Count(sh => sh.Status == 4);
             
             var orderIds = s.Shippings.Select(sh => sh.OrderId).ToList();
-            var pendingCod = await _context.Payments
-                .Where(p => orderIds.Contains(p.OrderId) && p.CodStatus == 1)
-                .SumAsync(p => p.Amount);
+            var pendingCod = await (from p in _context.Payments
+                                    join shipping in _context.Shippings on p.OrderId equals shipping.OrderId
+                                    where orderIds.Contains(p.OrderId)
+                                        && p.PaymentMethod == 0
+                                        && (p.CodStatus == 1 || p.CodStatus == 2)
+                                    select p.Amount - shipping.ShippingFee)
+                .SumAsync();
 
             return new ShipperDto
             {
@@ -220,9 +222,9 @@ namespace ToyStoreManagement.Infrastructure.Services
                 var shipping = await _context.Shippings.FirstOrDefaultAsync(s => s.OrderId == dto.OrderId.Value);
                 if (shipping == null) throw new KeyNotFoundException($"Không tìm thấy thông tin giao hàng của đơn #{dto.OrderId.Value}");
 
-                var prevStatus = shipping.Status == 0 ? "Chờ xuất kho" : $"Trạng thái {shipping.Status}";
+                var prevStatus = shipping.Status == 0 ? "Chờ phân công" : $"Trạng thái {shipping.Status}";
                 shipping.ShipperId = dto.ShipperId;
-                shipping.Status = 1; // 1 = Đã nhận đơn / Đã gán
+                shipping.Status = 0; // Chờ shipper xác nhận nhận đơn.
 
                 await _context.SaveChangesAsync();
 
@@ -232,7 +234,7 @@ namespace ToyStoreManagement.Infrastructure.Services
                     shipping.ShippingId,
                     "Phân công Shipper",
                     prevStatus,
-                    $"Gán cho shipper: {shipper.FullName} ({shipper.PhoneNumber})",
+                    $"Đã phân công cho shipper: {shipper.FullName} ({shipper.PhoneNumber})",
                     performedByUserId,
                     performedByName ?? "Quản trị viên",
                     "Admin/Manager",
@@ -256,13 +258,13 @@ namespace ToyStoreManagement.Infrastructure.Services
                 foreach (var sh in shippings)
                 {
                     sh.ShipperId = dto.ShipperId;
-                    sh.Status = 1;
+                    sh.Status = 0;
                     await AddOrderTrackingLogAsync(
                         sh.OrderId,
                         sh.ShippingId,
                         "Phân công Shipper theo Lô",
-                        "Chờ xuất kho",
-                        $"Gán theo lô {dto.DeliveryBatchCode} cho shipper {shipper.FullName}",
+                        "Chờ phân công",
+                        $"Đã phân công theo lô {dto.DeliveryBatchCode} cho shipper {shipper.FullName}; chờ xác nhận nhận đơn",
                         performedByUserId,
                         performedByName ?? "Quản trị viên",
                         "Admin/Manager",
@@ -294,17 +296,15 @@ namespace ToyStoreManagement.Infrastructure.Services
 
             if (status == "active")
             {
-                // Bước 1, 2, 3 và giao lại (0, 1, 2, 3, 4)
-                query = query.Where(o => o.Shipping.Status == 0 || o.Shipping.Status == 1 || o.Shipping.Status == 2 || o.Shipping.Status == 3 || o.Shipping.Status == 4);
+                query = query.Where(o => o.Shipping.Status >= 0 && o.Shipping.Status <= 3);
             }
             else if (status == "completed")
             {
-                // Bước 4: Đã giao thành công (status = 4 hoặc theo chuẩn cũ 2)
-                query = query.Where(o => o.Shipping.Status == 2 || o.Shipping.Status == 4);
+                query = query.Where(o => o.Shipping.Status == 4 || o.Status == 4);
             }
             else if (status == "failed")
             {
-                query = query.Where(o => o.Shipping.Status == 3 || o.Shipping.Status == 5);
+                query = query.Where(o => o.Shipping.Status == 5 || o.Shipping.Status == 6 || o.Status == 5);
             }
 
             var orders = await query.OrderByDescending(o => o.OrderDate).ToListAsync();
@@ -321,6 +321,9 @@ namespace ToyStoreManagement.Infrastructure.Services
                 .FirstOrDefaultAsync(s => s.OrderId == orderId);
 
             if (shipping == null) throw new KeyNotFoundException($"Không tìm thấy đơn hàng #{orderId}");
+            if (shipping.Status != 0) throw new InvalidOperationException("Đơn hàng không còn ở trạng thái chờ shipper nhận.");
+            if (shipping.ShipperId.HasValue && shipping.ShipperId.Value != shipperId)
+                throw new InvalidOperationException("Đơn hàng đã được phân công cho shipper khác.");
 
             var prev = GetShippingStatusText(shipping.Status);
             shipping.ShipperId = shipperId;
@@ -353,6 +356,8 @@ namespace ToyStoreManagement.Infrastructure.Services
                 .FirstOrDefaultAsync(s => s.OrderId == orderId);
 
             if (shipping == null) throw new KeyNotFoundException($"Không tìm thấy đơn hàng #{orderId}");
+            if (shipping.ShipperId != shipperId || shipping.Status != 1)
+                throw new InvalidOperationException("Chỉ shipper được phân công mới có thể nhận kiện hàng sau khi xác nhận đơn.");
 
             var prev = GetShippingStatusText(shipping.Status);
             shipping.ShipperId = shipperId;
@@ -385,6 +390,8 @@ namespace ToyStoreManagement.Infrastructure.Services
                 .FirstOrDefaultAsync(s => s.OrderId == orderId);
 
             if (shipping == null) throw new KeyNotFoundException($"Không tìm thấy thông tin giao hàng của đơn #{orderId}");
+            if (shipping.ShipperId != shipperId || shipping.Status != 2)
+                throw new InvalidOperationException("Đơn hàng phải được shipper phụ trách nhận tại cửa hàng trước khi bắt đầu giao.");
 
             var prev = GetShippingStatusText(shipping.Status);
             shipping.ShipperId = shipperId;
@@ -424,6 +431,8 @@ namespace ToyStoreManagement.Infrastructure.Services
                 .FirstOrDefaultAsync(s => s.OrderId == orderId);
 
             if (shipping == null) throw new KeyNotFoundException($"Không tìm thấy thông tin giao hàng của đơn #{orderId}");
+            if (shipping.ShipperId != shipperId || shipping.Status != 3)
+                throw new InvalidOperationException("Đơn hàng phải đang được shipper phụ trách giao trước khi xác nhận hoàn tất.");
 
             var prev = GetShippingStatusText(shipping.Status);
             shipping.ShipperId = shipperId;
@@ -483,8 +492,14 @@ namespace ToyStoreManagement.Infrastructure.Services
             if (payment == null) throw new KeyNotFoundException($"Không tìm thấy khoản thanh toán COD của đơn #{orderId}");
 
             var shipping = await _context.Shippings.FirstOrDefaultAsync(s => s.OrderId == orderId);
+            if (shipping is null)
+                throw new InvalidOperationException("Không tìm thấy thông tin giao hàng của đơn.");
+            if (shipping.ShipperId != shipperId || shipping.Status != 4)
+                throw new InvalidOperationException("Chỉ shipper phụ trách mới được báo nộp tiền cho đơn đã giao thành công.");
+            if (payment.CodStatus != 1)
+                throw new InvalidOperationException("Khoản COD này không còn ở trạng thái shipper đang giữ tiền.");
 
-            payment.CodStatus = 2; // 2 = Đã nộp tiền về shop
+            payment.CodStatus = 2; // Shipper báo nộp, chờ admin xác nhận tiền thực nhận.
             payment.CodSubmittedAt = DateTime.UtcNow;
             if (!string.IsNullOrWhiteSpace(note)) payment.CodNote = note;
 
@@ -495,14 +510,14 @@ namespace ToyStoreManagement.Infrastructure.Services
 
             await AddOrderTrackingLogAsync(
                 orderId,
-                shipping?.ShippingId,
+                shipping.ShippingId,
                 "Gửi lại tiền cho cửa hàng",
                 "Shipper giữ tiền COD",
-                "Đã nộp tiền COD về cửa hàng",
+                "Shipper báo đã nộp COD - chờ cửa hàng xác nhận",
                 userId,
                 name,
                 "Shipper",
-                note ?? $"Shipper đã đối soát và nộp {payment.Amount:N0} đ tiền COD về quỹ cửa hàng."
+                note ?? $"Shipper báo nộp {Math.Max(0, payment.Amount - shipping.ShippingFee):N0} đ về cửa hàng; phí ship {shipping.ShippingFee:N0} đ thuộc shipper."
             );
 
             return (await _orderService.GetByIdAsync(orderId))!;
@@ -515,6 +530,8 @@ namespace ToyStoreManagement.Infrastructure.Services
                 .FirstOrDefaultAsync(s => s.OrderId == orderId);
 
             if (shipping == null) throw new KeyNotFoundException($"Không tìm thấy thông tin giao hàng của đơn #{orderId}");
+            if (shipping.ShipperId != shipperId || shipping.Status != 3)
+                throw new InvalidOperationException("Chỉ shipper phụ trách mới được báo giao thất bại khi đơn đang trên đường giao.");
 
             var prev = GetShippingStatusText(shipping.Status);
             shipping.ShipperId = shipperId;
@@ -628,29 +645,22 @@ namespace ToyStoreManagement.Infrastructure.Services
 
         public async Task AddOrderTrackingLogAsync(int orderId, int? shippingId, string action, string? previousStatus, string newStatus, string? userId, string performerName, string performerRole, string? note = null)
         {
-            try
+            var log = new OrderTrackingLog
             {
-                var log = new OrderTrackingLog
-                {
-                    OrderId = orderId,
-                    ShippingId = shippingId,
-                    Action = action,
-                    PreviousStatus = previousStatus,
-                    NewStatus = newStatus,
-                    PerformedByUserId = userId,
-                    PerformedByName = string.IsNullOrWhiteSpace(performerName) ? "Hệ thống" : performerName,
-                    PerformedByRole = string.IsNullOrWhiteSpace(performerRole) ? "System" : performerRole,
-                    Note = note,
-                    CreatedAt = DateTime.UtcNow
-                };
+                OrderId = orderId,
+                ShippingId = shippingId,
+                Action = action,
+                PreviousStatus = previousStatus,
+                NewStatus = newStatus,
+                PerformedByUserId = userId,
+                PerformedByName = string.IsNullOrWhiteSpace(performerName) ? "Hệ thống" : performerName,
+                PerformedByRole = string.IsNullOrWhiteSpace(performerRole) ? "System" : performerRole,
+                Note = note,
+                CreatedAt = DateTime.UtcNow
+            };
 
-                _context.OrderTrackingLogs.Add(log);
-                await _context.SaveChangesAsync();
-            }
-            catch (Exception ex)
-            {
-                Console.WriteLine($"[OrderTrackingLog Warning] Could not save log: {ex.Message}");
-            }
+            _context.OrderTrackingLogs.Add(log);
+            await _context.SaveChangesAsync();
         }
 
         public async Task<List<CodReconciliationDto>> GetCodReconciliationListAsync(int? shipperId = null, int? codStatus = null)
@@ -675,10 +685,32 @@ namespace ToyStoreManagement.Infrastructure.Services
             }
             else
             {
-                query = query.Where(x => x.p.CodStatus == 1 || x.p.CodStatus == 2);
+                query = query.Where(x => x.p.CodStatus == 1 || x.p.CodStatus == 2 || x.p.CodStatus == 3);
             }
 
             var list = await query.OrderByDescending(x => x.p.CodCollectedAt ?? x.o.OrderDate).ToListAsync();
+            var orderIds = list.Select(x => x.o.OrderId).Distinct().ToList();
+            var productRows = await _context.OrderDetails
+                .AsNoTracking()
+                .Where(x => orderIds.Contains(x.OrderId))
+                .Select(x => new
+                {
+                    x.OrderId,
+                    ProductName = x.ProductVariant.Product.Name,
+                    Sku = x.ProductVariant.SKU,
+                    x.Quantity
+                })
+                .ToListAsync();
+            var productsByOrder = productRows
+                .GroupBy(x => x.OrderId)
+                .ToDictionary(
+                    group => group.Key,
+                    group => group.Select(x => new CodReconciliationItemDto
+                    {
+                        ProductName = x.ProductName ?? "Sản phẩm",
+                        Sku = x.Sku,
+                        Quantity = x.Quantity
+                    }).ToList());
 
             return list.Select(x => new CodReconciliationDto
             {
@@ -689,6 +721,9 @@ namespace ToyStoreManagement.Infrastructure.Services
                 ReceiverPhone = x.s?.ReceiverPhone ?? "—",
                 Address = x.s?.Address ?? "—",
                 Amount = x.p.Amount,
+                ShippingFee = x.s?.ShippingFee ?? 0,
+                StoreAmount = Math.Max(0, x.p.Amount - (x.s?.ShippingFee ?? 0)),
+                Products = productsByOrder.GetValueOrDefault(x.o.OrderId) ?? new(),
                 ShipperId = x.s?.ShipperId,
                 ShipperName = x.sh?.FullName,
                 ShipperPhone = x.sh?.PhoneNumber,
@@ -696,6 +731,7 @@ namespace ToyStoreManagement.Infrastructure.Services
                 CodStatus = x.p.CodStatus,
                 CodCollectedAt = x.p.CodCollectedAt,
                 CodSubmittedAt = x.p.CodSubmittedAt,
+                CodConfirmedAt = x.p.CodConfirmedAt,
                 CodNote = x.p.CodNote
             }).ToList();
         }
@@ -707,31 +743,41 @@ namespace ToyStoreManagement.Infrastructure.Services
                 throw new ArgumentException("Danh sách PaymentIds không được để trống.");
             }
 
+            var paymentIds = dto.PaymentIds.Distinct().ToList();
             var payments = await _context.Payments
-                .Where(p => dto.PaymentIds.Contains(p.PaymentId))
+                .Include(p => p.Order)
+                    .ThenInclude(o => o.Shipping)
+                .Where(p => paymentIds.Contains(p.PaymentId))
                 .ToListAsync();
+            if (payments.Count != paymentIds.Count)
+                throw new KeyNotFoundException("Một hoặc nhiều khoản COD không tồn tại.");
+            if (payments.Any(p => p.PaymentMethod != 0 || p.CodStatus != 2))
+                throw new InvalidOperationException("Chỉ được xác nhận các khoản COD shipper đã báo nộp và đang chờ kiểm tra.");
+            var expectedAmount = payments.Sum(p => Math.Max(0, p.Amount - (p.Order?.Shipping?.ShippingFee ?? 0)));
+            if (dto.ReceivedAmount != expectedAmount)
+                throw new InvalidOperationException($"Số tiền thực nhận ({dto.ReceivedAmount:N0} đ) không khớp số tiền cần nộp ({expectedAmount:N0} đ). Khoản COD vẫn đang chờ xác nhận.");
 
             foreach (var p in payments)
             {
-                p.CodStatus = 2; // 2 = Đã nộp tiền về shop
-                p.CodSubmittedAt = DateTime.UtcNow;
+                p.CodStatus = 3;
+                p.CodConfirmedAt = DateTime.UtcNow;
                 if (!string.IsNullOrWhiteSpace(dto.Note))
                 {
                     p.CodNote = dto.Note;
                 }
 
-                // Ghi nhận Audit log cho từng đơn hàng
-                await AddOrderTrackingLogAsync(
-                    p.OrderId,
-                    null,
-                    "Gửi lại tiền cho cửa hàng",
-                    "Shipper giữ tiền COD",
-                    "Thủ quỹ/Quản lý đã xác nhận nộp tiền COD vào quỹ",
-                    confirmedByUserId,
-                    confirmedByName ?? "Thủ quỹ cửa hàng",
-                    "Staff/Admin",
-                    dto.Note ?? $"Xác nhận nộp đủ {p.Amount:N0} đ tiền COD vào quỹ cửa hàng"
-                );
+                _context.OrderTrackingLogs.Add(new OrderTrackingLog
+                {
+                    OrderId = p.OrderId,
+                    Action = "Admin xác nhận nộp tiền COD",
+                    PreviousStatus = "Shipper báo đã nộp - chờ xác nhận",
+                    NewStatus = "Đã kiểm tra và xác nhận COD vào quỹ cửa hàng",
+                    PerformedByUserId = confirmedByUserId,
+                    PerformedByName = confirmedByName ?? "Thủ quỹ cửa hàng",
+                    PerformedByRole = "Staff/Admin",
+                    Note = dto.Note ?? $"Xác nhận nhận đủ {Math.Max(0, p.Amount - (p.Order?.Shipping?.ShippingFee ?? 0)):N0} đ tiền hàng. Phí ship {p.Order?.Shipping?.ShippingFee ?? 0:N0} đ thuộc shipper.",
+                    CreatedAt = DateTime.UtcNow
+                });
             }
 
             await _context.SaveChangesAsync();
@@ -800,6 +846,7 @@ namespace ToyStoreManagement.Infrastructure.Services
                     CodStatus = order.Payment.CodStatus,
                     CodCollectedAt = order.Payment.CodCollectedAt,
                     CodSubmittedAt = order.Payment.CodSubmittedAt,
+                    CodConfirmedAt = order.Payment.CodConfirmedAt,
                     CodNote = order.Payment.CodNote
                 },
 

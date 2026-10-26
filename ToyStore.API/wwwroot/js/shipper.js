@@ -14,6 +14,7 @@ if (!authToken || !['admin', 'manager', 'staff', 'shipper'].includes(userRole)) 
 
 let currentShipper = null;
 let currentShipperId = null;
+let availableShippers = [];
 let activeTab = 'active'; // 'active' | 'history' | 'wallet'
 let allOrders = [];
 let trackingHubConnection = null;
@@ -23,6 +24,8 @@ const esc = v => String(v ?? '').replace(/[&<>'"]/g, c => ({ '&': '&amp;', '<': 
 const money = v => v == null ? '0 đ' : Number(v).toLocaleString('vi-VN') + ' đ';
 const fmtDateTime = s => s ? new Date(s).toLocaleString('vi-VN') : '—';
 const shipperNotificationStorageKey = () => `toyStoreShipperNotifications:${currentShipperId || 'me'}`;
+const canSelectShipper = ['admin', 'manager', 'staff'].includes(userRole);
+const selectedShipperQuery = () => currentShipperId ? `?shipperId=${encodeURIComponent(currentShipperId)}` : '';
 
 function toast(msg, type = 'info') {
   const container = document.getElementById('toastContainer');
@@ -150,21 +153,35 @@ async function api(endpoint, options = {}) {
 // ── 1. SHIPPER IDENTITY INITIALIZATION (STRICT RBAC) ────────
 async function loadShipperProfile() {
   try {
-    // Luôn nhận diện Shipper trực tiếp từ Token đăng nhập qua API /api/Shipper/me
     const profile = await api('Shipper/me');
     if (!profile) {
       toast('Không tìm thấy hồ sơ shipper liên kết với tài khoản này.', 'error');
       return;
     }
 
-    currentShipper = profile;
-    currentShipperId = profile.shipperId;
-    localStorage.setItem('toyStoreShipperId', currentShipperId);
+    if (canSelectShipper) {
+      const shippers = await api('Shipper');
+      availableShippers = Array.isArray(shippers) ? shippers : [];
+      const selector = document.getElementById('shipperSelector');
+      if (selector && availableShippers.length > 0) {
+        const savedShipperId = Number(localStorage.getItem('toyStoreShipperId'));
+        const selected = availableShippers.find(item => Number(item.shipperId) === savedShipperId)
+          || availableShippers.find(item => Number(item.shipperId) === Number(profile.shipperId))
+          || availableShippers[0];
+        selector.innerHTML = availableShippers.map(shipper =>
+          `<option value="${Number(shipper.shipperId)}">${esc(shipper.fullName)} (${esc(shipper.phoneNumber || '—')})</option>`
+        ).join('');
+        selector.value = String(selected.shipperId);
+        selector.style.display = '';
+        applySelectedShipper(selected);
+      } else {
+        applySelectedShipper(profile);
+      }
+    } else {
+      applySelectedShipper(profile);
+    }
 
-    updateProfileDisplay(profile);
-    loadShipperNotifications();
     initSignalR();
-    loadOrders();
   } catch (err) {
     console.error('Không thể nạp hồ sơ shipper:', err);
     // Nếu chưa liên kết shipper
@@ -174,6 +191,25 @@ async function loadShipperProfile() {
     if (subEl) subEl.textContent = `Tài khoản: ${authUser?.email || '—'} · Vai trò: ${authUser?.role || 'Shipper'}`;
     toast(`Lỗi xác thực shipper: ${err.message}`, 'error');
   }
+}
+
+function applySelectedShipper(shipper) {
+  currentShipper = shipper;
+  currentShipperId = Number(shipper.shipperId);
+  localStorage.setItem('toyStoreShipperId', String(currentShipperId));
+  updateProfileDisplay(shipper);
+  loadShipperNotifications();
+  if (typeof signalR !== 'undefined'
+    && trackingHubConnection?.state === signalR.HubConnectionState.Connected) {
+    trackingHubConnection.invoke('JoinShipper', currentShipperId).catch(console.warn);
+  }
+  loadOrders();
+  if (activeTab === 'wallet') renderWallet(document.getElementById('tabContent'));
+}
+
+function changeSelectedShipper(shipperId) {
+  const shipper = availableShippers.find(item => Number(item.shipperId) === Number(shipperId));
+  if (shipper) applySelectedShipper(shipper);
 }
 
 function updateProfileDisplay(shipper) {
@@ -197,7 +233,7 @@ async function loadOrders() {
 
   try {
     // API tự động giới hạn chỉ trả về đơn của chính shipper này theo Token
-    allOrders = await api(`Shipper/my-orders`);
+    allOrders = await api(`Shipper/my-orders${selectedShipperQuery()}`);
     renderCurrentTab();
   } catch (err) {
     if (container) {
@@ -207,17 +243,17 @@ async function loadOrders() {
 }
 
 function renderCurrentTab() {
-  // Trạng thái đang giao: 0 (chờ), 1 (đã nhận đơn), 2 (đã lấy hàng), 3 (đang đi giao), 4 (đang giao lại)
+  // Đơn đang cần shipper xử lý; đơn đã giao thành công nằm trong lịch sử và ví COD.
   const activeOrders = allOrders.filter(o => {
     const st = Number(o.shipping?.status ?? 0);
-    return st === 0 || st === 1 || st === 2 || st === 3 || st === 4;
+    return st === 0 || st === 1 || st === 2 || st === 3;
   });
 
-  // Trạng thái lịch sử: 4 (thành công) hoặc 2 theo chuẩn cũ, hoặc 5 (thất bại), 6 (hoàn hàng)
+  // Trạng thái lịch sử: hoàn tất giao hoặc giao thất bại/hoàn hàng.
   const historyOrders = allOrders.filter(o => {
     const st = Number(o.shipping?.status ?? 0);
     const ordSt = Number(o.status ?? 0);
-    return ordSt === 4 || ordSt === 5 || st === 2 || st === 4 || st === 5 || st === 6;
+    return ordSt === 4 || ordSt === 5 || st === 4 || st === 5 || st === 6;
   });
 
   const badgeActive = document.getElementById('badgeActiveCount');
@@ -252,13 +288,13 @@ function renderWorkflowStepper(shippingStatus, isCod, codStatus) {
   // 2. Đến cửa hàng nhận hàng (status >= 2)
   // 3. Giao hàng cho KH (status >= 3)
   // 4. Nhận tiền / Giao thành công (status == 4 hoặc order status == 4)
-  // 5. Gửi lại tiền cho cửa hàng (codStatus == 2)
+  // 5. Shipper đã báo nộp (2) hoặc admin xác nhận tiền vào quỹ (3).
   const s = Number(shippingStatus || 0);
   const step1Done = s >= 1;
   const step2Done = s >= 2;
   const step3Done = s >= 3;
   const step4Done = s >= 4;
-  const step5Done = isCod ? (codStatus === 2) : step4Done;
+  const step5Done = isCod ? (codStatus >= 2) : step4Done;
 
   return `
     <div class="workflow-stepper">
@@ -310,7 +346,8 @@ function renderActiveOrders(orders, container) {
     const mapsUrl = `https://www.google.com/maps/dir/?api=1&origin=${encodeURIComponent('123 Nguyễn Thị Minh Khai, Quận 1, TP.HCM')}&destination=${encodeURIComponent(address)}`;
 
     let statusBadge = '';
-    if (st === 0 || st === 1) statusBadge = `<span class="badge" style="background:#fef3c7;color:#92400e;font-weight:700;font-size:11.5px;padding:3px 8px;border-radius:6px;">Chờ đến kho lấy hàng</span>`;
+    if (st === 0) statusBadge = `<span class="badge" style="background:#fef3c7;color:#92400e;font-weight:700;font-size:11.5px;padding:3px 8px;border-radius:6px;">Chờ bạn nhận đơn</span>`;
+    else if (st === 1) statusBadge = `<span class="badge" style="background:#fef3c7;color:#92400e;font-weight:700;font-size:11.5px;padding:3px 8px;border-radius:6px;">Đã nhận đơn - chờ lấy hàng</span>`;
     else if (st === 2) statusBadge = `<span class="badge" style="background:#ecfdf5;color:#047857;font-weight:700;font-size:11.5px;padding:3px 8px;border-radius:6px;">Đã lấy hàng - Sẵn sàng giao</span>`;
     else if (st === 3) statusBadge = `<span class="badge" style="background:#e0e7ff;color:#3730a3;font-weight:700;font-size:11.5px;padding:3px 8px;border-radius:6px;">⚡ Đang trên đường giao cho KH</span>`;
     else statusBadge = `<span class="badge" style="background:#f1f5f9;color:#475569;font-weight:700;font-size:11.5px;padding:3px 8px;border-radius:6px;">Đang xử lý</span>`;
@@ -360,7 +397,11 @@ function renderActiveOrders(orders, container) {
 
         <!-- Nút hành động tương ứng từng bước trong quy trình -->
         <div class="card-actions">
-          ${st <= 1 ? `
+          ${st === 0 ? `
+            <button class="btn-action btn-start" onclick="acceptOrder(${order.orderId})">
+              <span>📥 Bước 1: Nhận đơn hàng</span>
+            </button>
+          ` : st === 1 ? `
             <button class="btn-action btn-start" onclick="pickupOrder(${order.orderId})">
               <span>🏬 Bước 2: Đến cửa hàng nhận hàng</span>
             </button>
@@ -395,9 +436,10 @@ function renderHistoryOrders(orders, container) {
   container.innerHTML = orders.map(order => {
     const shipping = order.shipping || {};
     const payment = order.payment || {};
-    const isSuccess = Number(order.status) === 4 || shipping.status === 2 || shipping.status === 4;
+    const isSuccess = Number(order.status) === 4 || shipping.status === 4;
     const receiverName = shipping.receiverName || order.customerName || 'Khách nhận';
     const isCod = payment.paymentMethod === 0;
+    const codStatus = Number(payment.codStatus || 0);
 
     return `
       <div class="order-card ${isSuccess ? 'delivered' : 'failed'}">
@@ -424,10 +466,11 @@ function renderHistoryOrders(orders, container) {
         ${isSuccess && isCod ? `
           <div style="display:flex;justify-content:space-between;align-items:center;background:#fffbeb;border:1px solid #fde68a;border-radius:8px;padding:8px 12px;margin-bottom:8px;font-size:12px;">
             <div>
-              <span style="font-weight:700;color:#b45309;">Tiền COD: ${money(order.finalAmount || order.totalAmount)}</span>
-              <span style="display:block;font-size:11px;color:#92400e;">${payment.codStatus === 2 ? '✅ Đã nộp tiền về cửa hàng' : '⏳ Đang giữ tiền COD trong túi'}</span>
+              <span style="font-weight:700;color:#b45309;">COD khách trả: ${money(payment.amount || order.finalAmount || order.totalAmount)}</span>
+              <span style="display:block;font-size:11px;color:#92400e;">Phí ship của bạn: ${money(shipping.shippingFee)} · Cần nộp shop: ${money(Math.max(0, Number(payment.amount || order.totalAmount || 0) - Number(shipping.shippingFee || 0)))}</span>
+              <span style="display:block;font-size:11px;color:#92400e;">${codStatus === 3 ? '✅ Admin đã xác nhận tiền vào quỹ' : codStatus === 2 ? '🔎 Đã báo nộp, chờ admin kiểm tra' : '⏳ Đang giữ tiền COD'}</span>
             </div>
-            ${payment.codStatus === 1 ? `
+            ${codStatus === 1 ? `
               <button class="primary-btn" style="padding:4px 10px;font-size:11px;" onclick="submitCod(${order.orderId})">
                 Bước 5: Gửi lại tiền shop
               </button>
@@ -452,23 +495,30 @@ async function renderWallet(container) {
 
   try {
     // API /api/Shipper/cod-reconciliation với Policy ShipperAccess đã sửa
-    const codList = await api('Shipper/cod-reconciliation');
+    const codList = await api(`Shipper/cod-reconciliation${selectedShipperQuery()}`);
     const items = Array.isArray(codList) ? codList : [];
 
-    const holdingAmount = items.filter(x => x.codStatus === 1).reduce((sum, x) => sum + (Number(x.amount) || 0), 0);
-    const submittedAmount = items.filter(x => x.codStatus === 2).reduce((sum, x) => sum + (Number(x.amount) || 0), 0);
+    const holdingAmount = items.filter(x => x.codStatus === 1).reduce((sum, x) => sum + (Number(x.storeAmount) || 0), 0);
+    const pendingVerificationAmount = items.filter(x => x.codStatus === 2).reduce((sum, x) => sum + (Number(x.storeAmount) || 0), 0);
+    const submittedAmount = items.filter(x => x.codStatus === 3).reduce((sum, x) => sum + (Number(x.storeAmount) || 0), 0);
+    const shippingEarnings = items.reduce((sum, x) => sum + (Number(x.shippingFee) || 0), 0);
+    const totalCollected = items.reduce((sum, x) => sum + (Number(x.amount) || 0), 0);
 
     container.innerHTML = `
       <div class="wallet-card">
-        <div class="wallet-title">💵 Tiền mặt COD đang giữ trong túi</div>
-        <div class="wallet-amount">${money(holdingAmount)}</div>
+        <div class="wallet-title">💵 Tiền hàng cần cửa hàng đối soát</div>
+        <div class="wallet-amount">${money(holdingAmount + pendingVerificationAmount)}</div>
         <div class="wallet-meta">
-          <div>Đã nộp về shop: <b>${money(submittedAmount)}</b></div>
-          <div>Tổng số đơn đã thu: <b>${items.length}</b></div>
+          <div>Chờ admin xác nhận: <b>${money(pendingVerificationAmount)}</b></div>
+          <div>Đã vào quỹ shop: <b>${money(submittedAmount)}</b></div>
         </div>
-        ${holdingAmount > 0 ? `
+        <div class="wallet-meta" style="margin-top:8px;">
+          <div>Phí ship thuộc về bạn: <b>${money(shippingEarnings)}</b></div>
+          <div>Tổng COD khách trả: <b>${money(totalCollected)}</b></div>
+        </div>
+        ${holdingAmount + pendingVerificationAmount > 0 ? `
           <div style="margin-top:14px;border-top:1px solid rgba(255,255,255,0.2);padding-top:12px;font-size:12.5px;color:rgba(255,255,255,0.9);">
-            ℹ️ Hãy bàn giao số tiền này cho thủ quỹ / quản lý cửa hàng khi kết thúc ca làm việc.
+            ℹ️ Phí ship là thu nhập của bạn. Chỉ nộp cửa hàng phần tiền hàng; khoản đã báo nộp sẽ được tính vào quỹ sau khi admin xác nhận.
           </div>
         ` : ''}
       </div>
@@ -484,25 +534,32 @@ async function renderWallet(container) {
         </div>
       ` : `
         <div style="display:flex;flex-direction:column;gap:10px;">
-          ${items.map(item => `
+          ${items.map(item => {
+            const codStatus = Number(item.codStatus);
+            return `
             <div style="background:white;border-radius:12px;border:1px solid var(--slate-200);padding:14px;box-shadow:0 1px 3px rgba(0,0,0,0.02);">
               <div style="display:flex;justify-content:space-between;align-items:flex-start;">
                 <div>
                   <strong style="font-size:14px;color:var(--slate-900);">#${esc(item.orderCode)}</strong>
+                  <div style="font-size:12px;color:var(--slate-600);margin-top:3px;">${(item.products || []).map(product => `${esc(product.productName)} × ${Number(product.quantity || 0)}`).join(', ') || 'Không có chi tiết sản phẩm'}</div>
                   <div style="font-size:12.5px;color:var(--slate-600);margin-top:2px;">Khách: ${esc(item.receiverName)} (${esc(item.receiverPhone)})</div>
                   <div style="font-size:11.5px;color:var(--slate-400);margin-top:2px;">Thu lúc: ${fmtDateTime(item.codCollectedAt)}</div>
-                </div>
-                <div style="text-align:right;">
-                  <strong style="font-size:15px;color:#b45309;">${money(item.amount)}</strong>
-                  <div style="margin-top:4px;">
-                    ${item.codStatus === 2 
-                      ? `<span class="badge" style="background:#ecfdf5;color:#047857;font-weight:700;font-size:11px;padding:2px 6px;border-radius:4px;">✅ Đã nộp shop</span>` 
-                      : `<button class="primary-btn" style="padding:3px 8px;font-size:11px;" onclick="submitCod(${item.orderId})">Bước 5: Nộp shop</button>`}
+                  <div style="font-size:11.5px;font-weight:700;margin-top:6px;color:${codStatus === 3 ? '#047857' : codStatus === 2 ? '#1d4ed8' : '#b45309'};">
+                    ${codStatus === 3 ? '✅ Admin đã xác nhận đã nhận tiền' : codStatus === 2 ? '🔎 Đã báo nộp — chờ admin xác nhận' : codStatus === 1 ? '⏳ Đang giữ tiền — cần nộp về cửa hàng' : 'Chưa ghi nhận đã thu COD'}
                   </div>
                 </div>
+                <div style="text-align:right;">
+                  <strong style="font-size:15px;color:#b45309;">Cần nộp: ${money(item.storeAmount)}</strong>
+                  <div style="font-size:11px;color:var(--slate-500);">COD ${money(item.amount)} · Phí ship ${money(item.shippingFee)}</div>
+                </div>
               </div>
+              ${codStatus === 1 ? `
+                <button type="button" class="primary-btn" style="display:block;width:100%;margin-top:12px;padding:10px 14px;font-size:13px;font-weight:700;" onclick="submitCod(${Number(item.orderId)})">
+                  💸 Đã nộp tiền về cửa hàng — Báo admin xác nhận
+                </button>
+              ` : ''}
             </div>
-          `).join('')}
+          `}).join('')}
         </div>
       `}
     `;
@@ -522,7 +579,7 @@ async function renderWallet(container) {
 // Bước 1: Nhận đơn
 async function acceptOrder(orderId) {
   try {
-    await api(`Shipper/orders/${orderId}/accept-order`, { method: 'POST' });
+    await api(`Shipper/orders/${orderId}/accept-order${selectedShipperQuery()}`, { method: 'POST' });
     toast('Đã xác nhận tiếp nhận đơn hàng!', 'success');
     loadOrders();
   } catch (err) {
@@ -533,7 +590,7 @@ async function acceptOrder(orderId) {
 // Bước 2: Đến cửa hàng nhận hàng
 async function pickupOrder(orderId) {
   try {
-    await api(`Shipper/orders/${orderId}/pickup`, { method: 'POST' });
+    await api(`Shipper/orders/${orderId}/pickup${selectedShipperQuery()}`, { method: 'POST' });
     toast('Đã xác nhận lấy hàng tại kho/cửa hàng!', 'success');
     loadOrders();
   } catch (err) {
@@ -544,7 +601,7 @@ async function pickupOrder(orderId) {
 // Bước 3: Giao hàng cho KH
 async function startDelivery(orderId) {
   try {
-    await api(`Shipper/orders/${orderId}/start-delivery`, { method: 'POST' });
+    await api(`Shipper/orders/${orderId}/start-delivery${selectedShipperQuery()}`, { method: 'POST' });
     toast('Đã bắt đầu lộ trình giao hàng tới khách!', 'success');
     loadOrders();
   } catch (err) {
@@ -655,7 +712,7 @@ async function submitCompleteDelivery() {
     : note;
 
   try {
-    await api(`Shipper/orders/${orderId}/complete-delivery`, {
+    await api(`Shipper/orders/${orderId}/complete-delivery${selectedShipperQuery()}`, {
       method: 'POST',
       body: JSON.stringify({ note: fullNote })
     });
@@ -669,14 +726,14 @@ async function submitCompleteDelivery() {
 
 // Bước 5: Gửi lại tiền cho cửa hàng
 async function submitCod(orderId) {
-  if (!confirm('Xác nhận bạn đã đối soát và nộp lại toàn bộ số tiền COD của đơn này cho cửa hàng/thủ quỹ?')) return;
+  if (!confirm('Xác nhận đã bàn giao cho cửa hàng phần tiền hàng (không bao gồm phí ship thuộc về bạn)? Admin sẽ kiểm tra trước khi cộng tiền vào quỹ.')) return;
 
   try {
-    await api(`Shipper/orders/${orderId}/submit-cod`, {
+    await api(`Shipper/orders/${orderId}/submit-cod${selectedShipperQuery()}`, {
       method: 'POST',
       body: JSON.stringify({ note: 'Shipper đã nộp lại tiền mặt COD về cửa hàng' })
     });
-    toast('Đã nộp tiền COD về cửa hàng thành công!', 'success');
+    toast('Đã báo nộp tiền COD. Khoản tiền sẽ vào quỹ sau khi admin xác nhận.', 'success');
     loadOrders();
     if (activeTab === 'wallet') renderWallet(document.getElementById('tabContent'));
   } catch (err) {
@@ -740,7 +797,7 @@ async function submitFailReport() {
   const note = document.getElementById('failNoteInput')?.value || '';
 
   try {
-    await api(`Shipper/orders/${activeFailOrderId}/fail-delivery`, {
+    await api(`Shipper/orders/${activeFailOrderId}/fail-delivery${selectedShipperQuery()}`, {
       method: 'POST',
       body: JSON.stringify({
         failReason: selectedFailReasonText,
@@ -841,6 +898,10 @@ function initSignalR() {
 
 // ── 7. INITIALIZATION ───────────────────────────────────────
 document.addEventListener('DOMContentLoaded', () => {
+  document.getElementById('shipperSelector')?.addEventListener('change', event => {
+    changeSelectedShipper(event.target.value);
+  });
+
   document.getElementById('shipperLogoutBtn')?.addEventListener('click', () => {
     localStorage.removeItem('toyStoreToken');
     localStorage.removeItem('toyStoreUser');

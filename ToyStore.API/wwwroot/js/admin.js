@@ -71,7 +71,7 @@ const MODULES = {
   cod: {
     title: 'Đối soát công nợ COD', kicker: 'VẬN HÀNH & GIAO NHẬN',
     endpoint: 'Shipper/cod-reconciliation',
-    columns: ['Mã đơn', 'Người nhận', 'Số tiền COD', 'Shipper phụ trách', 'Mã lô', 'Thời điểm thu', 'Trạng thái COD'],
+    columns: ['Mã đơn', 'Người nhận', 'Mặt hàng', 'COD khách trả', 'Phí ship (shipper)', 'Cần nộp shop', 'Shipper phụ trách', 'Mã lô', 'Thời điểm thu', 'Trạng thái COD'],
     canAdd: false, canEdit: false, canDelete: false
   },
   suppliers: {
@@ -244,8 +244,8 @@ window.addEventListener('hashchange', navigate);
 // ── 1. DASHBOARD VIEW & FINANCIAL REPORTS (MỤC 5) ─────────────
 let dashboardPeriod = '30days'; // 'today' | '7days' | '30days' | 'month' | 'year' | 'custom'
 let dashboardDateRange = {
-  from: revenueDateInputValue(new Date(Date.now() - (29 * 86400000))),
-  to: revenueDateInputValue(new Date()),
+  from: revenueDateInputValue(new Date(Date.now() - (30 * 86400000))),
+  to: revenueDateInputValue(new Date(Date.now() - 86400000)),
   groupBy: 'day'
 };
 
@@ -261,13 +261,13 @@ function getDashboardDates() {
     return { from: t, to: t, groupBy: 'day', label: 'Hôm nay' };
   }
   if (dashboardPeriod === '7days') {
-    const f = revenueDateInputValue(new Date(today.getTime() - (6 * 86400000)));
-    const t = revenueDateInputValue(today);
+    const f = revenueDateInputValue(new Date(today.getTime() - (7 * 86400000)));
+    const t = revenueDateInputValue(new Date(today.getTime() - 86400000));
     return { from: f, to: t, groupBy: 'day', label: '7 ngày qua' };
   }
   if (dashboardPeriod === '30days') {
-    const f = revenueDateInputValue(new Date(today.getTime() - (29 * 86400000)));
-    const t = revenueDateInputValue(today);
+    const f = revenueDateInputValue(new Date(today.getTime() - (30 * 86400000)));
+    const t = revenueDateInputValue(new Date(today.getTime() - 86400000));
     return { from: f, to: t, groupBy: 'day', label: '30 ngày qua' };
   }
   if (dashboardPeriod === 'month') {
@@ -399,11 +399,11 @@ async function renderDashboard(refreshOnly = false) {
         <div class="panel" style="margin-bottom:0;">
           <div class="panel-header">
             <div class="panel-title-area">
-              <h2 id="revenueChartTitle">Biểu đồ Doanh số bán & Thực thu theo kỳ</h2>
-              <p>So sánh độ lệch giữa giá trị đơn hoàn tất và dòng tiền thực tế về quỹ <span id="dashboardLastUpdated"></span></p>
+              <h2 id="revenueChartTitle">Biểu đồ Doanh thu ghi nhận & Thực thu theo kỳ</h2>
+              <p>COD chỉ được tính vào doanh thu sau khi cửa hàng xác nhận đã nhận tiền. <span id="dashboardLastUpdated"></span></p>
             </div>
             <div style="display:flex;align-items:center;gap:14px;">
-              <span style="font-size:12px;font-weight:600;display:flex;align-items:center;gap:5px;"><span style="display:inline-block;width:12px;height:12px;border-radius:3px;background:#6366f1;"></span> Doanh số bán</span>
+              <span style="font-size:12px;font-weight:600;display:flex;align-items:center;gap:5px;"><span style="display:inline-block;width:12px;height:12px;border-radius:3px;background:#6366f1;"></span> Doanh thu ghi nhận</span>
               <span style="font-size:12px;font-weight:600;display:flex;align-items:center;gap:5px;"><span style="display:inline-block;width:12px;height:12px;border-radius:3px;background:#10b981;"></span> Thực thu quỹ</span>
             </div>
           </div>
@@ -481,7 +481,8 @@ async function renderDashboard(refreshOnly = false) {
                 <th style="text-align:center;">Giao thất bại</th>
                 <th style="text-align:center;">Tỷ lệ thành công</th>
                 <th style="text-align:right;">COD đang giữ</th>
-                <th style="text-align:right;">COD đã nộp</th>
+                <th style="text-align:right;">Chờ xác nhận</th>
+                <th style="text-align:right;">COD đã xác nhận</th>
                 <th style="text-align:center;">Thao tác</th>
               </tr>
             </thead>
@@ -577,7 +578,7 @@ async function renderDashboard(refreshOnly = false) {
       const unpaidEl = document.getElementById('kpiUnpaidAmount');
       if (unpaidEl) unpaidEl.textContent = money(summary.unpaidAmount);
       const unpaidSub = document.getElementById('kpiUnpaidSub');
-      if (unpaidSub) unpaidSub.textContent = `Shipper giữ: ${money(summary.codHoldingAmount)} · Đang giao: ${money(summary.pendingCollectionAmount)}`;
+      if (unpaidSub) unpaidSub.textContent = `Shipper giữ: ${money(summary.codHoldingAmount)} · Chờ kiểm tra: ${money(summary.codPendingVerificationAmount)} · Chờ thu: ${money(summary.pendingCollectionAmount)}`;
 
       const expEl = document.getElementById('kpiExpectedRevenue');
       if (expEl) expEl.textContent = money(summary.expectedRevenue);
@@ -590,7 +591,7 @@ async function renderDashboard(refreshOnly = false) {
       if (logSub) logSub.textContent = `Đang giao: ${summary.shippingOrders || 0} · Tỷ lệ hoàn: ${summary.returnRate || 0}%`;
     }
 
-    // 2. Render Chart (Doanh số vs Thực thu)
+    // 2. Render Chart (Doanh thu ghi nhận vs Thực thu)
     const ctx = document.getElementById('revenueChartCanvas')?.getContext('2d');
     if (ctx && report && report.items && report.items.length > 0) {
       if (revenueChart) revenueChart.destroy();
@@ -605,7 +606,7 @@ async function renderDashboard(refreshOnly = false) {
           labels,
           datasets: [
             {
-              label: 'Doanh số bán (VNĐ)',
+              label: 'Doanh thu ghi nhận (VNĐ)',
               data: grossData,
               backgroundColor: '#6366f1',
               hoverBackgroundColor: '#4f46e5',
@@ -662,6 +663,7 @@ async function renderDashboard(refreshOnly = false) {
       const pctOnline = Math.min(100, Math.round(((summary.onlinePaidAmount || 0) / gross) * 100));
       const pctCodSub = Math.min(100, Math.round(((summary.codSubmittedAmount || 0) / gross) * 100));
       const pctCodHold = Math.min(100, Math.round(((summary.codHoldingAmount || 0) / gross) * 100));
+      const pctCodReview = Math.min(100, Math.round(((summary.codPendingVerificationAmount || 0) / gross) * 100));
       const pctPending = Math.min(100, Math.round(((summary.pendingCollectionAmount || 0) / gross) * 100));
 
       cashflowEl.innerHTML = `
@@ -688,11 +690,21 @@ async function renderDashboard(refreshOnly = false) {
 
           <div>
             <div style="display:flex;justify-content:space-between;font-size:13px;font-weight:700;">
-              <span>🛵 Tiền COD Shipper đang giữ (Công nợ):</span>
+              <span>🛵 Tiền COD shipper đang giữ (công nợ):</span>
               <span style="color:#d97706;">${money(summary.codHoldingAmount)} (${pctCodHold}%)</span>
             </div>
             <div class="cashflow-progress-bar">
               <div class="cashflow-progress-fill" style="width:${pctCodHold}%;background:#d97706;"></div>
+            </div>
+          </div>
+
+          <div>
+            <div style="display:flex;justify-content:space-between;font-size:13px;font-weight:700;">
+              <span>🔎 Shipper đã báo nộp, chờ admin kiểm tra:</span>
+              <span style="color:#1d4ed8;">${money(summary.codPendingVerificationAmount)} (${pctCodReview}%)</span>
+            </div>
+            <div class="cashflow-progress-bar">
+              <div class="cashflow-progress-fill" style="width:${pctCodReview}%;background:#3b82f6;"></div>
             </div>
           </div>
 
@@ -737,7 +749,7 @@ async function renderDashboard(refreshOnly = false) {
     const shipBody = document.getElementById('dashShipperBody');
     if (shipBody && report && report.shipperPerformances) {
       if (report.shipperPerformances.length === 0) {
-        shipBody.innerHTML = `<tr><td colspan="10" style="text-align:center;padding:26px;color:var(--slate-400);">Chưa có đơn hàng nào phân công cho Shipper trong kỳ này.</td></tr>`;
+        shipBody.innerHTML = `<tr><td colspan="11" style="text-align:center;padding:26px;color:var(--slate-400);">Chưa có đơn hàng nào phân công cho Shipper trong kỳ này.</td></tr>`;
       } else {
         shipBody.innerHTML = report.shipperPerformances.map(s => `
           <tr>
@@ -749,6 +761,7 @@ async function renderDashboard(refreshOnly = false) {
             <td style="text-align:center;"><span style="color:#dc2626;font-weight:700;">${s.failedDeliveries}</span></td>
             <td style="text-align:center;"><span class="pill ${s.successRate >= 90 ? 'success' : (s.successRate >= 70 ? 'info' : 'danger')}">${s.successRate}%</span></td>
             <td style="text-align:right;"><strong style="color:#d97706;">${money(s.codHoldingAmount)}</strong></td>
+            <td style="text-align:right;"><strong style="color:#1d4ed8;">${money(s.codPendingVerificationAmount)}</strong></td>
             <td style="text-align:right;"><strong style="color:#059669;">${money(s.codSubmittedAmount)}</strong></td>
             <td style="text-align:center;">
               <button class="secondary-btn" style="padding:4px 10px;font-size:11.5px;" onclick="location.hash='#cod'">Đối soát</button>
@@ -1551,21 +1564,28 @@ async function renderList(key) {
             <div class="cod-kpi-icon" style="background:#fef3c7;color:#b45309;">⏳</div>
             <div>
               <div class="cod-kpi-val" id="codHoldingAmount" style="color:#b45309;">0 đ</div>
-              <div class="cod-kpi-label">Tiền COD Shipper đang giữ</div>
+              <div class="cod-kpi-label">Shipper đang giữ (cần nộp)</div>
+            </div>
+          </div>
+          <div class="cod-kpi-card">
+            <div class="cod-kpi-icon" style="background:#fef3c7;color:#b45309;">🔎</div>
+            <div>
+              <div class="cod-kpi-val" id="codPendingVerificationAmount" style="color:#b45309;">0 đ</div>
+              <div class="cod-kpi-label">Đã báo nộp, chờ kiểm tra</div>
             </div>
           </div>
           <div class="cod-kpi-card">
             <div class="cod-kpi-icon" style="background:#ecfdf5;color:#047857;">🏦</div>
             <div>
               <div class="cod-kpi-val" id="codSubmittedAmount" style="color:#047857;">0 đ</div>
-              <div class="cod-kpi-label">Tiền COD đã nộp vào quỹ</div>
+              <div class="cod-kpi-label">Admin đã xác nhận vào quỹ</div>
             </div>
           </div>
           <div class="cod-kpi-card">
             <div class="cod-kpi-icon" style="background:#eff6ff;color:#1d4ed8;">📦</div>
             <div>
               <div class="cod-kpi-val" id="codTotalCount" style="color:#1d4ed8;">0</div>
-              <div class="cod-kpi-label">Số đơn COD cần đối soát</div>
+              <div class="cod-kpi-label">Số khoản COD đang theo dõi</div>
             </div>
           </div>
         </div>
@@ -1612,12 +1632,15 @@ async function renderList(key) {
 
 function updateCodSummary(list) {
   if (!Array.isArray(list)) return;
-  const holding = list.filter(x => x.codStatus === 1).reduce((sum, x) => sum + (Number(x.amount) || 0), 0);
-  const submitted = list.filter(x => x.codStatus === 2).reduce((sum, x) => sum + (Number(x.amount) || 0), 0);
+  const holding = list.filter(x => x.codStatus === 1).reduce((sum, x) => sum + (Number(x.storeAmount) || 0), 0);
+  const pendingVerification = list.filter(x => x.codStatus === 2).reduce((sum, x) => sum + (Number(x.storeAmount) || 0), 0);
+  const submitted = list.filter(x => x.codStatus === 3).reduce((sum, x) => sum + (Number(x.storeAmount) || 0), 0);
   const elHolding = document.getElementById('codHoldingAmount');
+  const elPendingVerification = document.getElementById('codPendingVerificationAmount');
   const elSubmitted = document.getElementById('codSubmittedAmount');
   const elCount = document.getElementById('codTotalCount');
   if (elHolding) elHolding.textContent = money(holding);
+  if (elPendingVerification) elPendingVerification.textContent = money(pendingVerification);
   if (elSubmitted) elSubmitted.textContent = money(submitted);
   if (elCount) elCount.textContent = list.length;
 }
@@ -1991,18 +2014,27 @@ function getRowCells(key, r) {
         pill(r.isActive ? 'Đang hoạt động' : 'Tạm dừng', r.isActive ? 'success' : 'neutral')
       ];
 
-    case 'cod':
+    case 'cod': {
+      const productList = (r.products || []).map(item =>
+        `${esc(item.productName)} × ${Number(item.quantity || 0)}${item.sku ? ` <small>(${esc(item.sku)})</small>` : ''}`
+      ).join('<br>');
       return [
         `<strong>#${esc(r.orderCode)}</strong>`,
         `<div><strong>${esc(r.receiverName)}</strong><br><small style="color:var(--slate-500);">${esc(r.receiverPhone)} · ${esc(r.address)}</small></div>`,
+        productList || '—',
         `<strong style="color:var(--primary);font-size:14px;">${money(r.amount)}</strong>`,
+        `<strong>${money(r.shippingFee)}</strong>`,
+        `<strong style="color:var(--success);font-size:14px;">${money(r.storeAmount)}</strong>`,
         r.shipperName ? `<strong>${esc(r.shipperName)}</strong><br><small style="color:var(--slate-500);">${esc(r.shipperPhone || '')}</small>` : '<span style="color:var(--slate-400);">Chưa gán</span>',
         r.deliveryBatchCode ? `<span class="badge" style="background:#e0e7ff;color:#3730a3;font-weight:700;">${esc(r.deliveryBatchCode)}</span>` : '—',
         fmtDateTime(r.codCollectedAt),
-        r.codStatus === 2 
-          ? `<span class="badge" style="background:#ecfdf5;color:#047857;font-weight:700;">✅ Đã nộp tiền</span>` 
-          : `<span class="badge" style="background:#fef3c7;color:#b45309;font-weight:700;">⏳ Shipper giữ tiền</span>`
+        r.codStatus === 3
+          ? `<span class="badge" style="background:#ecfdf5;color:#047857;font-weight:700;">✅ Admin đã xác nhận</span>`
+          : r.codStatus === 2
+            ? `<span class="badge" style="background:#eff6ff;color:#1d4ed8;font-weight:700;">🔎 Chờ admin kiểm tra</span>`
+            : `<span class="badge" style="background:#fef3c7;color:#b45309;font-weight:700;">⏳ Shipper đang giữ tiền</span>`
       ];
+    }
 
     case 'suppliers':
       return [
@@ -2103,10 +2135,13 @@ function getRowActions(key, r, index) {
   }
 
   if (key === 'cod') {
-    if (r.codStatus === 1) {
-      return `<button class="primary-btn" style="padding:4px 10px;font-size:12px;white-space:nowrap;" onclick="confirmSingleCodSubmission(${r.paymentId})">✓ Đã thu tiền</button>`;
+    if (r.codStatus === 2) {
+      return `<button class="primary-btn" style="padding:4px 10px;font-size:12px;white-space:nowrap;" onclick="confirmSingleCodSubmission(${r.paymentId}, null, ${Number(r.storeAmount) || 0})">✓ Xác nhận đã nhận</button>`;
     }
-    return `<span style="color:#059669;font-size:12px;font-weight:700;">✓ Đã đối soát</span>`;
+    if (r.codStatus === 1) {
+      return `<span style="color:#b45309;font-size:12px;font-weight:700;">Chờ shipper nộp</span>`;
+    }
+    return `<span style="color:#059669;font-size:12px;font-weight:700;">✓ Đã xác nhận</span>`;
   }
 
   if (key === 'users') {
@@ -4031,13 +4066,25 @@ async function executeAssignShipper(orderId, batchCode) {
   }
 }
 
-async function confirmSingleCodSubmission(paymentId, orderId) {
-  if (!confirm('Xác nhận đã nhận đủ tiền COD từ shipper và đối soát vào quỹ cửa hàng?')) return;
+async function confirmSingleCodSubmission(paymentId, orderId, expectedAmount) {
+  const expected = Number(expectedAmount);
+  const rawAmount = prompt(
+    `Nhập số tiền hàng thực tế đã nhận (không gồm phí ship của shipper). Cần nộp: ${money(expected)}`,
+    String(expected)
+  );
+  if (rawAmount === null) return;
+  const receivedAmount = Number(rawAmount.trim().replace(/\s/g, '').replace(/\./g, '').replace(',', '.'));
+  if (!Number.isFinite(receivedAmount) || receivedAmount < 0) {
+    toast('Số tiền thực nhận không hợp lệ.', 'error');
+    return;
+  }
+  if (!confirm(`Xác nhận đã kiểm đếm ${money(receivedAmount)} tiền hàng và ghi nhận vào quỹ?`)) return;
   try {
     const res = await api('Shipper/confirm-cod-submission', {
       method: 'POST',
       body: JSON.stringify({
-        paymentIds: [paymentId]
+        paymentIds: [paymentId],
+        receivedAmount
       })
     });
     toast(res.message || 'Đối soát tiền COD thành công!', 'success');
@@ -5440,15 +5487,25 @@ async function showOrderDetail(id) {
               ${order.payment?.codStatus === 1 ? `
                 <div style="background:#fef3c7;border:1px solid #fde68a;color:#92400e;padding:8px 12px;border-radius:8px;font-size:12.5px;margin:8px 0;display:flex;justify-content:space-between;align-items:center;gap:8px;">
                   <div>
-                    <strong>💵 Shipper đang giữ tiền COD:</strong> ${money(order.payment.amount)}
+                    <strong>💵 Shipper đang giữ COD:</strong> ${money(order.payment.amount)}
+                    <div style="font-size:11.5px;color:#92400e;">Phí ship của shipper: ${money(order.shipping?.shippingFee)} · Cần nộp shop: ${money(Math.max(0, Number(order.payment.amount || 0) - Number(order.shipping?.shippingFee || 0)))}</div>
                     <div style="font-size:11.5px;color:#b45309;">Thu lúc: ${fmtDateTime(order.payment.codCollectedAt)}</div>
                   </div>
-                  <button class="primary-btn" style="padding:4px 10px;font-size:11.5px;white-space:nowrap;" onclick="confirmSingleCodSubmission(${order.payment.paymentId}, ${order.orderId})">✓ Đã nộp tiền</button>
                 </div>
               ` : ''}
               ${order.payment?.codStatus === 2 ? `
+                <div style="background:#eff6ff;border:1px solid #bfdbfe;color:#1e40af;padding:8px 12px;border-radius:8px;font-size:12.5px;margin:8px 0;display:flex;justify-content:space-between;align-items:center;gap:8px;">
+                  <div>
+                    <strong>🔎 Shipper đã báo nộp COD, chờ admin kiểm tra</strong>
+                    <div style="font-size:11.5px;">Tiền COD: ${money(order.payment.amount)} · Phí ship của shipper: ${money(order.shipping?.shippingFee)} · Cần xác nhận vào quỹ: ${money(Math.max(0, Number(order.payment.amount || 0) - Number(order.shipping?.shippingFee || 0)))}</div>
+                    <div style="font-size:11.5px;">Shipper báo lúc: ${fmtDateTime(order.payment.codSubmittedAt)}</div>
+                  </div>
+                  <button class="primary-btn" style="padding:4px 10px;font-size:11.5px;white-space:nowrap;" onclick="confirmSingleCodSubmission(${order.payment.paymentId}, ${order.orderId}, ${Math.max(0, Number(order.payment.amount || 0) - Number(order.shipping?.shippingFee || 0))})">✓ Xác nhận đã nhận</button>
+                </div>
+              ` : ''}
+              ${order.payment?.codStatus === 3 ? `
                 <div style="background:#ecfdf5;border:1px solid #a7f3d0;color:#065f46;padding:8px 12px;border-radius:8px;font-size:12.5px;margin:8px 0;">
-                  <strong>✅ Đã đối soát & nộp tiền COD vào quỹ</strong> (${fmtDateTime(order.payment.codSubmittedAt)})
+                  <strong>✅ Admin đã kiểm tra và xác nhận tiền COD vào quỹ</strong> (${fmtDateTime(order.payment.codConfirmedAt)})
                 </div>
               ` : ''}
               <p><strong>Giao dự kiến:</strong> ${fmtDeliveryWindow(order.shipping?.estimatedDeliveryFromDate || order.shipping?.estimatedDeliveryAt, order.shipping?.estimatedDeliveryToDate)}</p>

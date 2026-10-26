@@ -1023,6 +1023,7 @@ namespace ToyStoreManagement.Infrastructure.Services
                 CodStatus = payment.CodStatus,
                 CodCollectedAt = payment.CodCollectedAt,
                 CodSubmittedAt = payment.CodSubmittedAt,
+                CodConfirmedAt = payment.CodConfirmedAt,
                 CodNote = payment.CodNote,
                 CreatedAt = payment.CreatedAt
             };

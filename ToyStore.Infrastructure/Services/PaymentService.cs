@@ -55,6 +55,11 @@ namespace ToyStoreManagement.Infrastructure.Services
                 Amount = payment.Amount,
                 Status = payment.Status,
                 PaidAt = payment.PaidAt,
+                CodStatus = payment.CodStatus,
+                CodCollectedAt = payment.CodCollectedAt,
+                CodSubmittedAt = payment.CodSubmittedAt,
+                CodConfirmedAt = payment.CodConfirmedAt,
+                CodNote = payment.CodNote,
                 CreatedAt = payment.CreatedAt
             };
         }

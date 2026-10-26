@@ -106,6 +106,11 @@ namespace ToyStoreManagement.Infrastructure.Data
                         ALTER TABLE [dbo].[Payments] ADD [CodSubmittedAt] datetime2 NULL;
                     END
 
+                    IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID(N'[dbo].[Payments]') AND name = 'CodConfirmedAt')
+                    BEGIN
+                        ALTER TABLE [dbo].[Payments] ADD [CodConfirmedAt] datetime2 NULL;
+                    END
+
                     IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID(N'[dbo].[Payments]') AND name = 'CodNote')
                     BEGIN
                         ALTER TABLE [dbo].[Payments] ADD [CodNote] nvarchar(500) NULL;

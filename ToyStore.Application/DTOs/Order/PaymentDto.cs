@@ -19,6 +19,7 @@ namespace ToyStoreManagement.Application.DTOs.Order
         public int CodStatus { get; set; }
         public DateTime? CodCollectedAt { get; set; }
         public DateTime? CodSubmittedAt { get; set; }
+        public DateTime? CodConfirmedAt { get; set; }
         public string? CodNote { get; set; }
         public DateTime CreatedAt { get; set; }
     }
