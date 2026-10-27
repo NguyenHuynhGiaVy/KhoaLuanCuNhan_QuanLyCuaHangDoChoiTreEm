@@ -296,11 +296,11 @@ namespace ToyStoreManagement.Infrastructure.Services
 
             if (status == "active")
             {
-                query = query.Where(o => o.Shipping.Status >= 0 && o.Shipping.Status <= 3);
+                query = query.Where(o => o.Shipping.Status >= 0 && o.Shipping.Status <= 3 && o.Status != 4 && o.Status != 5);
             }
             else if (status == "completed")
             {
-                query = query.Where(o => o.Shipping.Status == 4 || o.Status == 4);
+                query = query.Where(o => o.Shipping.Status == 4 || o.Shipping.Status == 2 || o.Status == 4);
             }
             else if (status == "failed")
             {
@@ -494,8 +494,19 @@ namespace ToyStoreManagement.Infrastructure.Services
             var shipping = await _context.Shippings.FirstOrDefaultAsync(s => s.OrderId == orderId);
             if (shipping is null)
                 throw new InvalidOperationException("Không tìm thấy thông tin giao hàng của đơn.");
-            if (shipping.ShipperId != shipperId || shipping.Status != 4)
-                throw new InvalidOperationException("Chỉ shipper phụ trách mới được báo nộp tiền cho đơn đã giao thành công.");
+            if (shipping.ShipperId != shipperId)
+                throw new InvalidOperationException($"Chỉ shipper phụ trách (Shipper #{shipping.ShipperId}) mới được báo nộp tiền cho đơn này (bạn là Shipper #{shipperId}).");
+
+            var order = await _context.Orders.FirstOrDefaultAsync(o => o.OrderId == orderId);
+            var isDelivered = shipping.Status == 4 || shipping.Status == 2 || (order != null && order.Status == 4) || payment.CodStatus == 1;
+            if (!isDelivered)
+                throw new InvalidOperationException($"Chỉ đơn hàng đã giao thành công mới được báo nộp tiền COD (Trạng thái hiện tại: {GetShippingStatusText(shipping.Status)}).");
+
+            if (shipping.Status != 4)
+            {
+                shipping.Status = 4;
+            }
+
             if (payment.CodStatus != 1)
                 throw new InvalidOperationException("Khoản COD này không còn ở trạng thái shipper đang giữ tiền.");
 

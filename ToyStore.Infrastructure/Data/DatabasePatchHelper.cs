@@ -280,6 +280,15 @@ namespace ToyStoreManagement.Infrastructure.Data
                         ALTER TABLE [dbo].[ImportReceiptDetails] ADD [NewPrice] decimal(18,2) NULL;
                     END
                 ");
+
+                // 10. Chuẩn hóa trạng thái giao hàng cho các đơn đã hoàn tất (Status = 4)
+                await context.Database.ExecuteSqlRawAsync(@"
+                    UPDATE [dbo].[Shippings]
+                    SET [Status] = 4
+                    FROM [dbo].[Shippings] s
+                    INNER JOIN [dbo].[Orders] o ON s.[OrderId] = o.[OrderId]
+                    WHERE o.[Status] = 4 AND s.[Status] <> 4;
+                ");
             }
             catch (Exception ex)
             {

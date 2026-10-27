@@ -347,7 +347,7 @@ namespace ToyStoreManagement.Infrastructure.Services
                     ?? await _shippingRepository.FirstOrDefaultAsync(x => x.OrderId == order.OrderId);
                 if (shipping != null)
                 {
-                    shipping.Status = 2; // 2: Đã giao thành công
+                    shipping.Status = 4; // 4: Đã giao thành công (chuẩn hóa theo hệ 7 trạng thái)
                     shipping.DeliveredAt = DateTime.UtcNow;
                 }
 
