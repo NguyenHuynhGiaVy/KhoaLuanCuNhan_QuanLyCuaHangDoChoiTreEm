@@ -88,10 +88,6 @@ namespace ToyStoreManagement.Infrastructure.Services
                 throw new InvalidOperationException(
                     "Sản phẩm cần có ít nhất một biến thể để lập phiếu nhập kho.");
 
-            if (dto.Variants.Any(variant => variant.Price.HasValue))
-                throw new InvalidOperationException(
-                    "Biến thể chỉ được nhập giá bán sau khi đã có tồn kho.");
-
             ValidateAgeRange(dto.AgeFrom, dto.AgeTo);
             ValidateVariantDefinitions(dto.Variants);
 
@@ -172,9 +168,9 @@ namespace ToyStoreManagement.Infrastructure.Services
 
                 IsFeatured = dto.IsFeatured,
 
-                // Giá hiển thị lấy theo biến thể. Sản phẩm mới chưa thể có giá
-                // cho đến khi biến thể được nhập kho và cập nhật giá bán.
-                BasePrice = null,
+                // Giá cơ sở có thể được thiết lập ngay khi tạo sản phẩm; giá
+                // từng biến thể vẫn được cập nhật riêng khi nhập kho nếu cần.
+                BasePrice = dto.BasePrice,
 
                 IsNew = dto.IsNew,
 

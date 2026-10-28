@@ -59,6 +59,11 @@ namespace ToyStoreManagement.Infrastructure.Data
                     BEGIN
                         ALTER TABLE [dbo].[Shippings] ADD [FailedAt] datetime2 NULL;
                     END
+
+                    IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID(N'[dbo].[Shippings]') AND name = 'DeliveryStartedAt')
+                    BEGIN
+                        ALTER TABLE [dbo].[Shippings] ADD [DeliveryStartedAt] datetime2 NULL;
+                    END
                 ");
 
                 // 2.1 Bổ sung bảng Shippers

@@ -1,5 +1,6 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.EntityFrameworkCore;
 using System.Security.Claims;
 using ToyStoreManagement.Application.DTOs.Import;
 using ToyStoreManagement.Application.Interfaces.Services;
@@ -12,6 +13,13 @@ namespace ToyStoreManagement.API.Controllers
     public class ImportReceiptController : ControllerBase
     {
         private readonly IImportReceiptService _service;
+
+        private static string GetPersistenceError(DbUpdateException ex)
+        {
+            return ex.InnerException?.Message
+                ?? ex.GetBaseException().Message
+                ?? ex.Message;
+        }
 
         public ImportReceiptController(
             IImportReceiptService service)
@@ -68,6 +76,14 @@ namespace ToyStoreManagement.API.Controllers
                     nameof(GetById),
                     new { id = receipt.ImportReceiptId },
                     receipt);
+            }
+            catch (DbUpdateException ex)
+            {
+                var detail = GetPersistenceError(ex);
+                return BadRequest(new
+                {
+                    message = $"Không thể lưu phiếu nhập: {detail}"
+                });
             }
             catch (Exception ex)
             {

@@ -328,6 +328,10 @@ namespace ToyStoreManagement.Infrastructure.Services
             var prev = GetShippingStatusText(shipping.Status);
             shipping.ShipperId = shipperId;
             shipping.Status = 1; // 1 = Đã nhận đơn
+            if (shipping.Order != null && shipping.Order.Status < 1)
+            {
+                await _orderService.UpdateAsync(orderId, new UpdateOrderDto { Status = 1 });
+            }
             await _context.SaveChangesAsync();
 
             var shipper = await _context.Shippers.FindAsync(shipperId);
@@ -362,6 +366,11 @@ namespace ToyStoreManagement.Infrastructure.Services
             var prev = GetShippingStatusText(shipping.Status);
             shipping.ShipperId = shipperId;
             shipping.Status = 2; // 2 = Đã đến cửa hàng nhận hàng / Đã lấy hàng
+            shipping.ShippedAt ??= DateTime.UtcNow;
+            if (shipping.Order != null && shipping.Order.Status < 2)
+            {
+                await _orderService.UpdateAsync(orderId, new UpdateOrderDto { Status = 2 });
+            }
             await _context.SaveChangesAsync();
 
             var shipper = await _context.Shippers.FindAsync(shipperId);
@@ -396,7 +405,7 @@ namespace ToyStoreManagement.Infrastructure.Services
             var prev = GetShippingStatusText(shipping.Status);
             shipping.ShipperId = shipperId;
             shipping.Status = 3; // 3 = Đang giao hàng cho KH
-            shipping.ShippedAt ??= DateTime.UtcNow;
+            shipping.DeliveryStartedAt = DateTime.UtcNow;
 
             if (shipping.Order != null && shipping.Order.Status < 3)
             {
@@ -451,7 +460,7 @@ namespace ToyStoreManagement.Infrastructure.Services
                 {
                     // Shipper đang giữ tiền COD thu từ khách
                     payment.CodStatus = 1;
-                    payment.CodCollectedAt = DateTime.UtcNow;
+                    payment.CodCollectedAt ??= DateTime.UtcNow;
                 }
                 else
                 {
@@ -603,7 +612,7 @@ namespace ToyStoreManagement.Infrastructure.Services
             var prev = GetShippingStatusText(shipping.Status);
             shipping.ShipperId = shipperId;
             shipping.Status = 3; // Tiếp tục đi giao lại cho khách
-            shipping.ShippedAt = DateTime.UtcNow;
+            shipping.DeliveryStartedAt = DateTime.UtcNow;
 
             if (shipping.Order != null && shipping.Order.Status != 3)
             {
@@ -876,6 +885,7 @@ namespace ToyStoreManagement.Infrastructure.Services
                     EstimatedDeliveryToDate = order.Shipping.EstimatedDeliveryToDate,
                     Status = order.Shipping.Status,
                     ShippedAt = order.Shipping.ShippedAt,
+                    DeliveryStartedAt = order.Shipping.DeliveryStartedAt,
                     DeliveredAt = order.Shipping.DeliveredAt,
                     ShipperId = order.Shipping.ShipperId,
                     ShipperName = order.Shipping.Shipper?.FullName,

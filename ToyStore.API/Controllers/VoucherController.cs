@@ -1,6 +1,7 @@
 ﻿using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using System;
+using System.Linq;
 using System.Threading.Tasks;
 using ToyStoreManagement.Application.DTOs.Promotion;
 using ToyStoreManagement.Application.Interfaces.Services;
@@ -18,6 +19,35 @@ namespace ToyStoreManagement.API.Controllers
             IVoucherService voucherService)
         {
             _voucherService = voucherService;
+        }
+
+        [HttpGet("available")]
+        [AllowAnonymous]
+        public async Task<IActionResult> GetAvailable()
+        {
+            var now = DateTime.UtcNow;
+            var result = (await _voucherService.GetAllAsync())
+                .Where(v => v.Status == 1
+                    && v.StartDate <= now
+                    && v.EndDate >= now
+                    && (v.UsageLimit <= 0 || v.UsedCount < v.UsageLimit))
+                .Select(v => new
+                {
+                    v.Code,
+                    v.Name,
+                    v.DiscountType,
+                    v.DiscountValue,
+                    v.MaximumDiscount,
+                    v.MinimumOrderValue,
+                    v.EndDate,
+                    remainingUses = v.UsageLimit > 0
+                        ? v.UsageLimit - v.UsedCount
+                        : (int?)null
+                })
+                .OrderBy(v => v.EndDate)
+                .ToList();
+
+            return Ok(result);
         }
 
         [HttpGet]

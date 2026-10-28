@@ -59,7 +59,8 @@ namespace ToyStoreManagement.Infrastructure.Repositories
             public decimal NetRevenue => NetOf(TotalAmount - ShippingFee, RefundAmount);
             public decimal NetPaymentAmount => NetOf(PaymentAmount - ShippingFee, RefundAmount);
             public decimal RecognizedRevenue =>
-                Status == 4 && (PaymentMethod != 0 || CodStatus == 3)
+                (Status == 4 || ShippingStatus == 4)
+                    && (PaymentMethod != 0 ? PaymentStatus == 1 : CodStatus == 3)
                     ? NetRevenue
                     : 0;
         }
@@ -124,7 +125,7 @@ namespace ToyStoreManagement.Infrastructure.Repositories
             var orders = await GetOrdersAsync(ordersQuery);
 
             var totalOrders = orders.Count;
-            var completedOrders = orders.Count(x => x.Status == 4);
+            var completedOrders = orders.Count(x => x.Status == 4 || x.ShippingStatus == 4);
             var shippingOrders = orders.Count(x => x.Status == 3 || x.ShippingStatus == 1 || x.ShippingStatus == 2 || x.ShippingStatus == 3);
             var processingOrders = orders.Count(x => x.Status == 1 || x.Status == 2);
             var failedOrders = orders.Count(x => x.ShippingStatus == 3 || x.ShippingStatus == 5);
@@ -136,7 +137,7 @@ namespace ToyStoreManagement.Infrastructure.Repositories
             // Dòng tiền thực tế:
             // 1. Online đã thanh toán: PaymentMethod in (1, 2) and (PaymentStatus == 1 or Status == 4)
             var onlinePaidAmount = orders
-                .Where(x => (x.PaymentMethod == 1 || x.PaymentMethod == 2) && (x.PaymentStatus == 1 || x.Status == 4))
+                .Where(x => (x.PaymentMethod == 1 || x.PaymentMethod == 2) && x.PaymentStatus == 1)
                 .Sum(x => x.NetPaymentAmount);
 
             // 2. COD chỉ tính vào quỹ cửa hàng sau khi admin xác nhận.

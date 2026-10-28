@@ -27,6 +27,8 @@ namespace ToyStoreManagement.Application.Interfaces.Services
             int orderId,
             UpdateOrderDto dto);
 
+        Task<OrderDto?> CancelByCustomerAsync(int orderId, int customerId);
+
         Task<bool> DeleteAsync(int orderId);
 
         Task<PaymentDto?> GetPaymentAsync(int orderId);

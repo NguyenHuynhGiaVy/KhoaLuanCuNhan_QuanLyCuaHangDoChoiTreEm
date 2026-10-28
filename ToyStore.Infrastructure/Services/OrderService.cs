@@ -339,7 +339,7 @@ namespace ToyStoreManagement.Infrastructure.Services
                 {
                     payment.Amount = order.TotalAmount;
                     payment.Status = 1;
-                    payment.PaidAt = DateTime.UtcNow;
+                    payment.PaidAt ??= DateTime.UtcNow;
                 }
 
                 // Cập nhật trạng thái giao hàng sang thành công
@@ -348,7 +348,7 @@ namespace ToyStoreManagement.Infrastructure.Services
                 if (shipping != null)
                 {
                     shipping.Status = 4; // 4: Đã giao thành công (chuẩn hóa theo hệ 7 trạng thái)
-                    shipping.DeliveredAt = DateTime.UtcNow;
+                    shipping.DeliveredAt ??= DateTime.UtcNow;
                 }
 
                 // Xác định khách hàng nhận điểm tích lũy
@@ -446,6 +446,104 @@ namespace ToyStoreManagement.Infrastructure.Services
                 product.Status = totalQuantity > 0 ? 1 : 0;
 
                 product.UpdatedAt = DateTime.UtcNow;
+            }
+
+            await _unitOfWork.SaveChangesAsync();
+            await transaction.CommitAsync();
+
+            return MapToDto(order);
+        }
+
+        public async Task<OrderDto?> CancelByCustomerAsync(int orderId, int customerId)
+        {
+            await using var transaction = await _context.Database
+                .BeginTransactionAsync(System.Data.IsolationLevel.Serializable);
+
+            var order = await _orderRepository.GetByIdWithDetailsAsync(orderId);
+            if (order == null)
+                return null;
+
+            if (order.CustomerId != customerId)
+                throw new UnauthorizedAccessException("Bạn không có quyền hủy đơn hàng này.");
+
+            if (order.Status == 5)
+                throw new InvalidOperationException("Đơn hàng này đã được hủy trước đó.");
+
+            if (order.Status == 4)
+                throw new InvalidOperationException("Không thể hủy đơn hàng đã giao thành công. Nếu cần, vui lòng gửi yêu cầu trả hàng.");
+
+            var shipping = order.Shipping;
+            if (shipping != null && (shipping.ShippedAt.HasValue || shipping.Status >= 2))
+                throw new InvalidOperationException("Không thể hủy vì shipper đã lấy hàng từ kho. Trường hợp này khác với yêu cầu trả hàng.");
+
+            var now = DateTime.UtcNow;
+            var previousStatus = order.Status;
+            order.Status = 5;
+            order.UpdatedAt = now;
+
+            var affectedProductIds = new HashSet<int>();
+            foreach (var detail in order.OrderDetails)
+            {
+                var inventory = await _context.Inventories
+                    .FirstOrDefaultAsync(item => item.VariantId == detail.VariantId);
+                if (inventory == null)
+                    throw new InvalidOperationException($"Không tìm thấy tồn kho cho biến thể sản phẩm #{detail.VariantId}; không thể hoàn tất hủy đơn.");
+
+                inventory.Quantity += detail.Quantity;
+                inventory.UpdatedAt = now;
+
+                var productId = await _context.ProductVariants
+                    .Where(variant => variant.VariantId == detail.VariantId)
+                    .Select(variant => variant.ProductId)
+                    .FirstAsync();
+                affectedProductIds.Add(productId);
+
+                _context.InventoryTransactions.Add(new InventoryTransaction
+                {
+                    VariantId = detail.VariantId,
+                    TransactionType = 1,
+                    Quantity = detail.Quantity,
+                    ReferenceType = "OrderCancel",
+                    ReferenceId = order.OrderId,
+                    Note = $"Hoàn tồn kho do khách hàng hủy đơn #{order.OrderCode} trước khi shipper lấy hàng",
+                    CreatedAt = now
+                });
+            }
+
+            if (shipping != null)
+            {
+                shipping.Status = 0;
+                shipping.ShipperId = null;
+                shipping.DeliveryBatchCode = null;
+            }
+
+            _context.OrderTrackingLogs.Add(new OrderTrackingLog
+            {
+                OrderId = order.OrderId,
+                ShippingId = shipping?.ShippingId,
+                Action = "CustomerCancelled",
+                PreviousStatus = previousStatus.ToString(),
+                NewStatus = "5",
+                PerformedByUserId = order.Customer?.UserId,
+                PerformedByName = order.Customer?.FullName ?? "Khách hàng",
+                PerformedByRole = "Customer",
+                Note = "Khách hàng hủy đơn trước khi shipper lấy hàng từ kho.",
+                CreatedAt = now
+            });
+
+            await _unitOfWork.SaveChangesAsync();
+
+            foreach (var productId in affectedProductIds)
+            {
+                var product = await _context.Products.FindAsync(productId);
+                if (product == null)
+                    continue;
+
+                var totalQuantity = await _context.Inventories
+                    .Where(item => item.ProductVariant.ProductId == productId)
+                    .SumAsync(item => (int?)item.Quantity) ?? 0;
+                product.Status = totalQuantity > 0 ? 1 : 0;
+                product.UpdatedAt = now;
             }
 
             await _unitOfWork.SaveChangesAsync();
@@ -1049,6 +1147,7 @@ namespace ToyStoreManagement.Infrastructure.Services
                     ?? shipping.EstimatedDeliveryAt?.Date.AddDays(1),
                 Status = shipping.Status,
                 ShippedAt = shipping.ShippedAt,
+                DeliveryStartedAt = shipping.DeliveryStartedAt,
                 DeliveredAt = shipping.DeliveredAt,
                 ShipperId = shipping.ShipperId,
                 ShipperName = shipping.Shipper?.FullName,
@@ -1325,7 +1424,6 @@ namespace ToyStoreManagement.Infrastructure.Services
             var now = DateTime.UtcNow;
             foreach (var shipping in shippings)
             {
-                shipping.ShippedAt = now;
                 shipping.Status = 1; // 1: Đang giao hàng
 
                 if (shipping.Order != null && shipping.Order.Status != 4 && shipping.Order.Status != 5)

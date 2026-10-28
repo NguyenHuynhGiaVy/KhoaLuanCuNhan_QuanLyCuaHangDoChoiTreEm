@@ -207,6 +207,18 @@ namespace ToyStoreManagement.API.Controllers
         {
             try
             {
+                if (dto.Status == 4)
+                {
+                    var shippingStatus = await _context.Shippings
+                        .Where(x => x.OrderId == orderId)
+                        .Select(x => (int?)x.Status)
+                        .FirstOrDefaultAsync();
+                    if (shippingStatus != 4)
+                    {
+                        return BadRequest(new { message = "Chỉ được hoàn tất đơn khi Shipper đã xác nhận giao hàng thành công." });
+                    }
+                }
+
                 var result =
                     await _orderService.UpdateAsync(
                         orderId,
@@ -220,6 +232,38 @@ namespace ToyStoreManagement.API.Controllers
             catch (Exception ex)
             {
                 return BadRequest(ex.Message);
+            }
+        }
+
+        [HttpPost("{orderId}/cancel")]
+        [Authorize(Policy = "CustomerAccess")]
+        public async Task<IActionResult> CancelByCustomer(int orderId)
+        {
+            var customerId = await GetCurrentCustomerId();
+            if (!customerId.HasValue)
+                return NotFound(new { message = "Bạn chưa tạo hồ sơ khách hàng." });
+
+            try
+            {
+                var result = await _orderService.CancelByCustomerAsync(orderId, customerId.Value);
+                if (result == null)
+                    return NotFound(new { message = "Không tìm thấy đơn hàng." });
+
+                return Ok(new
+                {
+                    message = result.Payment?.Status == 1
+                        ? "Đã hủy đơn hàng trước khi shipper lấy hàng. Vì đơn đã thanh toán trước, vui lòng liên hệ cửa hàng để được đối soát hoàn tiền. Đây không phải yêu cầu trả hàng."
+                        : "Đã hủy đơn hàng trước khi shipper lấy hàng. Đây không phải yêu cầu trả hàng.",
+                    order = result
+                });
+            }
+            catch (UnauthorizedAccessException)
+            {
+                return Forbid();
+            }
+            catch (InvalidOperationException ex)
+            {
+                return Conflict(new { message = ex.Message });
             }
         }
 

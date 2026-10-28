@@ -1,0 +1,9 @@
+OrderCode,OrderDate,CustomerName,PhoneNumber,Address,SKU,ProductName,Quantity,UnitPrice,PaymentMethod,PaymentStatus,OrderStatus,EstimatedDeliveryFrom,EstimatedDeliveryTo,ShippedAt,DeliveredAt,Note
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,

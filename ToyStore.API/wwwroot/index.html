@@ -58,10 +58,6 @@
           <span class="nav-icon">🚚</span>
           <span>Shipper giao hàng</span>
         </a>
-        <a class="nav-item" href="#cod" data-view="cod">
-          <span class="nav-icon">💵</span>
-          <span>Đối soát COD</span>
-        </a>
         <a class="nav-item" href="/shipper.html" target="_blank" style="color:var(--primary);font-weight:700;">
           <span class="nav-icon">🛵</span>
           <span>Cổng Shipper App ↗</span>
@@ -73,6 +69,16 @@
         <a class="nav-item" href="#imports" data-view="imports">
           <span class="nav-icon">📦</span>
           <span>Phiếu đặt hàng NCC</span>
+        </a>
+
+        <p class="nav-label">Tài chính</p>
+        <a class="nav-item" href="#collections" data-view="collections">
+          <span class="nav-icon">🏦</span>
+          <span>Thu tiền & Doanh thu</span>
+        </a>
+        <a class="nav-item" href="#cod" data-view="cod">
+          <span class="nav-icon">💵</span>
+          <span>Đối soát COD</span>
         </a>
 
         <p class="nav-label">Marketing</p>
@@ -121,6 +127,9 @@
           <strong id="breadcrumbCurrent">Dashboard</strong>
         </div>
         <div class="top-actions">
+          <button class="topbar-action-btn" id="staffNotificationButton" title="Thông báo hệ thống">
+            <span>🔔</span> Thông báo <b id="staffNotificationBadge">0</b>
+          </button>
           <button class="topbar-action-btn" id="adminChangePassBtn" title="Đổi mật khẩu tài khoản">
             <span>🔒</span> Đổi mật khẩu
           </button>
@@ -151,6 +160,6 @@
   </div>
 
   <script src="https://cdn.jsdelivr.net/npm/@microsoft/signalr@8.0.7/dist/browser/signalr.min.js"></script>
-  <script src="/js/admin.js?v=20261026-1"></script>
+  <script src="/js/admin.js?v=20261028-4"></script>
 </body>
 </html>

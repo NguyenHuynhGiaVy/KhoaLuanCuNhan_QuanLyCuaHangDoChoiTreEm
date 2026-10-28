@@ -32,6 +32,25 @@ const pageSize = 12;
 
 const escapeHtml = v => String(v ?? '').replace(/[&<>'"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', "'": '&#39;', '"': '&quot;' }[c]));
 const money = v => v == null ? 'Liên hệ' : `${Number(v).toLocaleString('vi-VN')}đ`;
+const parseUtcDate = value => {
+    if (!value) return null;
+    const text = String(value);
+    const normalized = /^\d{4}-\d{2}-\d{2}T.*(?:Z|[+-]\d{2}:\d{2})$/i.test(text)
+        ? text
+        : (/^\d{4}-\d{2}-\d{2}T/.test(text) ? `${text}Z` : text);
+    const date = new Date(normalized);
+    return Number.isNaN(date.getTime()) ? null : date;
+};
+const fmtVietnamDateTime = value => {
+    const date = parseUtcDate(value);
+    return date ? date.toLocaleString('vi-VN', { timeZone: 'Asia/Ho_Chi_Minh' }) : '—';
+};
+const fmtVietnamDate = value => {
+    const match = String(value || '').match(/^(\d{4})-(\d{2})-(\d{2})/);
+    if (match) return `${match[3]}/${match[2]}/${match[1]}`;
+    const date = parseUtcDate(value);
+    return date ? date.toLocaleDateString('vi-VN', { timeZone: 'Asia/Ho_Chi_Minh' }) : '';
+};
 
 function formatDeliveryWindow(fromDate, toDate) {
     if (!fromDate) return 'Đang xác nhận';
@@ -39,7 +58,7 @@ function formatDeliveryWindow(fromDate, toDate) {
         const match = String(value).match(/^(\d{4})-(\d{2})-(\d{2})/);
         if (match) return `${match[3]}/${match[2]}/${match[1]}`;
         const date = new Date(value);
-        return Number.isNaN(date.getTime()) ? '' : date.toLocaleDateString('vi-VN');
+        return Number.isNaN(date.getTime()) ? '' : date.toLocaleDateString('vi-VN', { timeZone: 'Asia/Ho_Chi_Minh' });
     };
     const from = formatDateOnly(fromDate);
     const to = formatDateOnly(toDate);
@@ -111,6 +130,69 @@ async function loadData() {
     } catch (e) {
         updateApiStatus(false);
         console.error(e);
+    }
+
+}
+
+async function loadCustomerNotifications() {
+    const headerActions = document.querySelector('.header-actions');
+    if (!headerActions || document.getElementById('customerNotificationButton')) return;
+
+    const notificationMenu = document.createElement('div');
+    notificationMenu.className = 'customer-notification-menu';
+    notificationMenu.innerHTML = `
+        <button class="header-icon customer-notification-button" id="customerNotificationButton"
+                type="button" aria-label="Thông báo voucher" aria-expanded="false" title="Thông báo voucher">
+            🔔<span class="customer-notification-badge" id="customerNotificationBadge">0</span>
+        </button>
+        <section class="customer-notification-panel" id="customerNotificationPanel" aria-label="Thông báo voucher">
+            <div class="customer-notification-head">
+                <strong>Thông báo voucher</strong>
+                <button type="button" id="customerNotificationClose" aria-label="Đóng">×</button>
+            </div>
+            <div id="customerNotificationList" class="customer-notification-list">
+                <p class="customer-notification-empty">Đang tải thông báo...</p>
+            </div>
+        </section>`;
+    headerActions.insertBefore(notificationMenu, headerActions.querySelector('.cart-button'));
+
+    const button = notificationMenu.querySelector('#customerNotificationButton');
+    const panel = notificationMenu.querySelector('#customerNotificationPanel');
+    const list = notificationMenu.querySelector('#customerNotificationList');
+    const badge = notificationMenu.querySelector('#customerNotificationBadge');
+
+    button.addEventListener('click', () => {
+        const isOpen = panel.classList.toggle('open');
+        button.setAttribute('aria-expanded', String(isOpen));
+    });
+    notificationMenu.querySelector('#customerNotificationClose').addEventListener('click', () => {
+        panel.classList.remove('open');
+        button.setAttribute('aria-expanded', 'false');
+    });
+
+    try {
+        const response = await fetch(`${API_BASE}/api/Notification/customer-vouchers`, {
+            cache: 'no-store'
+        });
+        if (!response.ok) throw new Error(`HTTP ${response.status}`);
+
+        const data = await response.json();
+        const vouchers = data.vouchers || [];
+        badge.textContent = vouchers.length > 99 ? '99+' : String(vouchers.length);
+        badge.classList.toggle('show', vouchers.length > 0);
+        if (!vouchers.length) {
+            list.innerHTML = '<p class="customer-notification-empty">Hiện chưa có voucher khả dụng.</p>';
+            return;
+        }
+
+        list.innerHTML = vouchers.map(voucher => `
+            <article class="customer-notification-item">
+                <strong>${escapeHtml(voucher.name || 'Voucher mới')}</strong>
+                <p>Mã voucher: <b>${escapeHtml(voucher.code)}</b></p>
+            </article>`).join('');
+    } catch (error) {
+        console.warn('Không thể tải thông báo voucher:', error.message);
+        list.innerHTML = '<p class="customer-notification-empty">Không thể tải thông báo.</p>';
     }
 }
 
@@ -930,6 +1012,11 @@ async function openCheckoutDrawer() {
     }
 
     await loadCheckoutAddresses();
+    try {
+        await loadAvailableVouchers();
+    } catch (error) {
+        showToast(error.message, 'error');
+    }
 
     updateCheckoutTotal();
 
@@ -1032,9 +1119,53 @@ function populateCheckoutFromProfile(profile) {
 
     Object.entries(fields).forEach(([id, value]) => {
         const input = document.getElementById(id);
-        if (input && !input.value) input.value = value || '';
+        if (input && (id !== 'orderPhone' || value)) input.value = value || '';
     });
 
+    const phoneInput = document.getElementById('orderPhone');
+    if (phoneInput) {
+        phoneInput.readOnly = Boolean(profile.phone);
+        phoneInput.title = profile.phone
+            ? 'Số điện thoại lấy từ hồ sơ khách hàng'
+            : '';
+    }
+}
+
+async function loadAvailableVouchers() {
+    const input = document.getElementById('orderVoucherCode');
+    if (!input) return;
+
+    let datalist = document.getElementById('availableVoucherCodes');
+    if (!datalist) {
+        datalist = document.createElement('datalist');
+        datalist.id = 'availableVoucherCodes';
+        input.parentElement?.appendChild(datalist);
+    }
+    input.setAttribute('list', datalist.id);
+
+    const response = await fetch(`${API_BASE}/api/Voucher/available`, {
+        cache: 'no-store'
+    });
+    if (!response.ok) {
+        throw new Error('Không thể tải danh sách voucher đang khả dụng.');
+    }
+
+    const vouchers = await response.json();
+    datalist.innerHTML = vouchers.map(voucher =>
+        `<option value="${escapeHtml(voucher.code)}" label="${escapeHtml(voucher.name)}"></option>`
+    ).join('');
+
+    const noticeId = 'availableVoucherNotice';
+    let notice = document.getElementById(noticeId);
+    if (!notice) {
+        notice = document.createElement('small');
+        notice.id = noticeId;
+        notice.style.cssText = 'display:block;margin-top:5px;color:var(--primary);font-weight:600;';
+        input.parentElement?.appendChild(notice);
+    }
+    notice.textContent = vouchers.length
+        ? `Voucher đang có: ${vouchers.map(voucher => voucher.code).join(', ')}`
+        : 'Hiện chưa có voucher khả dụng.';
 }
 
 async function getVietnamProvinces() {
@@ -1659,6 +1790,35 @@ function getOrderStatusMeta(status) {
     }
 }
 
+function canCustomerCancelOrder(order) {
+    const status = Number(order.status);
+    const shipping = order.shipping || {};
+    return status >= 0
+        && status < 4
+        && !shipping.shippedAt
+        && Number(shipping.status || 0) < 2;
+}
+
+window.cancelCustomerOrder = async function(orderId) {
+    if (!confirm('Bạn muốn hủy đơn hàng này trước khi shipper lấy hàng từ kho? Thao tác này là hủy đơn, không phải yêu cầu trả hàng.')) return;
+
+    const token = getAuthToken();
+    try {
+        const res = await fetch(`${API_BASE}/api/Order/${orderId}/cancel`, {
+            method: 'POST',
+            headers: token ? { 'Authorization': `Bearer ${token}` } : {}
+        });
+        const result = await res.json().catch(() => ({}));
+        if (!res.ok) throw new Error(result.message || 'Không thể hủy đơn hàng.');
+
+        showToast(result.message || 'Đã hủy đơn hàng.');
+        await window.showOrderDetailModal(orderId);
+        loadCustomerOrders();
+    } catch (err) {
+        showToast(err.message || 'Không thể hủy đơn hàng.');
+    }
+};
+
 window.showOrderDetailModal = async function(orderIdOrCode) {
     ensureOrderDetailModalInDom();
     const backdrop = document.getElementById('orderDetailModalBackdrop');
@@ -1696,8 +1856,9 @@ window.showOrderDetailModal = async function(orderIdOrCode) {
 function renderOrderDetailContent(order, container) {
     const statusMeta = getOrderStatusMeta(order.status);
     const money = val => `${Number(val || 0).toLocaleString('vi-VN')}đ`;
-    const orderDate = order.createdAt ? new Date(order.createdAt).toLocaleString('vi-VN') : 'Mới tạo';
+    const orderDate = order.createdAt ? fmtVietnamDateTime(order.createdAt) : 'Mới tạo';
     const isCancelled = Number(order.status) === 5;
+    const canCancelOrder = canCustomerCancelOrder(order);
     const earnedPoints = Math.floor(Number(order.totalAmount || 0) / 10000);
 
     const paymentMethod = order.payment?.paymentMethod ?? order.paymentMethod;
@@ -1787,6 +1948,13 @@ function renderOrderDetailContent(order, container) {
         </div>
 
         ${timelineHtml}
+
+        ${canCancelOrder ? `
+        <div style="display:flex;justify-content:flex-end;margin:-8px 0 16px;">
+            <button type="button" class="btn-view-order" onclick="window.cancelCustomerOrder(${order.orderId})" style="border:1px solid #ef4444;color:#b91c1c;background:#fff;padding:8px 14px;">
+                Hủy đơn hàng
+            </button>
+        </div>` : ''}
 
         <div id="orderDeliveryTrackingSlot"></div>
 
@@ -1996,30 +2164,29 @@ async function loadAndRenderDeliveryTracking(order, targetContainer) {
 
             if (isShipping) {
                 const durationMins = Number(est.durationInMinutes) || 30;
-                const shippedAt = order.shipping?.shippedAt ? new Date(order.shipping.shippedAt) : new Date(Date.now() - 5 * 60000);
-                const arrivalTime = new Date(shippedAt.getTime() + durationMins * 60000);
-                const now = new Date();
-                const remainingMins = Math.max(0, Math.ceil((arrivalTime.getTime() - now.getTime()) / 60000));
+                const deliveryStartedAt = parseUtcDate(order.shipping?.deliveryStartedAt);
+                if (!deliveryStartedAt) {
+                    if (etaBox) etaBox.textContent = 'Shipper đang chuẩn bị xuất phát. Thời gian giao dự kiến sẽ cập nhật khi shipper bắt đầu đi giao.';
+                    const progressText = document.getElementById('liveProgressPercent');
+                    if (progressText) progressText.textContent = 'Đang chờ shipper xuất phát';
+                } else {
+                    const arrivalTime = new Date(deliveryStartedAt.getTime() + durationMins * 60000);
+                    const now = Date.now();
+                    const remainingMins = Math.max(0, Math.ceil((arrivalTime.getTime() - now) / 60000));
 
-                if (etaBox) {
-                    etaBox.innerHTML = `
-                        🕒 Dự kiến giao đến lúc: <b>${arrivalTime.toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' })}</b> 
-                        (còn khoảng <b>${remainingMins > 0 ? remainingMins + ' phút' : 'vài phút nữa'}</b>).
-                    `;
-                }
+                    if (etaBox) {
+                        etaBox.innerHTML = `
+                            🕒 Dự kiến giao đến lúc: <b>${arrivalTime.toLocaleTimeString('vi-VN', { timeZone: 'Asia/Ho_Chi_Minh', hour: '2-digit', minute: '2-digit' })}</b>
+                            (còn khoảng <b>${remainingMins > 0 ? remainingMins + ' phút' : 'đã quá thời gian dự kiến'}</b>).
+                        `;
+                    }
 
-                const elapsed = Math.max(0, (now.getTime() - shippedAt.getTime()) / 60000);
-                const pct = Math.min(100, Math.max(20, Math.round((elapsed / durationMins) * 100)));
-                const bar = document.getElementById('liveProgressBar');
-                const pctText = document.getElementById('liveProgressPercent');
-                if (bar) bar.style.width = `${pct}%`;
-                if (pctText) pctText.textContent = pct >= 100 ? 'Đã đến nơi' : `Đang di chuyển (${pct}%)`;
-
-                // Nếu đã hết thời gian (hoặc đến nơi): tự động hoàn tất
-                if (remainingMins <= 0 || pct >= 100) {
-                    setTimeout(() => {
-                        autoCompleteOrderOnArrival(order.orderId);
-                    }, 3000);
+                    const elapsed = Math.max(0, (now - deliveryStartedAt.getTime()) / 60000);
+                    const pct = Math.min(99, Math.max(5, Math.round((elapsed / durationMins) * 100)));
+                    const bar = document.getElementById('liveProgressBar');
+                    const pctText = document.getElementById('liveProgressPercent');
+                    if (bar) bar.style.width = `${pct}%`;
+                    if (pctText) pctText.textContent = `Đang giao (ước tính ${pct}%)`;
                 }
             } else if (isCompleted) {
                 if (etaBox) {
@@ -2043,11 +2210,7 @@ window.confirmCustomerReceivedOrder = async function(orderId) {
     await completeOrderDeliveryApi(orderId);
 };
 
-async function autoCompleteOrderOnArrival(orderId) {
-    await completeOrderDeliveryApi(orderId, true);
-}
-
-async function completeOrderDeliveryApi(orderId, isAuto = false) {
+async function completeOrderDeliveryApi(orderId) {
     const token = getAuthToken();
     try {
         const headers = token ? { 'Authorization': `Bearer ${token}` } : {};
@@ -2059,7 +2222,7 @@ async function completeOrderDeliveryApi(orderId, isAuto = false) {
             const err = await res.json().catch(() => ({}));
             throw new Error(err.message || 'Không thể cập nhật trạng thái.');
         }
-        showToast(isAuto ? '🎉 Shipper đã giao đến nơi! Đơn hàng đã tự động hoàn tất.' : '🎉 Xác nhận nhận hàng thành công! Đơn hàng đã hoàn tất.');
+        showToast('🎉 Xác nhận nhận hàng thành công! Đơn hàng đã hoàn tất.');
         window.showOrderDetailModal(orderId);
         loadCustomerOrders();
     } catch (err) {
@@ -2115,12 +2278,12 @@ async function loadCustomerOrders() {
         }
 
         // Sort latest first
-        orders.sort((a, b) => new Date(b.createdAt || 0) - new Date(a.createdAt || 0));
+        orders.sort((a, b) => (parseUtcDate(b.createdAt)?.getTime() || 0) - (parseUtcDate(a.createdAt)?.getTime() || 0));
 
         const money = val => `${Number(val || 0).toLocaleString('vi-VN')}đ`;
         listContainer.innerHTML = orders.map(o => {
             const statusMeta = getOrderStatusMeta(o.status);
-            const dateStr = o.createdAt ? new Date(o.createdAt).toLocaleDateString('vi-VN') : '';
+            const dateStr = o.createdAt ? fmtVietnamDate(o.createdAt) : '';
             const itemsCount = (o.orderDetails || []).reduce((sum, it) => sum + (it.quantity || 1), 0);
 
             return `
@@ -2148,6 +2311,7 @@ async function loadCustomerOrders() {
                 </div>
                 <div class="customer-order-actions">
                     <button type="button" class="btn-view-order" onclick="window.showOrderDetailModal(${o.orderId})">👁 Xem chi tiết</button>
+                    ${canCustomerCancelOrder(o) ? `<button type="button" class="btn-view-order" onclick="window.cancelCustomerOrder(${o.orderId})" style="border:1px solid #ef4444;color:#b91c1c;background:#fff;">Hủy đơn</button>` : ''}
                 </div>
             </div>`;
         }).join('');
@@ -2535,7 +2699,7 @@ async function handleCheckoutSubmit(e) {
     const pendingOrder = {
         accountUserId: sessionUser.userId,
         customerId: customerProfile.customerId,
-        customer: { fullName, phone, address },
+        customer: { fullName, phone: customerProfile.phone, address },
         note: note || '',
         paymentMethod,
         voucherCode: appliedVoucher?.code || null,
@@ -2788,6 +2952,7 @@ document.getElementById('clearFilters')?.addEventListener('click', () => {
    ========================================================= */
 if (!redirectAdminPortalUser()) {
     initializeVietnamDeliveryAddress();
+    loadCustomerNotifications();
     updateCartCountBadge();
     checkApi();
     loadData();
@@ -2795,4 +2960,3 @@ if (!redirectAdminPortalUser()) {
     setInterval(loadData, 30000);
     setTimeout(initCustomerTrackingSignalR, 1000);
 }
-

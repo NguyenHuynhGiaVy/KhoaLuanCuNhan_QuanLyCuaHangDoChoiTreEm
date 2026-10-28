@@ -59,8 +59,12 @@ const MODULES = {
   orders: {
     title: 'Đơn hàng', kicker: 'VẬN HÀNH & GIAO NHẬN',
     endpoint: 'Order',
-    columns: ['Mã đơn', 'Khách hàng', 'SĐT', 'Ngày đặt', 'Lô giao', 'Shipper', 'Dự kiến giao', 'Giá trị', 'Thanh toán', 'Trạng thái'],
+    columns: ['Mã đơn', 'Khách hàng', 'SĐT', 'Ngày đặt', 'Lô giao', 'Shipper', 'Dự kiến giao', 'Giá trị', 'Thanh toán', 'Trạng thái đơn', 'Tình trạng giao', 'Lấy hàng tại kho', 'Bắt đầu giao', 'Ngày nhận', 'Thời gian giao'],
     canAdd: false, canEdit: true, canDelete: false
+  },
+  collections: {
+    title: 'Thu tiền & Doanh thu', kicker: 'TÀI CHÍNH',
+    columns: ['Thời điểm thu', 'Mã đơn', 'Khách hàng', 'Hình thức', 'Tiền khách trả', 'Phí giao', 'Thực thu quỹ', 'Doanh thu ghi nhận', 'Tình trạng đơn', 'Giao hàng', 'Shipper']
   },
   shippers: {
     title: 'Nhân viên giao hàng', kicker: 'VẬN HÀNH & GIAO NHẬN',
@@ -126,8 +130,35 @@ const IMPORT_STATUS_MAP = {
 // ── UTILITIES ───────────────────────────────────────────────
 const esc = v => String(v ?? '').replace(/[&<>'"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', "'": '&#39;', '"': '&quot;' }[c]));
 const money = v => v == null ? '—' : Number(v).toLocaleString('vi-VN') + ' đ';
-const fmtDate = s => s ? new Date(s).toLocaleDateString('vi-VN') : '—';
-const fmtDateTime = s => s ? new Date(s).toLocaleString('vi-VN') : '—';
+const parseUtcDate = value => {
+  if (!value) return null;
+  const text = String(value);
+  const normalized = /^\d{4}-\d{2}-\d{2}T.*(?:Z|[+-]\d{2}:\d{2})$/i.test(text)
+    ? text
+    : (/^\d{4}-\d{2}-\d{2}T/.test(text) ? `${text}Z` : text);
+  const date = new Date(normalized);
+  return Number.isNaN(date.getTime()) ? null : date;
+};
+const fmtDate = s => {
+  if (!s) return '—';
+  const text = String(s);
+  const dateOnly = text.match(/^(\d{4})-(\d{2})-(\d{2})(?:$|T)/);
+  if (dateOnly) return `${dateOnly[3]}/${dateOnly[2]}/${dateOnly[1]}`;
+  const date = parseUtcDate(s);
+  return date ? date.toLocaleDateString('vi-VN', { timeZone: 'Asia/Ho_Chi_Minh' }) : '—';
+};
+const fmtDateTime = s => {
+  const date = parseUtcDate(s);
+  return date ? date.toLocaleString('vi-VN', { timeZone: 'Asia/Ho_Chi_Minh' }) : '—';
+};
+const utcTimestamp = value => parseUtcDate(value)?.getTime() ?? NaN;
+const formatDurationMinutes = ms => {
+  if (!Number.isFinite(ms) || ms < 0) return '—';
+  const totalMinutes = Math.max(1, Math.round(ms / 60000));
+  const hours = Math.floor(totalMinutes / 60);
+  const minutes = totalMinutes % 60;
+  return hours > 0 ? `${hours} giờ ${minutes} phút` : `${minutes} phút`;
+};
 const fmtDeliveryWindow = (from, to) => {
   if (!from) return 'Đang xác nhận';
   const formatDateOnly = value => {
@@ -138,6 +169,94 @@ const fmtDeliveryWindow = (from, to) => {
   const toText = to ? formatDateOnly(to) : '';
   return toText && toText !== fromText ? `${fromText} – ${toText}` : fromText;
 };
+function getDeliveryStatusCode(order) {
+  const shippingStatus = order?.shipping?.status;
+  if (shippingStatus !== null && shippingStatus !== undefined) return Number(shippingStatus);
+  return Number(order?.status) === 4 ? 4 : 0;
+}
+
+function getDeliveryStatusBadge(order) {
+  const status = getDeliveryStatusCode(order);
+  const labels = {
+    0: ['Chưa xuất kho', 'neutral'],
+    1: ['Chờ lấy hàng', 'warning'],
+    2: ['Đã lấy hàng tại kho', 'info'],
+    3: ['Đang giao', 'info'],
+    4: ['Đã giao', 'success'],
+    5: ['Giao thất bại', 'danger'],
+    6: ['Đã hoàn kho', 'danger']
+  };
+  const [label, type] = labels[status] || ['Chưa xác định', 'neutral'];
+  return pill(label, type);
+}
+
+function localDateKey(date = new Date()) {
+  const parts = new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'Asia/Ho_Chi_Minh',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit'
+  }).formatToParts(date);
+  const values = Object.fromEntries(parts.map(part => [part.type, part.value]));
+  return `${values.year}-${values.month}-${values.day}`;
+}
+function getOrderDeliveryDeadline(order) {
+  const deadline = order?.shipping?.estimatedDeliveryToDate
+    || order?.shipping?.estimatedDeliveryAt;
+  if (!deadline) return '';
+  const value = String(deadline);
+  return /^\d{4}-\d{2}-\d{2}/.test(value) ? value.slice(0, 10) : '';
+}
+function isOrderOverdueUndelivered(order) {
+  const deadline = getOrderDeliveryDeadline(order);
+  return Number(order?.status) !== 5
+    && getDeliveryStatusCode(order) !== 4
+    && !!deadline
+    && deadline < localDateKey();
+}
+function daysPastDeliveryDeadline(order) {
+  const deadline = getOrderDeliveryDeadline(order);
+  if (!deadline) return 0;
+  const [dueYear, dueMonth, dueDay] = deadline.split('-').map(Number);
+  const [year, month, day] = localDateKey().split('-').map(Number);
+  const due = Date.UTC(dueYear, dueMonth - 1, dueDay);
+  const today = Date.UTC(year, month - 1, day);
+  return Math.max(1, Math.floor((today - due) / 86400000));
+}
+
+window.showOverdueOrders = function() {
+  const openFilteredOrders = () => {
+    switchOrderTab('all');
+    const filter = document.getElementById('orderFilterDeliverySelect');
+    if (filter) {
+      filter.value = 'overdue';
+      applyOrderFilters();
+    }
+  };
+  if (currentView === 'orders') {
+    openFilteredOrders();
+    return;
+  }
+  window.addEventListener('hashchange', function onOrdersViewOpened() {
+    window.removeEventListener('hashchange', onOrdersViewOpened);
+    openFilteredOrders();
+  });
+  location.hash = '#orders';
+};
+
+function formatOrderDeliveryDuration(order) {
+  const startedAt = order?.shipping?.deliveryStartedAt;
+  if (!startedAt) return '—';
+  const start = parseUtcDate(startedAt);
+  if (!start) return '—';
+  const end = order?.shipping?.deliveredAt
+    ? parseUtcDate(order.shipping.deliveredAt)?.getTime()
+    : (getDeliveryStatusCode(order) === 3 ? Date.now() : null);
+  if (end === null) return '—';
+  if (end === undefined) return '—';
+  const duration = formatDurationMinutes(end - start.getTime());
+  return getDeliveryStatusCode(order) === 3 ? `Đang đi · ${duration}` : duration;
+}
 const productVariantsOf = product => product?.productVariants || product?.variants || [];
 const hasAvailableStock = product => productVariantsOf(product)
   .some(variant => Number(variant.availableQuantity || 0) > 0);
@@ -350,6 +469,8 @@ async function renderDashboard(refreshOnly = false) {
         `}
       </div>
 
+      <div id="dashOverdueOrdersAlert" style="display:none;margin:0 0 24px;"></div>
+
       <!-- 2. 5 CORE KPI CARDS (MỤC 5) -->
       <div class="stats-grid-5">
         <!-- 1. Sản phẩm đã bán -->
@@ -394,7 +515,7 @@ async function renderDashboard(refreshOnly = false) {
       </div>
 
       <!-- 3. CHARTS & QUICK ACTIONS -->
-      <div style="display:grid;grid-template-columns:2fr 1fr;gap:24px;margin-bottom:28px;">
+      <div style="display:grid;grid-template-columns:1fr;gap:24px;margin-bottom:28px;">
         <!-- Left: Revenue & Cashflow Chart -->
         <div class="panel" style="margin-bottom:0;">
           <div class="panel-header">
@@ -412,23 +533,6 @@ async function renderDashboard(refreshOnly = false) {
           </div>
         </div>
 
-        <!-- Right: Quick actions -->
-        <div class="panel" style="margin-bottom:0;">
-          <div class="panel-header">
-            <div class="panel-title-area">
-              <h2>Nghiệp vụ vận hành</h2>
-              <p>Phím tắt thao tác nhanh</p>
-            </div>
-          </div>
-          <div style="padding:18px;display:flex;flex-direction:column;gap:10px;">
-            <button class="primary-btn" onclick="showForm('products')"><span>+</span> Thêm sản phẩm & biến thể</button>
-            <button class="success-btn" onclick="showForm('imports')"><span>📦</span> Tạo phiếu đặt hàng NCC</button>
-            <button class="secondary-btn" onclick="location.hash='#orders'"><span>↗</span> Quản lý & Gán Shipper đơn hàng</button>
-            <button class="secondary-btn" onclick="location.hash='#cod'"><span>💰</span> Đối soát công nợ COD Shipper</button>
-            <button class="secondary-btn" onclick="location.hash='#inventory'"><span>▤</span> Quản lý tồn kho & Cảnh báo</button>
-            <button class="secondary-btn" onclick="window.open('/shipper.html','_blank')"><span>🛵</span> Mở cổng Shipper App ↗</button>
-          </div>
-        </div>
       </div>
 
       <!-- 4. CASHFLOW BREAKDOWN & CATEGORY REVENUE -->
@@ -440,6 +544,7 @@ async function renderDashboard(refreshOnly = false) {
               <h2>💳 Phân bổ cơ cấu Dòng tiền trong kỳ</h2>
               <p>Minh bạch trạng thái thanh toán và công nợ</p>
             </div>
+            <button class="secondary-btn" onclick="location.hash='#collections'">Chi tiết thu tiền theo đơn →</button>
           </div>
           <div style="padding:20px;" id="cashflowBreakdownContainer">
             <p style="text-align:center;color:var(--slate-400);padding:20px 0;">Đang tính toán dòng tiền...</p>
@@ -562,6 +667,33 @@ async function renderDashboard(refreshOnly = false) {
     ]);
 
     if (currentView !== 'dashboard') return;
+
+    const overdueOrders = (orders || []).filter(isOrderOverdueUndelivered);
+    const overdueAlert = document.getElementById('dashOverdueOrdersAlert');
+    if (overdueAlert) {
+      overdueAlert.style.display = overdueOrders.length ? 'block' : 'none';
+      overdueAlert.innerHTML = overdueOrders.length ? `
+        <div class="panel" style="margin:0;border:1px solid #fca5a5;background:#fff7f7;">
+          <div class="panel-header" style="border-bottom-color:#fecaca;">
+            <div class="panel-title-area">
+              <h2 style="color:#b91c1c;">⚠️ Cảnh báo ${overdueOrders.length} đơn quá ngày giao dự kiến</h2>
+              <p style="color:#991b1b;">Các đơn chưa giao thành công dù đã quá hạn giao dự kiến. Vui lòng kiểm tra và xử lý.</p>
+            </div>
+            <button type="button" class="danger-btn" onclick="window.showOverdueOrders()">Xem và xử lý đơn quá hạn →</button>
+          </div>
+          <div style="padding:14px 20px;display:grid;gap:8px;">
+            ${overdueOrders.slice(0, 5).map(order => `
+              <div style="display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap;color:#7f1d1d;">
+                <span><strong>#${esc(order.orderCode || order.orderId)}</strong> · ${esc(order.customerName || order.shipping?.receiverName || 'Khách hàng')} · Hạn giao ${fmtDate(getOrderDeliveryDeadline(order))}</span>
+                <span style="font-weight:700;">Trễ ${daysPastDeliveryDeadline(order)} ngày
+                  <button type="button" class="icon-action-btn view" title="Xem đơn hàng" onclick="showOrderDetail(${order.orderId})">👁</button>
+                </span>
+              </div>
+            `).join('')}
+            ${overdueOrders.length > 5 ? `<small style="color:#991b1b;">Và còn ${overdueOrders.length - 5} đơn quá hạn khác.</small>` : ''}
+          </div>
+        </div>` : '';
+    }
 
     // 1. Update 5 KPI Cards
     if (summary) {
@@ -1140,7 +1272,7 @@ async function renderCustomerCare() {
     cache.customerCareReturns = returnRequests || [];
     const list = (feedbacks || []).sort((left, right) =>
       Number(left.status >= 2) - Number(right.status >= 2)
-      || new Date(right.createdAt) - new Date(left.createdAt));
+      || utcTimestamp(right.createdAt) - utcTimestamp(left.createdAt));
     const returnList = returnRequests || [];
     cache.customerCare = list;
     const newCount = list.filter(item => Number(item.status) === 0).length
@@ -1387,6 +1519,10 @@ window.submitCustomerCareReply = async function(event, feedbackId) {
 
 // ── 2. GENERIC LIST VIEW ────────────────────────────────────
 async function renderList(key) {
+  if (key === 'collections') {
+    await renderCollectionsReport();
+    return;
+  }
   const m = MODULES[key];
   if (!m) return;
 
@@ -1409,8 +1545,21 @@ async function renderList(key) {
               <span>+</span> Thêm ${key === 'imports' ? 'phiếu đặt hàng' : m.title.toLowerCase()} mới
             </button>
           ` : ''}
+          ${key === 'inventory' ? `
+            <button class="secondary-btn" onclick="reconcileApprovedImports()">
+              <span>↻</span> Đồng bộ phiếu đã duyệt
+            </button>
+          ` : ''}
         </div>
       </div>
+
+      ${key === 'inventory' ? `
+        <div style="display:flex;gap:10px;align-items:end;flex-wrap:wrap;padding:16px 24px;border-bottom:1px solid var(--slate-200);background:var(--slate-50);">
+          <div><label class="filter-label">Xem tồn kho đến ngày</label><input id="inventoryAsOfDate" type="date" class="input-control" value="${dateInputValue(new Date())}"></div>
+          <button class="primary-btn" onclick="loadInventorySnapshot()">Xem báo cáo</button>
+          <span id="inventorySnapshotSummary" style="font-size:13px;color:var(--slate-600);"></span>
+        </div>
+      ` : ''}
 
       ${key === 'orders' ? `
         <div class="order-tabs-container">
@@ -1458,6 +1607,25 @@ async function renderList(key) {
                 <option value="unbatched">Chưa phân lô giao</option>
                 <option value="batched">Đã gộp vào lô</option>
               </select>
+            </div>
+            <div class="filter-control-wrap">
+              <label>Tình trạng giao hàng</label>
+              <select id="orderFilterDeliverySelect" class="input-control" onchange="applyOrderFilters()">
+                <option value="">-- Tất cả trạng thái giao --</option>
+                <option value="delivered">Đã giao</option>
+                <option value="not-delivered">Chưa giao</option>
+                <option value="overdue">⚠️ Quá ngày giao, chưa giao</option>
+                <option value="in-delivery">Đang giao</option>
+                <option value="failed">Giao thất bại / Hoàn kho</option>
+              </select>
+            </div>
+            <div class="filter-control-wrap">
+              <label>Từ ngày đặt</label>
+              <input id="orderFilterFromDate" type="date" class="input-control" onchange="applyOrderFilters()">
+            </div>
+            <div class="filter-control-wrap">
+              <label>Đến ngày đặt</label>
+              <input id="orderFilterToDate" type="date" class="input-control" onchange="applyOrderFilters()">
             </div>
             <div class="filter-control-wrap" style="display:flex;gap:8px;">
               <button type="button" class="secondary-btn" style="width:100%;padding:9px;" onclick="resetOrderFilters()">Đặt lại lọc</button>
@@ -1604,6 +1772,34 @@ async function renderList(key) {
           </tbody>
         </table>
       </div>
+      ${key === 'inventory' ? `
+        <div class="panel" style="margin:24px;border:1px solid var(--slate-200);box-shadow:none;">
+          <div class="panel-header">
+            <div class="panel-title-area">
+              <h2>Tồn kho theo ngày đã chọn</h2>
+              <p>Hiển thị số lượng còn lại và số lượng đang giữ của từng mặt hàng tại đúng ngày báo cáo.</p>
+            </div>
+          </div>
+          <div class="table-wrap">
+            <table class="data-table">
+              <thead>
+                <tr>
+                  <th>SKU</th>
+                  <th>Mặt hàng</th>
+                  <th>Tồn kho</th>
+                  <th>Đang giữ</th>
+                  <th>Còn bán</th>
+                  <th>Giá trị tồn</th>
+                  <th>Trạng thái nhập</th>
+                </tr>
+              </thead>
+              <tbody id="inventorySnapshotBody">
+                <tr><td colspan="7" style="text-align:center;padding:30px;color:var(--slate-400)">Chọn ngày để xem tồn kho.</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      ` : ''}
     </div>
   `;
 
@@ -1622,12 +1818,143 @@ async function renderList(key) {
     } else {
       renderTableRows(key, cache[key]);
     }
+
+    window.reconcileApprovedImports = async function() {
+      try {
+        const result = await api('ManagementReport/inventory/reconcile-approved-imports', { method: 'POST' });
+        toast(`Đã đồng bộ ${result.repairedCount || 0} dòng tồn kho từ phiếu đã duyệt.`, 'success');
+        renderList('inventory');
+      } catch (error) {
+        toast(`Không thể đồng bộ tồn kho: ${error.message}`, 'error');
+      }
+    };
+
+    window.loadInventorySnapshot = async function() {
+      const date = document.getElementById('inventoryAsOfDate')?.value;
+      const summary = document.getElementById('inventorySnapshotSummary');
+      const body = document.getElementById('inventorySnapshotBody');
+      if (!date || !summary || !body) return;
+      try {
+        const result = await api(`ManagementReport/inventory?asOf=${encodeURIComponent(date)}`);
+        summary.textContent = `Tổng tồn: ${Number(result.totalQuantity || 0).toLocaleString('vi-VN')} · Giá trị: ${money(result.totalValue)} · Cần nhập: ${result.needsImportCount || 0} mặt hàng`;
+        body.innerHTML = (result.items || []).map(item => `
+          <tr>
+            <td><code>${esc(item.sku || '—')}</code></td>
+            <td><strong>${esc(item.productName || 'Sản phẩm')}</strong></td>
+            <td><strong>${Number(item.quantity || 0).toLocaleString('vi-VN')}</strong></td>
+            <td>${Number(item.reservedQuantity || 0).toLocaleString('vi-VN')}</td>
+            <td><strong style="color:${Number(item.availableQuantity || 0) > 0 ? 'var(--success)' : 'var(--danger)'}">${Number(item.availableQuantity || 0).toLocaleString('vi-VN')}</strong></td>
+            <td>${money(item.inventoryValue)}</td>
+            <td>${item.needsImport ? pill('Cần nhập thêm', 'warning') : pill('Đủ tồn', 'success')}</td>
+          </tr>
+        `).join('') || '<tr><td colspan="7" style="text-align:center;padding:30px;color:var(--slate-400)">Chưa có biến thể để báo cáo.</td></tr>';
+      } catch (error) {
+        toast(`Không thể tải báo cáo tồn kho: ${error.message}`, 'error');
+        body.innerHTML = `<tr><td colspan="7" style="text-align:center;padding:30px;color:var(--danger)">${esc(error.message)}</td></tr>`;
+      }
+    };
+    if (key === 'inventory') {
+      await window.loadInventorySnapshot();
+    }
   } catch (err) {
     toast(`Không thể tải dữ liệu: ${err.message}`, 'error');
     document.getElementById('listTableBody').innerHTML = `
       <tr><td colspan="${m.columns.length + 1}" style="text-align:center;padding:40px;color:var(--danger)">Lỗi: ${esc(err.message)}</td></tr>
     `;
   }
+}
+
+async function renderCollectionsReport() {
+  const today = new Date();
+  const defaultFrom = new Date(today.getFullYear(), today.getMonth(), 1);
+  app.innerHTML = `
+    <div class="panel">
+      <div class="panel-header">
+        <div class="panel-title-area">
+          <h2>Thu tiền & Doanh thu theo từng đơn</h2>
+          <p>Chỉ ghi nhận tiền đã thực sự vào quỹ: thanh toán online đã xác nhận và COD admin đã xác nhận nhận tiền.</p>
+        </div>
+      </div>
+      <div style="display:flex;align-items:end;gap:12px;flex-wrap:wrap;padding:16px 24px;border-bottom:1px solid var(--slate-200);background:var(--slate-50);">
+        <div><label class="filter-label">Từ ngày nhận tiền</label><input id="collectionFromDate" type="date" class="input-control" value="${dateInputValue(defaultFrom)}"></div>
+        <div><label class="filter-label">Đến ngày nhận tiền</label><input id="collectionToDate" type="date" class="input-control" value="${dateInputValue(today)}"></div>
+        <button type="button" class="primary-btn" onclick="loadCollectionsReport()">Xem báo cáo</button>
+      </div>
+      <div id="collectionSummary" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:12px;padding:20px 24px;">
+        <div class="stat-card"><div class="stat-label">Đang tải thực thu...</div><div class="stat-value">—</div></div>
+      </div>
+      <div id="collectionPeriodLabel" style="padding:0 24px 12px;color:var(--slate-500);font-size:12.5px;"></div>
+      <div class="table-wrap">
+        <table class="data-table">
+          <thead><tr>${MODULES.collections.columns.map(column => `<th>${column}</th>`).join('')}<th>Chi tiết</th></tr></thead>
+          <tbody id="collectionRecordsBody"><tr><td colspan="${MODULES.collections.columns.length + 1}" style="text-align:center;padding:30px;color:var(--slate-400)">Đang tải dữ liệu thu tiền...</td></tr></tbody>
+        </table>
+      </div>
+    </div>
+  `;
+
+  window.loadCollectionsReport = async function() {
+    const from = document.getElementById('collectionFromDate')?.value;
+    const to = document.getElementById('collectionToDate')?.value;
+    const body = document.getElementById('collectionRecordsBody');
+    const summary = document.getElementById('collectionSummary');
+    const period = document.getElementById('collectionPeriodLabel');
+    if (!from || !to || !body || !summary) return;
+    if (from > to) {
+      toast('Ngày bắt đầu không được sau ngày kết thúc.', 'error');
+      return;
+    }
+
+    body.innerHTML = `<tr><td colspan="${MODULES.collections.columns.length + 1}" style="text-align:center;padding:30px;color:var(--slate-400)">Đang tải dữ liệu...</td></tr>`;
+    try {
+      const report = await api(`ManagementReport/collections?from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}`);
+      const records = Array.isArray(report.records) ? report.records : [];
+      summary.innerHTML = `
+        <div class="stat-card"><div class="stat-label">Thực thu vào quỹ</div><div class="stat-value" style="color:#059669;">${money(report.totalFundReceived)}</div><div class="stat-sub">${records.length} khoản thu</div></div>
+        <div class="stat-card"><div class="stat-label">Thu qua online</div><div class="stat-value" style="color:#2563eb;">${money(report.onlineReceived)}</div></div>
+        <div class="stat-card"><div class="stat-label">COD đã xác nhận vào quỹ</div><div class="stat-value" style="color:#b45309;">${money(report.codReceived)}</div></div>
+        <div class="stat-card"><div class="stat-label">Doanh thu ghi nhận</div><div class="stat-value" style="color:#4f46e5;">${money(report.totalRecognizedRevenue)}</div><div class="stat-sub">Chỉ tính đơn đã giao thành công</div></div>
+      `;
+      if (period) period.textContent = `Khoảng nhận tiền: ${fmtDate(report.from)} – ${fmtDate(report.to)}. Mỗi dòng là một đơn/khoản thanh toán đã vào quỹ.`;
+      body.innerHTML = records.map(record => {
+        const method = Number(record.paymentMethod) === 0 ? 'COD' : (Number(record.paymentMethod) === 2 ? 'ZaloPay' : 'Chuyển khoản');
+        const status = Number(record.orderStatus);
+        const orderStatus = esc(ORDER_STATUS_LABELS[status] || 'Đang xử lý');
+        const delivery = record.isDelivered
+          ? pill('Đã giao', 'success')
+          : getDeliveryStatusBadge({ status: record.orderStatus, shipping: { status: record.shippingStatus } });
+        const start = record.deliveryStartedAt ? utcTimestamp(record.deliveryStartedAt) : null;
+        const end = record.deliveredAt ? utcTimestamp(record.deliveredAt) : null;
+        const duration = start !== null && end !== null && Number.isFinite(start) && Number.isFinite(end)
+          ? formatDurationMinutes(end - start)
+          : '—';
+        const statusWithDuration = record.isDelivered && duration !== '—'
+          ? `${delivery}<small style="display:block;margin-top:3px;color:var(--slate-500);">${esc(duration)}</small>`
+          : delivery;
+
+        return `<tr>
+          <td>${fmtDateTime(record.receivedAt)}</td>
+          <td><strong>#${esc(record.orderCode || record.orderId)}</strong></td>
+          <td><div><strong>${esc(record.customerName || 'Khách vãng lai')}</strong><br><small>${esc(record.receiverPhone || '—')}</small></div></td>
+          <td>${pill(method, method === 'COD' ? 'warning' : 'info')}</td>
+          <td>${money(record.customerPaidAmount)}</td>
+          <td>${money(record.shippingFee)}</td>
+          <td><strong style="color:#059669;">${money(record.fundAmount)}</strong></td>
+          <td><strong style="color:#4f46e5;">${money(record.recognizedRevenue)}</strong></td>
+          <td>${pill(orderStatus, status === 4 ? 'success' : (status === 5 ? 'danger' : 'neutral'))}</td>
+          <td>${statusWithDuration}</td>
+          <td>${esc(record.shipperName || '—')}</td>
+          <td><button type="button" class="secondary-btn" style="padding:4px 9px;font-size:11.5px;" onclick="showOrderDetail(${Number(record.orderId)})">Mở đơn</button></td>
+        </tr>`;
+      }).join('') || `<tr><td colspan="${MODULES.collections.columns.length + 1}" style="text-align:center;padding:30px;color:var(--slate-400)">Không có khoản tiền thực thu trong khoảng ngày đã chọn.</td></tr>`;
+    } catch (error) {
+      summary.innerHTML = `<div style="grid-column:1/-1;color:var(--danger);padding:10px;">Không thể tải báo cáo thu tiền: ${esc(error.message)}</div>`;
+      body.innerHTML = `<tr><td colspan="${MODULES.collections.columns.length + 1}" style="text-align:center;padding:30px;color:var(--danger)">${esc(error.message)}</td></tr>`;
+      if (period) period.textContent = '';
+    }
+  };
+
+  await window.loadCollectionsReport();
 }
 
 function updateCodSummary(list) {
@@ -1702,8 +2029,8 @@ function switchOrderTab(tab) {
 
 function updateOrderTabCounts() {
   const list = cache['orders'] || [];
-  const processingCount = list.filter(o => Number(o.status) >= 0 && Number(o.status) <= 3).length;
-  const historyCount = list.filter(o => Number(o.status) === 4 || Number(o.status) === 5).length;
+  const processingCount = list.filter(o => Number(o.status) >= 0 && Number(o.status) <= 3 && getDeliveryStatusCode(o) !== 4).length;
+  const historyCount = list.filter(o => getDeliveryStatusCode(o) === 4 || Number(o.status) === 5 || getDeliveryStatusCode(o) >= 5).length;
   const allCount = list.length;
 
   const elProc = document.getElementById('orderTabProcessingCount');
@@ -1722,9 +2049,9 @@ function applyOrderFilters() {
 
   // 1. Lọc theo Tab (Ẩn hoàn tất / hủy nếu ở tab processing)
   if (orderActiveTab === 'processing') {
-    filtered = filtered.filter(o => Number(o.status) >= 0 && Number(o.status) <= 3);
+    filtered = filtered.filter(o => Number(o.status) >= 0 && Number(o.status) <= 3 && getDeliveryStatusCode(o) !== 4);
   } else if (orderActiveTab === 'history') {
-    filtered = filtered.filter(o => Number(o.status) === 4 || Number(o.status) === 5);
+    filtered = filtered.filter(o => getDeliveryStatusCode(o) === 4 || Number(o.status) === 5 || getDeliveryStatusCode(o) >= 5);
   }
 
   // 2. Lọc theo trạng thái chi tiết
@@ -1750,6 +2077,24 @@ function applyOrderFilters() {
     filtered = filtered.filter(o => !!o.shipping?.deliveryBatchCode);
   }
 
+  const deliveryVal = document.getElementById('orderFilterDeliverySelect')?.value;
+  if (deliveryVal === 'delivered') {
+    filtered = filtered.filter(o => getDeliveryStatusCode(o) === 4);
+  } else if (deliveryVal === 'not-delivered') {
+    filtered = filtered.filter(o => Number(o.status) !== 5 && getDeliveryStatusCode(o) !== 4);
+  } else if (deliveryVal === 'overdue') {
+    filtered = filtered.filter(isOrderOverdueUndelivered);
+  } else if (deliveryVal === 'in-delivery') {
+    filtered = filtered.filter(o => getDeliveryStatusCode(o) === 3);
+  } else if (deliveryVal === 'failed') {
+    filtered = filtered.filter(o => getDeliveryStatusCode(o) === 5 || getDeliveryStatusCode(o) === 6);
+  }
+
+  const fromDate = document.getElementById('orderFilterFromDate')?.value;
+  const toDate = document.getElementById('orderFilterToDate')?.value;
+  if (fromDate) filtered = filtered.filter(o => String(o.orderDate || o.createdAt || '').slice(0, 10) >= fromDate);
+  if (toDate) filtered = filtered.filter(o => String(o.orderDate || o.createdAt || '').slice(0, 10) <= toDate);
+
   // 5. Tìm kiếm từ khóa (input search)
   const searchVal = (document.getElementById('tableSearchInput')?.value || '').trim().toLowerCase();
   if (searchVal) {
@@ -1766,7 +2111,9 @@ function applyOrderFilters() {
   const summary = document.getElementById('orderFilterSummary');
   if (summary) {
     const tabName = orderActiveTab === 'processing' ? 'Đang xử lý' : (orderActiveTab === 'history' ? 'Lịch sử' : 'Tất cả');
-    summary.innerHTML = `Hiển thị <b>${filtered.length}</b> đơn hàng (Tab: ${tabName}).`;
+    const deliveredCount = filtered.filter(o => getDeliveryStatusCode(o) === 4).length;
+    const overdueCount = filtered.filter(isOrderOverdueUndelivered).length;
+    summary.innerHTML = `Hiển thị <b>${filtered.length}</b> đơn hàng (Tab: ${tabName}) · Đã giao: <b>${deliveredCount}</b> · Chưa giao: <b>${filtered.length - deliveredCount}</b> · Quá hạn: <b style="color:#b91c1c;">${overdueCount}</b>.`;
   }
 
   renderTableRows('orders', filtered);
@@ -1779,6 +2126,12 @@ function resetOrderFilters() {
   if (selPayment) selPayment.value = '';
   const selBatch = document.getElementById('orderFilterBatchSelect');
   if (selBatch) selBatch.value = '';
+  const deliveryStatus = document.getElementById('orderFilterDeliverySelect');
+  if (deliveryStatus) deliveryStatus.value = '';
+  const fromDate = document.getElementById('orderFilterFromDate');
+  if (fromDate) fromDate.value = '';
+  const toDate = document.getElementById('orderFilterToDate');
+  if (toDate) toDate.value = '';
   const search = document.getElementById('tableSearchInput');
   if (search) search.value = '';
   applyOrderFilters();
@@ -1999,7 +2352,12 @@ function getRowCells(key, r) {
         fmtDeliveryWindow(r.shipping?.estimatedDeliveryFromDate || r.shipping?.estimatedDeliveryAt, r.shipping?.estimatedDeliveryToDate),
         `<strong style="color:var(--primary);">${money(r.finalAmount || r.totalAmount)}</strong>`,
         pill(r.paymentStatus === 1 ? 'Đã thanh toán' : 'Chưa thanh toán', r.paymentStatus === 1 ? 'success' : 'neutral'),
-        pill(ORDER_STATUS_LABELS[r.status] || 'Đang xử lý', r.status === 4 ? 'success' : (r.status === 5 ? 'danger' : 'warning'))
+        pill(ORDER_STATUS_LABELS[r.status] || 'Đang xử lý', r.status === 4 ? 'success' : (r.status === 5 ? 'danger' : 'warning')),
+        `${getDeliveryStatusBadge(r)}${isOrderOverdueUndelivered(r) ? `<br><span class="pill danger" style="display:inline-block;margin-top:4px;">⚠️ Quá hạn ${daysPastDeliveryDeadline(r)} ngày</span>` : ''}`,
+        fmtDateTime(r.shipping?.shippedAt),
+        fmtDateTime(r.shipping?.deliveryStartedAt),
+        fmtDateTime(r.shipping?.deliveredAt),
+        formatOrderDeliveryDuration(r)
       ];
 
     case 'shippers':
@@ -2057,7 +2415,8 @@ function getRowCells(key, r) {
       ];
 
     case 'promotions':
-      const promotionActive = r.status === undefined ? r.isActive === true : r.status === 1;
+      const promotionStatus = r.status === undefined ? (r.isActive === true ? 1 : 0) : Number(r.status);
+      const promotionExpired = promotionStatus === 2 || (r.endDate && new Date(r.endDate) < new Date());
       const promotionProducts = r.promotionProducts || [];
       return [
         `<strong>${esc(r.name)}</strong><br><small style="color:var(--slate-400);">${esc(r.description || '')}</small>`,
@@ -2067,11 +2426,15 @@ function getRowCells(key, r) {
         r.promotionType === 0 ? 'Phần trăm (%)' : 'Số tiền cố định (đ)',
         `<strong>${r.promotionType === 0 ? `${r.discountValue}%` : money(r.discountValue)}</strong>`,
         `${fmtDate(r.startDate)} - ${fmtDate(r.endDate)}`,
-        pill(promotionActive ? 'Đang chạy' : 'Tạm ngưng', promotionActive ? 'success' : 'neutral')
+        pill(
+          promotionExpired ? 'Đã hết hạn' : (promotionStatus === 1 ? 'Đang chạy' : 'Tạm ngưng'),
+          promotionExpired ? 'danger' : (promotionStatus === 1 ? 'success' : 'neutral')
+        )
       ];
 
     case 'vouchers':
-      const voucherActive = r.status === undefined ? r.isActive === true : r.status === 1;
+      const voucherStatus = r.status === undefined ? (r.isActive === true ? 1 : 0) : Number(r.status);
+      const voucherExpired = voucherStatus === 2 || (r.endDate && new Date(r.endDate) < new Date());
       const usageLimit = Number(r.usageLimit ?? r.maxUsage ?? 0);
       const usedCount = Number(r.usedCount || 0);
       return [
@@ -2083,7 +2446,10 @@ function getRowCells(key, r) {
           : `<strong>${usedCount}</strong><br><small>Không giới hạn</small>`,
         money(r.minimumOrderValue ?? r.minOrderAmount ?? 0),
         `${fmtDate(r.startDate)} - ${fmtDate(r.endDate || r.expiryDate)}`,
-        pill(voucherActive ? 'Khả dụng' : 'Khóa', voucherActive ? 'success' : 'danger')
+        pill(
+          voucherExpired ? 'Đã hết hạn' : (voucherStatus === 1 ? 'Khả dụng' : 'Khóa'),
+          voucherExpired ? 'danger' : (voucherStatus === 1 ? 'success' : 'danger')
+        )
       ];
 
     case 'customers':
@@ -4608,7 +4974,7 @@ async function loadCustomerOrdersForAdmin(customerId) {
       return;
     }
 
-    orders.sort((a, b) => new Date(b.createdAt || 0) - new Date(a.createdAt || 0));
+    orders.sort((a, b) => utcTimestamp(b.createdAt) - utcTimestamp(a.createdAt));
 
     const totalSpent = orders.filter(o => o.status !== 5).reduce((sum, o) => sum + Number(o.totalAmount || 0), 0);
     if (summary) summary.textContent = `${orders.length} đơn hàng · Tổng chi tiêu: ${money(totalSpent)}`;
@@ -5416,7 +5782,9 @@ async function showOrderDetail(id) {
     const currentStatus = Number(order.status);
     const canAdvanceOrder = currentStatus >= 0 && currentStatus < 4;
     const isTerminalOrder = currentStatus === 4 || currentStatus === 5;
-    const nextStatus = canAdvanceOrder ? currentStatus + 1 : null;
+    const nextStatus = canAdvanceOrder && !(currentStatus === 3 && getDeliveryStatusCode(order) !== 4)
+      ? currentStatus + 1
+      : null;
 
     app.innerHTML = `
       <div class="form-view-panel">
@@ -5473,13 +5841,13 @@ async function showOrderDetail(id) {
                   ` : ''}
                 `}
               </p>
-              ${order.shipping?.status === 3 ? `
+              ${order.shipping?.status === 5 ? `
                 <div style="background:#fef2f2;border:1px solid #fecaca;color:#991b1b;padding:8px 12px;border-radius:8px;font-size:12.5px;margin:8px 0;">
                   <strong>⚠️ Giao thất bại lần ${order.shipping.attemptCount || 1}:</strong> ${esc(order.shipping.failReason || 'Khách hẹn lại')}
                   <br><button class="primary-btn" style="padding:3px 8px;font-size:11.5px;margin-top:6px;" onclick="retryDeliveryAction(${order.orderId})">🔄 Xuất giao lại</button>
                 </div>
               ` : ''}
-              ${order.shipping?.status === 5 ? `
+              ${order.shipping?.status === 6 ? `
                 <div style="background:#fef2f2;border:1px solid #fecaca;color:#991b1b;padding:8px 12px;border-radius:8px;font-size:12.5px;margin:8px 0;">
                   <strong>❌ Đã hoàn hàng về kho</strong> (Đã thử giao ${order.shipping.attemptCount || 3} lần)
                 </div>
@@ -5509,6 +5877,13 @@ async function showOrderDetail(id) {
                 </div>
               ` : ''}
               <p><strong>Giao dự kiến:</strong> ${fmtDeliveryWindow(order.shipping?.estimatedDeliveryFromDate || order.shipping?.estimatedDeliveryAt, order.shipping?.estimatedDeliveryToDate)}</p>
+              <p><strong>Shipper lấy hàng tại kho:</strong> ${order.shipping?.shippedAt ? fmtDateTime(order.shipping.shippedAt) : 'Chưa lấy hàng'}</p>
+              <p><strong>Bắt đầu giao:</strong> ${order.shipping?.deliveryStartedAt ? fmtDateTime(order.shipping.deliveryStartedAt) : 'Chưa xuất phát'}</p>
+              <p><strong>Ngày nhận hàng:</strong> ${order.shipping?.deliveredAt ? fmtDateTime(order.shipping.deliveredAt) : 'Chưa giao thành công'}</p>
+              <p><strong>Thu tiền khách:</strong> ${order.payment?.codStatus === 3 ? `Đã xác nhận vào quỹ (${fmtDateTime(order.payment.codConfirmedAt)})` : (order.payment?.codStatus === 2 ? `Đã báo nộp COD (${fmtDateTime(order.payment.codSubmittedAt)})` : (order.payment?.codStatus === 1 ? `Đang giữ COD (${fmtDateTime(order.payment.codCollectedAt)})` : 'Chưa thu tiền'))}</p>
+              ${order.shipping?.deliveryStartedAt ? `
+                <p><strong>Thời gian đi giao:</strong> ${formatDurationMinutes((order.shipping.deliveredAt ? utcTimestamp(order.shipping.deliveredAt) : Date.now()) - utcTimestamp(order.shipping.deliveryStartedAt))}${!order.shipping.deliveredAt && Number(order.shipping.status) === 3 ? ' (đang giao)' : ''}</p>
+              ` : ''}
               <p><strong>Ghi chú đơn hàng:</strong> ${esc(order.note || 'Không có ghi chú.')}</p>
               ${order.shipping?.address ? `
                 <div style="margin-top:12px;padding-top:10px;border-top:1px dashed var(--slate-200);">
@@ -5527,7 +5902,7 @@ async function showOrderDetail(id) {
             </div>
             <div class="form-section-card" style="margin:0;">
               <h4>Cập nhật trạng thái đơn</h4>
-              <p style="margin:0;color:var(--slate-500);font-size:13px;">${isTerminalOrder ? 'Đơn hàng đã ở trạng thái cuối.' : 'Chỉ có thể chuyển sang giai đoạn kế tiếp; không thể bỏ qua bước.'}</p>
+              <p style="margin:0;color:var(--slate-500);font-size:13px;">${isTerminalOrder ? 'Đơn hàng đã ở trạng thái cuối.' : (currentStatus === 3 && getDeliveryStatusCode(order) !== 4 ? 'Trạng thái giao thành công do Shipper xác nhận; Admin không thể tự hoàn tất để tránh ghi nhận sai tiền.' : 'Chỉ có thể chuyển sang giai đoạn kế tiếp; không thể bỏ qua bước.')}</p>
               <div style="display:flex;gap:8px;margin-top:10px;">
                 <select class="input-control" id="orderNewStatusSelect" ${isTerminalOrder ? 'disabled' : ''}>
                   <option value="${currentStatus}" disabled>Hiện tại: ${esc(ORDER_STATUS_LABELS[currentStatus] || 'Đang xử lý')}</option>
@@ -5874,6 +6249,59 @@ window.quickAddRef = async function(type) {
 };
 
 // ── 10. AUTH & INIT ─────────────────────────────────────────
+let staffNotificationIds = new Set();
+let latestStaffNotifications = [];
+
+async function loadStaffNotifications(showNew = false) {
+  try {
+    const data = await api('Notification/staff');
+    const notifications = data?.notifications || [];
+    latestStaffNotifications = notifications;
+    const newNotifications = notifications.filter(item => {
+      const id = `${item.type}:${item.referenceId}:${item.createdAt}`;
+      if (staffNotificationIds.has(id)) return false;
+      staffNotificationIds.add(id);
+      return true;
+    });
+
+    if (showNew) {
+      newNotifications.slice(0, 3).forEach(item => {
+        toast(`${item.title}: ${item.message}`, 'info');
+      });
+    }
+
+    const bell = document.getElementById('staffNotificationBadge');
+    if (bell) bell.textContent = String(notifications.length);
+  } catch (error) {
+    console.warn('Không thể tải thông báo quản trị:', error.message);
+    if (showNew) toast(`Không thể tải thông báo: ${error.message}`, 'error');
+  }
+}
+
+document.getElementById('staffNotificationButton')?.addEventListener('click', () => {
+  loadStaffNotifications(false);
+  const rows = latestStaffNotifications.slice(0, 20).map(item =>
+    `<div style="padding:10px 0;border-bottom:1px solid var(--slate-200);">
+      <strong>${esc(item.title)}</strong>
+      <div style="font-size:12px;color:var(--slate-600);">${esc(item.message)}</div>
+      <small style="color:var(--slate-400);">${fmtDateTime(item.createdAt)}</small>
+    </div>`
+  ).join('');
+  const modal = document.createElement('div');
+  modal.style.cssText = 'position:fixed;inset:0;background:rgba(15,23,42,.35);z-index:1000;display:flex;justify-content:flex-end;';
+  modal.innerHTML = `<section style="width:min(440px,100%);height:100%;background:#fff;padding:22px;overflow:auto;box-shadow:-8px 0 24px rgba(15,23,42,.15);">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;">
+      <h2 style="margin:0;">Thông báo hệ thống</h2>
+      <button class="ghost-btn" type="button">Đóng</button>
+    </div>
+    ${rows || '<p style="color:var(--slate-500);">Chưa có biến động trong 7 ngày gần đây.</p>'}
+  </section>`;
+  modal.addEventListener('click', event => {
+    if (event.target === modal || event.target.closest('button')) modal.remove();
+  });
+  document.body.appendChild(modal);
+});
+
 document.getElementById('logoutButton')?.addEventListener('click', () => {
   localStorage.removeItem('toyStoreToken');
   localStorage.removeItem('toyStoreUser');
@@ -5907,5 +6335,8 @@ if (token && isShipperPortalUser(currentUser)) {
   }
   checkApiStatus();
   loadRef().then(navigate);
+  loadStaffNotifications(false).then(() => {
+    setInterval(() => loadStaffNotifications(true), 10000);
+  });
   setTimeout(initOrderTrackingSignalR, 1000);
 }

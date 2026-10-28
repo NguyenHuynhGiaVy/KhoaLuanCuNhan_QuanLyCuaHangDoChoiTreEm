@@ -268,6 +268,46 @@ namespace ToyStore.Infrastructure.Migrations
                     b.ToTable("Categories");
                 });
 
+            modelBuilder.Entity("ToyStoreManagement.Domain.Entities.CungUng", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<decimal?>("GiaNhapThamKhao")
+                        .HasColumnType("decimal(18,2)");
+
+                    b.Property<bool>("IsDefault")
+                        .HasColumnType("bit");
+
+                    b.Property<string>("MaHangNCC")
+                        .HasMaxLength(50)
+                        .HasColumnType("nvarchar(50)");
+
+                    b.Property<int>("ProductId")
+                        .HasColumnType("int");
+
+                    b.Property<int>("SupplierId")
+                        .HasColumnType("int");
+
+                    b.Property<DateTime?>("UpdatedAt")
+                        .HasColumnType("datetime2");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("SupplierId");
+
+                    b.HasIndex("ProductId", "SupplierId")
+                        .IsUnique();
+
+                    b.ToTable("CungUng", (string)null);
+                });
+
             modelBuilder.Entity("ToyStoreManagement.Domain.Entities.Customer", b =>
                 {
                     b.Property<int>("CustomerId")
@@ -506,6 +546,9 @@ namespace ToyStore.Infrastructure.Migrations
 
                     b.Property<int>("ImportReceiptId")
                         .HasColumnType("int");
+
+                    b.Property<decimal?>("NewPrice")
+                        .HasColumnType("decimal(18,2)");
 
                     b.Property<int>("Quantity")
                         .HasColumnType("int");
@@ -798,6 +841,57 @@ namespace ToyStore.Infrastructure.Migrations
                     b.ToTable("OrderDetails");
                 });
 
+            modelBuilder.Entity("ToyStoreManagement.Domain.Entities.OrderTrackingLog", b =>
+                {
+                    b.Property<int>("TrackingLogId")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("TrackingLogId"));
+
+                    b.Property<string>("Action")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("NewStatus")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<string>("Note")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<int>("OrderId")
+                        .HasColumnType("int");
+
+                    b.Property<string>("PerformedByName")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<string>("PerformedByRole")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<string>("PerformedByUserId")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<string>("PreviousStatus")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<int?>("ShippingId")
+                        .HasColumnType("int");
+
+                    b.HasKey("TrackingLogId");
+
+                    b.HasIndex("OrderId");
+
+                    b.HasIndex("ShippingId");
+
+                    b.ToTable("OrderTrackingLogs", (string)null);
+                });
+
             modelBuilder.Entity("ToyStoreManagement.Domain.Entities.Payment", b =>
                 {
                     b.Property<int>("PaymentId")
@@ -808,6 +902,21 @@ namespace ToyStore.Infrastructure.Migrations
 
                     b.Property<decimal>("Amount")
                         .HasColumnType("decimal(18,2)");
+
+                    b.Property<DateTime?>("CodCollectedAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<DateTime?>("CodConfirmedAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("CodNote")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<int>("CodStatus")
+                        .HasColumnType("int");
+
+                    b.Property<DateTime?>("CodSubmittedAt")
+                        .HasColumnType("datetime2");
 
                     b.Property<DateTime>("CreatedAt")
                         .HasColumnType("datetime2");
@@ -1279,6 +1388,42 @@ namespace ToyStore.Infrastructure.Migrations
                     b.ToTable("ReturnRequestDetails");
                 });
 
+            modelBuilder.Entity("ToyStoreManagement.Domain.Entities.Shipper", b =>
+                {
+                    b.Property<int>("ShipperId")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("ShipperId"));
+
+                    b.Property<string>("AssignedArea")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("FullName")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<bool>("IsActive")
+                        .HasColumnType("bit");
+
+                    b.Property<string>("PhoneNumber")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<string>("UserId")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<string>("VehicleNumber")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.HasKey("ShipperId");
+
+                    b.ToTable("Shippers");
+                });
+
             modelBuilder.Entity("ToyStoreManagement.Domain.Entities.Shipping", b =>
                 {
                     b.Property<int>("ShippingId")
@@ -1292,12 +1437,18 @@ namespace ToyStore.Infrastructure.Migrations
                         .HasMaxLength(500)
                         .HasColumnType("nvarchar(500)");
 
+                    b.Property<int>("AttemptCount")
+                        .HasColumnType("int");
+
                     b.Property<DateTime?>("DeliveredAt")
                         .HasColumnType("datetime2");
 
                     b.Property<string>("DeliveryBatchCode")
                         .HasMaxLength(50)
                         .HasColumnType("nvarchar(50)");
+
+                    b.Property<DateTime?>("DeliveryStartedAt")
+                        .HasColumnType("datetime2");
 
                     b.Property<DateTime?>("EstimatedDeliveryAt")
                         .HasColumnType("datetime2");
@@ -1306,6 +1457,12 @@ namespace ToyStore.Infrastructure.Migrations
                         .HasColumnType("datetime2");
 
                     b.Property<DateTime?>("EstimatedDeliveryToDate")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("FailReason")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<DateTime?>("FailedAt")
                         .HasColumnType("datetime2");
 
                     b.Property<int>("OrderId")
@@ -1323,6 +1480,9 @@ namespace ToyStore.Infrastructure.Migrations
 
                     b.Property<DateTime?>("ShippedAt")
                         .HasColumnType("datetime2");
+
+                    b.Property<int?>("ShipperId")
+                        .HasColumnType("int");
 
                     b.Property<decimal>("ShippingFee")
                         .HasColumnType("decimal(18,2)");
@@ -1344,6 +1504,8 @@ namespace ToyStore.Infrastructure.Migrations
 
                     b.HasIndex("OrderId")
                         .IsUnique();
+
+                    b.HasIndex("ShipperId");
 
                     b.HasIndex("TrackingCode");
 
@@ -1654,6 +1816,25 @@ namespace ToyStore.Infrastructure.Migrations
                         .IsRequired();
                 });
 
+            modelBuilder.Entity("ToyStoreManagement.Domain.Entities.CungUng", b =>
+                {
+                    b.HasOne("ToyStoreManagement.Domain.Entities.Product", "Product")
+                        .WithMany("CungUngs")
+                        .HasForeignKey("ProductId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("ToyStoreManagement.Domain.Entities.Supplier", "Supplier")
+                        .WithMany("CungUngs")
+                        .HasForeignKey("SupplierId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Product");
+
+                    b.Navigation("Supplier");
+                });
+
             modelBuilder.Entity("ToyStoreManagement.Domain.Entities.Customer", b =>
                 {
                     b.HasOne("ToyStore.Domain.Identity.ApplicationUser", "User")
@@ -1810,6 +1991,23 @@ namespace ToyStore.Infrastructure.Migrations
                     b.Navigation("Order");
 
                     b.Navigation("ProductVariant");
+                });
+
+            modelBuilder.Entity("ToyStoreManagement.Domain.Entities.OrderTrackingLog", b =>
+                {
+                    b.HasOne("ToyStoreManagement.Domain.Entities.Order", "Order")
+                        .WithMany()
+                        .HasForeignKey("OrderId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("ToyStoreManagement.Domain.Entities.Shipping", "Shipping")
+                        .WithMany()
+                        .HasForeignKey("ShippingId");
+
+                    b.Navigation("Order");
+
+                    b.Navigation("Shipping");
                 });
 
             modelBuilder.Entity("ToyStoreManagement.Domain.Entities.Payment", b =>
@@ -1996,7 +2194,14 @@ namespace ToyStore.Infrastructure.Migrations
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
 
+                    b.HasOne("ToyStoreManagement.Domain.Entities.Shipper", "Shipper")
+                        .WithMany("Shippings")
+                        .HasForeignKey("ShipperId")
+                        .OnDelete(DeleteBehavior.SetNull);
+
                     b.Navigation("Order");
+
+                    b.Navigation("Shipper");
                 });
 
             modelBuilder.Entity("ToyStoreManagement.Domain.Entities.SupportConversation", b =>
@@ -2111,6 +2316,8 @@ namespace ToyStore.Infrastructure.Migrations
 
             modelBuilder.Entity("ToyStoreManagement.Domain.Entities.Product", b =>
                 {
+                    b.Navigation("CungUngs");
+
                     b.Navigation("ProductReviews");
 
                     b.Navigation("ProductVariants");
@@ -2150,8 +2357,15 @@ namespace ToyStore.Infrastructure.Migrations
                     b.Navigation("ReturnRequestDetails");
                 });
 
+            modelBuilder.Entity("ToyStoreManagement.Domain.Entities.Shipper", b =>
+                {
+                    b.Navigation("Shippings");
+                });
+
             modelBuilder.Entity("ToyStoreManagement.Domain.Entities.Supplier", b =>
                 {
+                    b.Navigation("CungUngs");
+
                     b.Navigation("ImportReceipts");
                 });
 

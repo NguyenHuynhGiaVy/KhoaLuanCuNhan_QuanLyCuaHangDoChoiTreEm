@@ -3,11 +3,13 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
+using Microsoft.EntityFrameworkCore;
 using ToyStoreManagement.Application.DTOs.Promotion;
 using ToyStoreManagement.Application.Interfaces.Repositories;
 using ToyStoreManagement.Application.Interfaces.Services;
 using ToyStoreManagement.Domain.Entities;
 using ToyStore.Application.Interfaces.Repositories;
+using ToyStoreManagement.Infrastructure.Data;
 
 namespace ToyStoreManagement.Infrastructure.Services
 {
@@ -20,6 +22,7 @@ namespace ToyStoreManagement.Infrastructure.Services
         private readonly IGenericRepository<Brand> _brandRepository;
         private readonly IGenericRepository<ProductVariant> _variantRepository;
         private readonly IUnitOfWork _unitOfWork;
+        private readonly ApplicationDbContext _context;
 
         public PromotionService(
             IPromotionRepository promotionRepository,
@@ -28,7 +31,8 @@ namespace ToyStoreManagement.Infrastructure.Services
             IGenericRepository<Category> categoryRepository,
             IGenericRepository<Brand> brandRepository,
             IGenericRepository<ProductVariant> variantRepository,
-            IUnitOfWork unitOfWork)
+            IUnitOfWork unitOfWork,
+            ApplicationDbContext context)
         {
             _promotionRepository = promotionRepository;
             _conditionRepository = conditionRepository;
@@ -37,10 +41,12 @@ namespace ToyStoreManagement.Infrastructure.Services
             _brandRepository = brandRepository;
             _variantRepository = variantRepository;
             _unitOfWork = unitOfWork;
+            _context = context;
         }
 
         public async Task<IEnumerable<PromotionDto>> GetAllAsync()
         {
+            await MarkExpiredPromotionsAsync();
             var promotions =
                 await _promotionRepository.GetAllWithDetailsAsync();
 
@@ -49,6 +55,7 @@ namespace ToyStoreManagement.Infrastructure.Services
 
         public async Task<PromotionDto?> GetByIdAsync(int promotionId)
         {
+            await MarkExpiredPromotionsAsync();
             var promotion =
                 await _promotionRepository.GetByIdWithDetailsAsync(
                     promotionId);
@@ -57,6 +64,25 @@ namespace ToyStoreManagement.Infrastructure.Services
                 return null;
 
             return MapToDto(promotion);
+        }
+
+        private async Task MarkExpiredPromotionsAsync()
+        {
+            var now = DateTime.UtcNow;
+            var expiredPromotions = await _context.Promotions
+                .Where(x => x.Status == 1 && x.EndDate < now)
+                .ToListAsync();
+
+            if (expiredPromotions.Count == 0)
+                return;
+
+            foreach (var promotion in expiredPromotions)
+            {
+                promotion.Status = 2;
+                promotion.UpdatedAt = now;
+            }
+
+            await _context.SaveChangesAsync();
         }
 
         public async Task<PromotionDto> CreateAsync(

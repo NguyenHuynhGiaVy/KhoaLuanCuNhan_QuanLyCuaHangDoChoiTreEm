@@ -40,6 +40,7 @@ namespace ToyStoreManagement.Infrastructure.Services
 
         public async Task<IEnumerable<VoucherDto>> GetAllAsync()
         {
+            await MarkExpiredVouchersAsync();
             var vouchers =
                 await _voucherRepository.GetAllWithDetailsAsync();
 
@@ -48,6 +49,7 @@ namespace ToyStoreManagement.Infrastructure.Services
 
         public async Task<VoucherDto?> GetByIdAsync(int voucherId)
         {
+            await MarkExpiredVouchersAsync();
             var voucher =
                 await _voucherRepository.GetByIdWithDetailsAsync(
                     voucherId);
@@ -63,6 +65,7 @@ namespace ToyStoreManagement.Infrastructure.Services
             if (string.IsNullOrWhiteSpace(code))
                 return null;
 
+            await MarkExpiredVouchersAsync();
             var voucher =
                 await _voucherRepository.GetByCodeAsync(code);
 
@@ -70,6 +73,25 @@ namespace ToyStoreManagement.Infrastructure.Services
                 return null;
 
             return MapToDto(voucher);
+        }
+
+        private async Task MarkExpiredVouchersAsync()
+        {
+            var now = DateTime.UtcNow;
+            var expiredVouchers = await _context.Vouchers
+                .Where(x => x.Status == 1 && x.EndDate < now)
+                .ToListAsync();
+
+            if (expiredVouchers.Count == 0)
+                return;
+
+            foreach (var voucher in expiredVouchers)
+            {
+                voucher.Status = 2;
+                voucher.UpdatedAt = now;
+            }
+
+            await _context.SaveChangesAsync();
         }
 
         public async Task<VoucherDto> CreateAsync(

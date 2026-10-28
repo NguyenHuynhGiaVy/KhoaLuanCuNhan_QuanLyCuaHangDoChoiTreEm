@@ -34,6 +34,8 @@ namespace ToyStoreManagement.Domain.Entities
 
         public DateTime? ShippedAt { get; set; }
 
+        public DateTime? DeliveryStartedAt { get; set; }
+
         public DateTime? DeliveredAt { get; set; }
 
         // Shipper phụ trách đơn hàng

@@ -124,6 +124,11 @@ namespace ToyStoreManagement.Infrastructure.Services
                 throw new Exception(
                     "Phiếu nhập phải có ít nhất một sản phẩm.");
 
+            var receiptCode = dto.ReceiptCode.Trim();
+            if (await _context.ImportReceipts.AnyAsync(x => x.ReceiptCode == receiptCode))
+                throw new InvalidOperationException(
+                    $"Mã phiếu '{receiptCode}' đã tồn tại. Vui lòng nhập mã khác.");
+
             if (dto.Details.GroupBy(x => x.VariantId).Any(x => x.Count() > 1))
                 throw new Exception("Không được trùng sản phẩm trong cùng phiếu.");
 
@@ -132,10 +137,10 @@ namespace ToyStoreManagement.Infrastructure.Services
                 SupplierId = dto.SupplierId,
                 EmployeeId = dto.EmployeeId,
                 OrderedByUserId = orderedByUserId,
-                ReceiptCode = dto.ReceiptCode,
+                ReceiptCode = receiptCode,
                 ImportDate = dto.ImportDate,
                 Status = dto.Status,
-                Note = dto.Note,
+                Note = dto.Note ?? string.Empty,
                 CreatedAt = DateTime.UtcNow,
                 TotalAmount = 0
             };
@@ -362,7 +367,9 @@ namespace ToyStoreManagement.Infrastructure.Services
                         ReferenceType = "ImportReceipt",
                         ReferenceId = receipt.ImportReceiptId,
                         Note = $"Nhập hàng từ phiếu {receipt.ReceiptCode}. Đơn giá vốn: {detail.UnitCost:N0} đ{priceLogNote}",
-                        CreatedAt = DateTime.UtcNow
+                        // Dùng ngày nhập hàng để báo cáo tồn kho theo ngày/tháng/năm
+                        // phản ánh đúng thời điểm hàng thực sự phát sinh.
+                        CreatedAt = receipt.ImportDate
                     });
                 }
 

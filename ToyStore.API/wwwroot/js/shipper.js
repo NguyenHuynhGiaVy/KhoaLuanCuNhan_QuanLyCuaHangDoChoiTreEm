@@ -22,7 +22,19 @@ let shipperNotifications = [];
 
 const esc = v => String(v ?? '').replace(/[&<>'"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', "'": '&#39;', '"': '&quot;' }[c]));
 const money = v => v == null ? '0 đ' : Number(v).toLocaleString('vi-VN') + ' đ';
-const fmtDateTime = s => s ? new Date(s).toLocaleString('vi-VN') : '—';
+const parseUtcDate = value => {
+  if (!value) return null;
+  const text = String(value);
+  const normalized = /^\d{4}-\d{2}-\d{2}T.*(?:Z|[+-]\d{2}:\d{2})$/i.test(text)
+    ? text
+    : (/^\d{4}-\d{2}-\d{2}T/.test(text) ? `${text}Z` : text);
+  const date = new Date(normalized);
+  return Number.isNaN(date.getTime()) ? null : date;
+};
+const fmtDateTime = s => {
+  const date = parseUtcDate(s);
+  return date ? date.toLocaleString('vi-VN', { timeZone: 'Asia/Ho_Chi_Minh' }) : '—';
+};
 const shipperNotificationStorageKey = () => `toyStoreShipperNotifications:${currentShipperId || 'me'}`;
 const canSelectShipper = ['admin', 'manager', 'staff'].includes(userRole);
 const selectedShipperQuery = () => currentShipperId ? `?shipperId=${encodeURIComponent(currentShipperId)}` : '';
@@ -39,10 +51,10 @@ function toast(msg, type = 'info') {
 }
 
 function formatNotificationTime(value) {
-  const time = new Date(value);
-  return Number.isNaN(time.getTime())
+  const time = parseUtcDate(value);
+  return !time
     ? 'Vừa xong'
-    : time.toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' });
+    : time.toLocaleTimeString('vi-VN', { timeZone: 'Asia/Ho_Chi_Minh', hour: '2-digit', minute: '2-digit' });
 }
 
 function saveShipperNotifications() {
