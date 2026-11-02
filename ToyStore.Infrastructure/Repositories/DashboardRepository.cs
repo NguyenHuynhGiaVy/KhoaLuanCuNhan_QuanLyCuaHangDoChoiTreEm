@@ -640,16 +640,29 @@ namespace ToyStoreManagement.Infrastructure.Repositories
             if (from.HasValue) query = query.Where(x => x.OrderDate >= from.Value.Date);
             if (to.HasValue) query = query.Where(x => x.OrderDate < to.Value.Date.AddDays(1));
 
-            var orders = await query.Select(x => x.Status).ToListAsync();
+            var orders = await query.Select(x => new
+            {
+                x.Status,
+                ShippingStatus = x.Shipping != null ? (int?)x.Shipping.Status : null,
+                EstimatedTo = x.Shipping != null ? x.Shipping.EstimatedDeliveryToDate : null
+            }).ToListAsync();
+
+            var today = DateTime.UtcNow.AddHours(7).Date;
+            var delivered = orders.Count(x => x.ShippingStatus == 4 || (!x.ShippingStatus.HasValue && x.Status == 4));
+            var undelivered = orders.Count(x => x.Status != 5 && (x.ShippingStatus != 4 && !(x.Status == 4 && !x.ShippingStatus.HasValue)));
+            var overdue = orders.Count(x => x.Status != 5 && x.ShippingStatus != 4 && x.EstimatedTo.HasValue && x.EstimatedTo.Value.Date < today);
 
             return new OrderStatisticsDto
             {
-                PendingOrders = orders.Count(x => x == 0),
-                ConfirmedOrders = orders.Count(x => x == 1),
-                ProcessingOrders = orders.Count(x => x == 2),
-                ShippingOrders = orders.Count(x => x == 3),
-                CompletedOrders = orders.Count(x => x == 4),
-                CancelledOrders = orders.Count(x => x == 5)
+                PendingOrders = orders.Count(x => x.Status == 0),
+                ConfirmedOrders = orders.Count(x => x.Status == 1),
+                ProcessingOrders = orders.Count(x => x.Status == 2),
+                ShippingOrders = orders.Count(x => x.Status == 3),
+                CompletedOrders = orders.Count(x => x.Status == 4),
+                CancelledOrders = orders.Count(x => x.Status == 5),
+                DeliveredOrders = delivered,
+                UndeliveredOrders = undelivered,
+                OverdueOrders = overdue
             };
         }
 

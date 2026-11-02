@@ -807,6 +807,18 @@ namespace ToyStoreManagement.Infrastructure.Services
             if (variant == null)
                 return false;
 
+            bool hasReferences = await _context.OrderDetails.AnyAsync(x => x.VariantId == variantId)
+                || await _context.ImportReceiptDetails.AnyAsync(x => x.VariantId == variantId)
+                || await _context.InventoryTransactions.AnyAsync(x => x.VariantId == variantId);
+
+            if (hasReferences)
+            {
+                variant.Status = 0; // Ngừng bán / ẩn biến thể nếu đã có lịch sử đơn hàng hoặc nhập kho
+                variant.UpdatedAt = DateTime.UtcNow;
+                await _unitOfWork.SaveChangesAsync();
+                return true;
+            }
+
             _variantRepository.Delete(variant);
 
             await _unitOfWork

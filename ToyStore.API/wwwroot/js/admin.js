@@ -337,6 +337,17 @@ async function loadRef() {
 // ── NAVIGATION & ROUTING ────────────────────────────────────
 function navigate() {
   const hash = location.hash.slice(1) || 'dashboard';
+
+  // PHÂN QUYỀN RBAC CHẶT CHẼ: TÁCH RIÊNG TÀI CHÍNH THU TIỀN ĐỐI VỚI ADMIN / MANAGER (Yêu cầu 14)
+  const adminOnlyViews = ['collections', 'cod', 'users'];
+  const userRole = String(currentUser?.role || '').trim().toLowerCase();
+  const isAdminOrManager = ['admin', 'manager'].includes(userRole);
+  if (adminOnlyViews.includes(hash) && !isAdminOrManager) {
+    toast('Bạn không có quyền truy cập phân hệ Tài chính / Hệ thống (Chỉ dành cho Quản trị viên và Quản lý).', 'error');
+    location.hash = '#dashboard';
+    return;
+  }
+
   currentView = hash;
   if (hash !== 'dashboard') stopDashboardRealtime();
   
@@ -1536,6 +1547,9 @@ async function renderList(key) {
         <div class="panel-actions">
           <input type="text" id="tableSearchInput" placeholder="Tìm kiếm ${m.title.toLowerCase()}..." class="input-control" style="width:240px;padding:8px 14px;" onkeyup="filterTableData('${key}')">
           ${key === 'orders' ? `
+            <a href="/data/ds_don_hang.xlsx" download="DanhSach_DonHang_ToyStore.xlsx" class="secondary-btn" style="display:inline-flex;align-items:center;gap:6px;text-decoration:none;" title="Tải file Excel lưu trữ nhiều đơn hàng">
+              <span>📥</span> Xuất Excel đơn hàng
+            </a>
             <button class="secondary-btn" onclick="showShippingBatchModal()" style="display:inline-flex;align-items:center;gap:6px;">
               <span>🚚</span> Gợi ý gộp đơn
             </button>
@@ -1554,10 +1568,54 @@ async function renderList(key) {
       </div>
 
       ${key === 'inventory' ? `
-        <div style="display:flex;gap:10px;align-items:end;flex-wrap:wrap;padding:16px 24px;border-bottom:1px solid var(--slate-200);background:var(--slate-50);">
-          <div><label class="filter-label">Xem tồn kho đến ngày</label><input id="inventoryAsOfDate" type="date" class="input-control" value="${dateInputValue(new Date())}"></div>
-          <button class="primary-btn" onclick="loadInventorySnapshot()">Xem báo cáo</button>
-          <span id="inventorySnapshotSummary" style="font-size:13px;color:var(--slate-600);"></span>
+        <div style="padding:16px 24px;border-bottom:1px solid var(--slate-200);background:var(--slate-50);display:flex;flex-direction:column;gap:14px;">
+          <div style="display:flex;gap:12px;align-items:end;flex-wrap:wrap;">
+            <div>
+              <label class="filter-label">Chọn tháng</label>
+              <select id="invReportMonth" class="input-control" style="width:130px;">
+                <option value="">-- Cả năm --</option>
+                ${Array.from({length: 12}, (_, i) => `<option value="${i+1}" ${i+1 === new Date().getMonth()+1 ? 'selected' : ''}>Tháng ${i+1}</option>`).join('')}
+              </select>
+            </div>
+            <div>
+              <label class="filter-label">Chọn năm</label>
+              <select id="invReportYear" class="input-control" style="width:110px;">
+                <option value="2025">2025</option>
+                <option value="2026" selected>2026</option>
+                <option value="2027">2027</option>
+              </select>
+            </div>
+            <button type="button" class="primary-btn" onclick="loadInventoryPeriodReport()">📊 Xem báo cáo Xuất-Nhập-Tồn kỳ</button>
+
+            <div style="height:28px;width:1px;background:var(--slate-300);margin:0 4px;"></div>
+
+            <div>
+              <label class="filter-label">Hoặc xem snapshot theo ngày</label>
+              <input id="inventoryAsOfDate" type="date" class="input-control" value="${dateInputValue(new Date())}">
+            </div>
+            <button type="button" class="secondary-btn" onclick="loadInventorySnapshot()">Xem theo ngày</button>
+          </div>
+
+          <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px;">
+            <div id="inventorySnapshotSummary" style="font-size:13.5px;color:var(--slate-700);font-weight:600;"></div>
+            <div id="invFilterBtnGroup" style="display:flex;gap:6px;">
+              <button type="button" class="order-tab-btn active" id="btnInvFilterAll" onclick="filterPeriodInventory('all')">Tất cả (<span id="cntInvAll">0</span>)</button>
+              <button type="button" class="order-tab-btn" id="btnInvFilterNeed" onclick="filterPeriodInventory('need')">⚠️ Cần nhập thêm (<span id="cntInvNeed">0</span>)</button>
+              <button type="button" class="order-tab-btn" id="btnInvFilterOk" onclick="filterPeriodInventory('ok')">✅ Đủ tồn kho (<span id="cntInvOk">0</span>)</button>
+            </div>
+          </div>
+        </div>
+      ` : ''}
+
+      ${key === 'vouchers' ? `
+        <div style="padding:14px 24px;border-bottom:1px solid var(--slate-200);background:var(--slate-50);display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px;">
+          <div style="display:flex;gap:8px;flex-wrap:wrap;">
+            <button type="button" class="order-tab-btn active" id="vouchTabAll" onclick="filterVouchers('all')">Tất cả voucher</button>
+            <button type="button" class="order-tab-btn" id="vouchTabActive" onclick="filterVouchers('active')">🎟 Đang hiệu lực</button>
+            <button type="button" class="order-tab-btn" id="vouchTabExpired" onclick="filterVouchers('expired')">⏰ Đã hết hạn</button>
+            <button type="button" class="order-tab-btn" id="vouchTabLow" onclick="filterVouchers('low')">⚠️ Sắp hết lượt (≤ 5 lượt)</button>
+          </div>
+          <span id="voucherSummaryText" style="font-size:12.5px;color:var(--slate-600);font-weight:600;"></span>
         </div>
       ` : ''}
 
@@ -1687,6 +1745,22 @@ async function renderList(key) {
       ` : ''}
 
       ${key === 'imports' ? `
+        <div style="margin:16px 24px 0;padding:16px 20px;background:linear-gradient(135deg,#eef2ff,#e0e7ff);border:1px solid #c7d2fe;border-radius:12px;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:12px;">
+          <div>
+            <div style="font-size:12px;font-weight:700;color:#3730a3;text-transform:uppercase;letter-spacing:0.5px;">📦 Thống kê phiếu nhập kho hôm nay (Quy trình 1.2.3.1)</div>
+            <div style="font-size:18px;font-weight:800;color:#1e1b4b;margin-top:2px;">
+              <span id="importStatCount">...</span> phiếu nhập
+              <span style="font-size:13px;font-weight:600;color:#4338ca;">(Tổng <span id="importStatQty">...</span> sản phẩm)</span>
+            </div>
+          </div>
+          <div style="text-align:right;">
+            <div style="font-size:12px;color:#4338ca;font-weight:600;">Tổng giá trị nhập hôm nay</div>
+            <div style="font-size:20px;font-weight:800;color:#047857;" id="importStatAmount">...</div>
+          </div>
+        </div>
+      ` : ''}
+
+      ${key === 'imports' ? `
         <div class="import-filter-bar" style="margin:16px 24px 0;background:var(--slate-50);border:1px solid var(--slate-200);border-radius:12px;padding:16px;">
           <div class="import-filter-grid" style="display:grid;grid-template-columns:repeat(auto-fit, minmax(160px, 1fr));gap:12px;align-items:flex-end;">
             <div class="filter-control-wrap">
@@ -1776,8 +1850,8 @@ async function renderList(key) {
         <div class="panel" style="margin:24px;border:1px solid var(--slate-200);box-shadow:none;">
           <div class="panel-header">
             <div class="panel-title-area">
-              <h2>Tồn kho theo ngày đã chọn</h2>
-              <p>Hiển thị số lượng còn lại và số lượng đang giữ của từng mặt hàng tại đúng ngày báo cáo.</p>
+              <h2 id="invReportTableTitle">Báo cáo Xuất - Nhập - Tồn kho</h2>
+              <p id="invReportTableSub">Thống kê chi tiết tồn đầu kỳ, nhập, xuất bán, tồn cuối kỳ và đánh giá mặt hàng cần nhập / không cần nhập.</p>
             </div>
           </div>
           <div class="table-wrap">
@@ -1785,16 +1859,18 @@ async function renderList(key) {
               <thead>
                 <tr>
                   <th>SKU</th>
-                  <th>Mặt hàng</th>
-                  <th>Tồn kho</th>
-                  <th>Đang giữ</th>
-                  <th>Còn bán</th>
-                  <th>Giá trị tồn</th>
-                  <th>Trạng thái nhập</th>
+                  <th>Mặt hàng đồ chơi</th>
+                  <th style="text-align:right;">Tồn đầu kỳ</th>
+                  <th style="text-align:right;">Nhập trong kỳ</th>
+                  <th style="text-align:right;">Xuất bán</th>
+                  <th style="text-align:right;">Tồn cuối kỳ</th>
+                  <th style="text-align:right;">Đơn giá vốn</th>
+                  <th style="text-align:right;">Giá trị tồn</th>
+                  <th style="text-align:center;">Phân loại nhu cầu</th>
                 </tr>
               </thead>
               <tbody id="inventorySnapshotBody">
-                <tr><td colspan="7" style="text-align:center;padding:30px;color:var(--slate-400)">Chọn ngày để xem tồn kho.</td></tr>
+                <tr><td colspan="9" style="text-align:center;padding:30px;color:var(--slate-400)">Chọn tháng/năm hoặc ngày để xem báo cáo tồn kho.</td></tr>
               </tbody>
             </table>
           </div>
@@ -1829,32 +1905,163 @@ async function renderList(key) {
       }
     };
 
+    let currentPeriodInventoryItems = [];
+
+    window.filterPeriodInventory = function(type) {
+      document.querySelectorAll('#invFilterBtnGroup button').forEach(b => b.classList.remove('active'));
+      if (type === 'all') document.getElementById('btnInvFilterAll')?.classList.add('active');
+      if (type === 'need') document.getElementById('btnInvFilterNeed')?.classList.add('active');
+      if (type === 'ok') document.getElementById('btnInvFilterOk')?.classList.add('active');
+
+      const body = document.getElementById('inventorySnapshotBody');
+      if (!body) return;
+
+      const filtered = currentPeriodInventoryItems.filter(item => {
+        if (type === 'need') return item.needsImport;
+        if (type === 'ok') return !item.needsImport;
+        return true;
+      });
+
+      if (!filtered.length) {
+        body.innerHTML = `<tr><td colspan="9" style="text-align:center;padding:30px;color:var(--slate-400)">Không có mặt hàng nào phù hợp bộ lọc.</td></tr>`;
+        return;
+      }
+
+      body.innerHTML = filtered.map(item => `
+        <tr>
+          <td><code>${esc(item.sku || '—')}</code></td>
+          <td><strong>${esc(item.productName || 'Sản phẩm')}</strong></td>
+          <td style="text-align:right;">${Number(item.openingStock || 0).toLocaleString('vi-VN')}</td>
+          <td style="text-align:right;color:#047857;font-weight:600;">+${Number(item.importQty || 0).toLocaleString('vi-VN')}</td>
+          <td style="text-align:right;color:#dc2626;font-weight:600;">-${Number(item.exportQty || 0).toLocaleString('vi-VN')}</td>
+          <td style="text-align:right;"><strong style="font-size:14px;color:${item.closingStock <= 10 ? '#dc2626' : '#047857'};">${Number(item.closingStock || 0).toLocaleString('vi-VN')}</strong></td>
+          <td style="text-align:right;">${money(item.costPrice)}</td>
+          <td style="text-align:right;"><strong>${money(item.inventoryValue)}</strong></td>
+          <td style="text-align:center;">
+            ${item.needsImport 
+              ? `<span class="badge" style="background:#fee2e2;color:#991b1b;font-weight:700;padding:4px 8px;border-radius:6px;border:1px solid #f87171;">⚠️ CẦN NHẬP THÊM</span>` 
+              : `<span class="badge" style="background:#ecfdf5;color:#047857;font-weight:700;padding:4px 8px;border-radius:6px;border:1px solid #a7f3d0;">✅ ĐỦ TỒN KHO</span>`}
+          </td>
+        </tr>
+      `).join('');
+    };
+
+    window.loadInventoryPeriodReport = async function() {
+      const month = document.getElementById('invReportMonth')?.value;
+      const year = document.getElementById('invReportYear')?.value || 2026;
+      const summary = document.getElementById('inventorySnapshotSummary');
+      const body = document.getElementById('inventorySnapshotBody');
+      const title = document.getElementById('invReportTableTitle');
+      const sub = document.getElementById('invReportTableSub');
+      if (!body) return;
+
+      body.innerHTML = `<tr><td colspan="9" style="text-align:center;padding:30px;color:var(--slate-400)">Đang tổng hợp báo cáo Xuất - Nhập - Tồn...</td></tr>`;
+
+      try {
+        let q = `year=${encodeURIComponent(year)}`;
+        if (month) q += `&month=${encodeURIComponent(month)}`;
+        const result = await api(`ManagementReport/inventory/period?${q}`);
+
+        currentPeriodInventoryItems = result.items || [];
+        const needCount = currentPeriodInventoryItems.filter(x => x.needsImport).length;
+        const okCount = currentPeriodInventoryItems.length - needCount;
+
+        const cntAll = document.getElementById('cntInvAll');
+        const cntNeed = document.getElementById('cntInvNeed');
+        const cntOk = document.getElementById('cntInvOk');
+        if (cntAll) cntAll.textContent = currentPeriodInventoryItems.length;
+        if (cntNeed) cntNeed.textContent = needCount;
+        if (cntOk) cntOk.textContent = okCount;
+
+        if (title) title.textContent = `Báo cáo Xuất - Nhập - Tồn (${result.periodLabel})`;
+        if (sub) sub.textContent = `Tồn đầu: ${Number(result.totalOpeningStock || 0).toLocaleString('vi-VN')} · Nhập: +${Number(result.totalImportQty || 0).toLocaleString('vi-VN')} · Xuất: -${Number(result.totalExportQty || 0).toLocaleString('vi-VN')} · Tồn cuối: ${Number(result.totalClosingStock || 0).toLocaleString('vi-VN')} · Tổng giá trị vốn: ${money(result.totalInventoryValue)}`;
+        if (summary) summary.textContent = `Kỳ ${result.periodLabel}: Tồn cuối ${Number(result.totalClosingStock || 0).toLocaleString('vi-VN')} sp · Giá trị: ${money(result.totalInventoryValue)} · Cần nhập: ${needCount} mã`;
+
+        filterPeriodInventory('all');
+      } catch (err) {
+        toast(`Lỗi nạp báo cáo tồn kho: ${err.message}`, 'error');
+        body.innerHTML = `<tr><td colspan="9" style="text-align:center;padding:30px;color:var(--danger)">${esc(err.message)}</td></tr>`;
+      }
+    };
+
     window.loadInventorySnapshot = async function() {
       const date = document.getElementById('inventoryAsOfDate')?.value;
       const summary = document.getElementById('inventorySnapshotSummary');
       const body = document.getElementById('inventorySnapshotBody');
+      const title = document.getElementById('invReportTableTitle');
+      const sub = document.getElementById('invReportTableSub');
       if (!date || !summary || !body) return;
       try {
         const result = await api(`ManagementReport/inventory?asOf=${encodeURIComponent(date)}`);
-        summary.textContent = `Tổng tồn: ${Number(result.totalQuantity || 0).toLocaleString('vi-VN')} · Giá trị: ${money(result.totalValue)} · Cần nhập: ${result.needsImportCount || 0} mặt hàng`;
-        body.innerHTML = (result.items || []).map(item => `
-          <tr>
-            <td><code>${esc(item.sku || '—')}</code></td>
-            <td><strong>${esc(item.productName || 'Sản phẩm')}</strong></td>
-            <td><strong>${Number(item.quantity || 0).toLocaleString('vi-VN')}</strong></td>
-            <td>${Number(item.reservedQuantity || 0).toLocaleString('vi-VN')}</td>
-            <td><strong style="color:${Number(item.availableQuantity || 0) > 0 ? 'var(--success)' : 'var(--danger)'}">${Number(item.availableQuantity || 0).toLocaleString('vi-VN')}</strong></td>
-            <td>${money(item.inventoryValue)}</td>
-            <td>${item.needsImport ? pill('Cần nhập thêm', 'warning') : pill('Đủ tồn', 'success')}</td>
-          </tr>
-        `).join('') || '<tr><td colspan="7" style="text-align:center;padding:30px;color:var(--slate-400)">Chưa có biến thể để báo cáo.</td></tr>';
+        summary.textContent = `Tại ngày ${date}: Tổng tồn: ${Number(result.totalQuantity || 0).toLocaleString('vi-VN')} · Giá trị: ${money(result.totalValue)} · Cần nhập: ${result.needsImportCount || 0} mặt hàng`;
+        if (title) title.textContent = `Tồn kho tại ngày ${date}`;
+        if (sub) sub.textContent = `Ảnh chụp dữ liệu tồn kho khả dụng tại thời điểm kết thúc ngày ${date}.`;
+        
+        currentPeriodInventoryItems = (result.items || []).map(item => ({
+          sku: item.sku,
+          productName: item.productName,
+          openingStock: item.quantity,
+          importQty: 0,
+          exportQty: 0,
+          closingStock: item.availableQuantity,
+          costPrice: item.costPrice,
+          inventoryValue: item.inventoryValue,
+          needsImport: item.needsImport
+        }));
+        filterPeriodInventory('all');
       } catch (error) {
         toast(`Không thể tải báo cáo tồn kho: ${error.message}`, 'error');
-        body.innerHTML = `<tr><td colspan="7" style="text-align:center;padding:30px;color:var(--danger)">${esc(error.message)}</td></tr>`;
+        body.innerHTML = `<tr><td colspan="9" style="text-align:center;padding:30px;color:var(--danger)">${esc(error.message)}</td></tr>`;
       }
     };
+
+    window.loadImportTodayStats = async function() {
+      try {
+        const stats = await api('ManagementReport/import-statistics');
+        const countEl = document.getElementById('importStatCount');
+        const qtyEl = document.getElementById('importStatQty');
+        const amtEl = document.getElementById('importStatAmount');
+        if (countEl) countEl.textContent = stats.receiptCount || 0;
+        if (qtyEl) qtyEl.textContent = (stats.totalItemQuantity || 0).toLocaleString('vi-VN');
+        if (amtEl) amtEl.textContent = money(stats.totalAmount || 0);
+      } catch (err) {
+        console.warn('Lỗi tải thống kê phiếu nhập hôm nay:', err);
+      }
+    };
+
+    window.filterVouchers = function(type) {
+      document.querySelectorAll('#vouchTabAll, #vouchTabActive, #vouchTabExpired, #vouchTabLow').forEach(b => b.classList.remove('active'));
+      if (type === 'all') document.getElementById('vouchTabAll')?.classList.add('active');
+      if (type === 'active') document.getElementById('vouchTabActive')?.classList.add('active');
+      if (type === 'expired') document.getElementById('vouchTabExpired')?.classList.add('active');
+      if (type === 'low') document.getElementById('vouchTabLow')?.classList.add('active');
+
+      const raw = cache['vouchers'] || [];
+      const now = new Date();
+      let filtered = raw;
+      if (type === 'active') {
+        filtered = raw.filter(r => (r.status === 1 || r.isActive === true) && (!r.endDate || new Date(r.endDate) >= now));
+      } else if (type === 'expired') {
+        filtered = raw.filter(r => r.status === 2 || (r.endDate && new Date(r.endDate) < now));
+      } else if (type === 'low') {
+        filtered = raw.filter(r => {
+          const limit = Number(r.usageLimit ?? r.maxUsage ?? 0);
+          const used = Number(r.usedCount || 0);
+          return limit > 0 && (limit - used) <= 5;
+        });
+      }
+      renderTableRows('vouchers', filtered);
+      const sumEl = document.getElementById('voucherSummaryText');
+      if (sumEl) sumEl.textContent = `Hiển thị ${filtered.length} / ${raw.length} voucher`;
+    };
+
     if (key === 'inventory') {
-      await window.loadInventorySnapshot();
+      await window.loadInventoryPeriodReport();
+    } else if (key === 'imports') {
+      await window.loadImportTodayStats();
+    } else if (key === 'vouchers') {
+      const sumEl = document.getElementById('voucherSummaryText');
+      if (sumEl) sumEl.textContent = `Tổng cộng ${cache['vouchers']?.length || 0} voucher`;
     }
   } catch (err) {
     toast(`Không thể tải dữ liệu: ${err.message}`, 'error');
@@ -2437,19 +2644,31 @@ function getRowCells(key, r) {
       const voucherExpired = voucherStatus === 2 || (r.endDate && new Date(r.endDate) < new Date());
       const usageLimit = Number(r.usageLimit ?? r.maxUsage ?? 0);
       const usedCount = Number(r.usedCount || 0);
+      const remainingUsage = usageLimit > 0 ? Math.max(0, usageLimit - usedCount) : 999999;
+      const isLowUsage = usageLimit > 0 && remainingUsage <= 5 && remainingUsage > 0;
+      const isExhausted = usageLimit > 0 && remainingUsage === 0;
+
+      let voucherPill = '';
+      if (voucherExpired) {
+        voucherPill = pill('⏰ Đã hết hạn', 'danger');
+      } else if (isExhausted) {
+        voucherPill = pill('⛔ Hết lượt dùng', 'danger');
+      } else if (isLowUsage) {
+        voucherPill = `<span class="badge" style="background:#fef3c7;color:#b45309;font-weight:700;font-size:11px;padding:3px 8px;border-radius:6px;border:1px solid #fde68a;">⚠️ Sắp hết (${remainingUsage} lượt)</span>`;
+      } else {
+        voucherPill = pill(voucherStatus === 1 ? 'Khả dụng' : 'Khóa', voucherStatus === 1 ? 'success' : 'neutral');
+      }
+
       return [
         `<code style="background:var(--primary-light);color:var(--primary);padding:4px 8px;border-radius:6px;font-weight:700;">${esc(r.code)}</code>`,
         `<strong>${esc(r.name || r.code)}</strong>${Number(r.requiredPoints || 0) > 0 ? `<br><small style="color:var(--primary);font-weight:700;">Đổi ${Number(r.requiredPoints).toLocaleString('vi-VN')} điểm</small>` : ''}`,
         `<strong>${r.discountType === 0 ? `${r.discountValue}%` : money(r.discountValue)}</strong>`,
         usageLimit > 0
-          ? `<strong>${usedCount}/${usageLimit}</strong><br><small>Còn ${Math.max(0, usageLimit - usedCount)} lượt</small>`
+          ? `<strong>${usedCount}/${usageLimit}</strong><br><small style="color:${remainingUsage <= 5 ? '#dc2626;font-weight:700;' : 'inherit;'}">Còn ${remainingUsage} lượt</small>`
           : `<strong>${usedCount}</strong><br><small>Không giới hạn</small>`,
         money(r.minimumOrderValue ?? r.minOrderAmount ?? 0),
         `${fmtDate(r.startDate)} - ${fmtDate(r.endDate || r.expiryDate)}`,
-        pill(
-          voucherExpired ? 'Đã hết hạn' : (voucherStatus === 1 ? 'Khả dụng' : 'Khóa'),
-          voucherExpired ? 'danger' : (voucherStatus === 1 ? 'success' : 'danger')
-        )
+        voucherPill
       ];
 
     case 'customers':
@@ -6332,6 +6551,13 @@ if (token && isShipperPortalUser(currentUser)) {
     if (uName) uName.textContent = currentUser.fullName || currentUser.userName || 'Admin';
     if (uRole) uRole.textContent = currentUser.role || 'Quản trị viên';
     if (uAvatar) uAvatar.textContent = (currentUser.fullName || currentUser.userName || 'AD').slice(0, 2).toUpperCase();
+
+    // Ẩn nhóm Tài chính & Hệ thống đối với vai trò Staff (Yêu cầu 14)
+    const role = String(currentUser.role || '').trim().toLowerCase();
+    const isAdminOrManager = ['admin', 'manager'].includes(role);
+    if (!isAdminOrManager) {
+      document.querySelectorAll('[data-role="admin"]').forEach(el => el.style.display = 'none');
+    }
   }
   checkApiStatus();
   loadRef().then(navigate);

@@ -49,19 +49,21 @@
           <span>Thanh lý hàng</span>
         </a>
 
-        <p class="nav-label">Vận hành & Nhập hàng</p>
+        <p class="nav-label">Bán hàng & Giao nhận COD</p>
         <a class="nav-item" href="#orders" data-view="orders">
           <span class="nav-icon">↗</span>
-          <span>Đơn hàng</span>
+          <span>Đơn hàng & Giao vận</span>
         </a>
         <a class="nav-item" href="#shippers" data-view="shippers">
           <span class="nav-icon">🚚</span>
-          <span>Shipper giao hàng</span>
+          <span>Shipper & Gom tuyến</span>
         </a>
         <a class="nav-item" href="/shipper.html" target="_blank" style="color:var(--primary);font-weight:700;">
           <span class="nav-icon">🛵</span>
           <span>Cổng Shipper App ↗</span>
         </a>
+
+        <p class="nav-label">Nhập hàng đa đối tác</p>
         <a class="nav-item" href="#suppliers" data-view="suppliers">
           <span class="nav-icon">♧</span>
           <span>Nhà cung cấp</span>
@@ -71,17 +73,20 @@
           <span>Phiếu đặt hàng NCC</span>
         </a>
 
-        <p class="nav-label">Tài chính</p>
-        <a class="nav-item" href="#collections" data-view="collections">
-          <span class="nav-icon">🏦</span>
-          <span>Thu tiền & Doanh thu</span>
-        </a>
-        <a class="nav-item" href="#cod" data-view="cod">
-          <span class="nav-icon">💵</span>
-          <span>Đối soát COD</span>
-        </a>
+        <!-- CHỈ DÀNH CHO ADMIN / MANAGER: TÁCH RIÊNG TÀI CHÍNH THU TIỀN -->
+        <div id="financeNavGroup" data-role="admin">
+          <p class="nav-label">Tài chính (Chỉ Admin)</p>
+          <a class="nav-item" href="#collections" data-view="collections">
+            <span class="nav-icon">🏦</span>
+            <span>Thu tiền & Doanh thu</span>
+          </a>
+          <a class="nav-item" href="#cod" data-view="cod">
+            <span class="nav-icon">💵</span>
+            <span>Đối soát quỹ COD</span>
+          </a>
+        </div>
 
-        <p class="nav-label">Marketing</p>
+        <p class="nav-label">Marketing & CSKH</p>
         <a class="nav-item" href="#promotions" data-view="promotions">
           <span class="nav-icon">🏷</span>
           <span>Khuyến mãi</span>
@@ -90,8 +95,6 @@
           <span class="nav-icon">🎟</span>
           <span>Voucher</span>
         </a>
-
-        <p class="nav-label">Khách hàng</p>
         <a class="nav-item" href="#customers" data-view="customers">
           <span class="nav-icon">◎</span>
           <span>Khách hàng</span>
@@ -101,11 +104,14 @@
           <span>Chăm sóc khách hàng</span>
         </a>
 
-        <p class="nav-label">Hệ thống</p>
-        <a class="nav-item" href="#users" data-view="users">
-          <span class="nav-icon">👥</span>
-          <span>Phân quyền người dùng</span>
-        </a>
+        <!-- CHỈ DÀNH CHO ADMIN: PHÂN QUYỀN HỆ THỐNG -->
+        <div id="systemNavGroup" data-role="admin">
+          <p class="nav-label">Hệ thống</p>
+          <a class="nav-item" href="#users" data-view="users">
+            <span class="nav-icon">👥</span>
+            <span>Phân quyền người dùng</span>
+          </a>
+        </div>
       </nav>
 
       <div class="sidebar-footer">

@@ -35,6 +35,31 @@ const fmtDateTime = s => {
   const date = parseUtcDate(s);
   return date ? date.toLocaleString('vi-VN', { timeZone: 'Asia/Ho_Chi_Minh' }) : '—';
 };
+const formatDeliveryWindow = shipping => {
+  if (!shipping) return '—';
+  if (shipping.estimatedDeliveryFromDate && shipping.estimatedDeliveryToDate) {
+    const f = parseUtcDate(shipping.estimatedDeliveryFromDate);
+    const t = parseUtcDate(shipping.estimatedDeliveryToDate);
+    if (f && t) {
+      const fs = f.toLocaleDateString('vi-VN');
+      const ts = t.toLocaleDateString('vi-VN');
+      return fs === ts ? fs : `${fs} - ${ts}`;
+    }
+  }
+  if (shipping.estimatedDeliveryAt) {
+    const d = parseUtcDate(shipping.estimatedDeliveryAt);
+    return d ? d.toLocaleDateString('vi-VN') : '—';
+  }
+  return '1 - 3 ngày làm việc';
+};
+const checkIsOverdue = (order, shipping) => {
+  const st = Number(shipping?.status || 0);
+  const ordSt = Number(order?.status || 0);
+  if (ordSt === 4 || ordSt === 5 || st === 4 || st === 5 || st === 6) return false;
+  const deadline = parseUtcDate(shipping?.estimatedDeliveryToDate || shipping?.estimatedDeliveryAt);
+  if (!deadline) return false;
+  return new Date() > deadline;
+};
 const shipperNotificationStorageKey = () => `toyStoreShipperNotifications:${currentShipperId || 'me'}`;
 const canSelectShipper = ['admin', 'manager', 'staff'].includes(userRole);
 const selectedShipperQuery = () => currentShipperId ? `?shipperId=${encodeURIComponent(currentShipperId)}` : '';
@@ -401,6 +426,8 @@ function renderActiveOrderCard(order) {
     const payment = order.payment || {};
     const isCod = payment.paymentMethod === 0;
     const st = Number(shipping.status || 0);
+    const isOverdue = checkIsOverdue(order, shipping);
+    const deliveryWindow = formatDeliveryWindow(shipping);
 
     const address = shipping.address || 'Chưa có địa chỉ';
     const receiverName = shipping.receiverName || order.customerName || 'Khách nhận';
@@ -415,13 +442,16 @@ function renderActiveOrderCard(order) {
     else statusBadge = `<span class="badge" style="background:#f1f5f9;color:#475569;font-weight:700;font-size:11.5px;padding:3px 8px;border-radius:6px;">Đang xử lý</span>`;
 
     return `
-      <div class="order-card in-transit" id="orderCard_${order.orderId}">
+      <div class="order-card in-transit ${isOverdue ? 'overdue-card' : ''}" id="orderCard_${order.orderId}">
         <div class="card-top">
           <div>
             <div class="order-code">#${esc(order.orderCode || order.orderId)}</div>
             ${shipping.deliveryBatchCode ? `<span class="batch-tag">📦 Lô: ${esc(shipping.deliveryBatchCode)}</span>` : ''}
           </div>
-          <div>${statusBadge}</div>
+          <div style="display:flex;flex-direction:column;align-items:flex-end;gap:4px;">
+            ${statusBadge}
+            ${isOverdue ? `<span class="badge" style="background:#fee2e2;color:#991b1b;font-weight:700;font-size:11px;padding:2px 8px;border-radius:6px;border:1px solid #f87171;">⚠️ QUÁ HẠN GIAO</span>` : ''}
+          </div>
         </div>
 
         ${renderWorkflowStepper(st, isCod, payment.codStatus)}
@@ -435,7 +465,13 @@ function renderActiveOrderCard(order) {
             <span>📍</span>
             <div>${esc(address)}</div>
           </div>
-          <div style="display:flex;gap:8px;margin-top:4px;">
+          
+          <div style="font-size:12px;color:var(--slate-600);margin-top:6px;background:#f8fafc;padding:6px 10px;border-radius:8px;border:1px solid var(--slate-200);display:flex;flex-direction:column;gap:3px;">
+            <div>📅 <b>Dự kiến giao:</b> <span style="color:#1e293b;font-weight:600;">${esc(deliveryWindow)}</span> ${isOverdue ? '<b style="color:#dc2626;">(Đã trễ hẹn!)</b>' : ''}</div>
+            <div>⏰ <b>Giờ lấy hàng tại kho:</b> ${shipping.shippedAt ? `<b style="color:#047857;">${fmtDateTime(shipping.shippedAt)}</b>` : '<span style="color:#d97706;font-style:italic;">Chưa xuất kho lấy hàng</span>'}</div>
+          </div>
+
+          <div style="display:flex;gap:8px;margin-top:6px;">
             <a href="${mapsUrl}" target="_blank" class="maps-link-btn">
               <span>🗺️ Chỉ đường Google Maps</span>
               <span>↗</span>
@@ -521,6 +557,13 @@ function renderHistoryOrderCard(order) {
         <div style="font-size:12.5px;color:var(--slate-600);margin-bottom:8px;">
           📍 ${esc(shipping.address || '—')}
         </div>
+        
+        <div style="font-size:12px;color:var(--slate-600);background:#f8fafc;padding:6px 10px;border-radius:8px;border:1px solid var(--slate-200);margin-bottom:8px;display:flex;flex-direction:column;gap:3px;">
+          <div>⏰ <b>Giờ lấy hàng tại kho:</b> ${shipping.shippedAt ? `<b style="color:#047857;">${fmtDateTime(shipping.shippedAt)}</b>` : '—'}</div>
+          <div>✅ <b>Thời điểm nhận hàng:</b> ${shipping.deliveredAt ? `<b style="color:#047857;">${fmtDateTime(shipping.deliveredAt)}</b>` : (order.completedAt ? `<b style="color:#047857;">${fmtDateTime(order.completedAt)}</b>` : '—')}</div>
+          ${isSuccess ? `<div style="color:#059669;font-weight:600;margin-top:2px;">🔒 Đơn này đã hoàn tất giao hàng — Trách nhiệm vận chuyển khép lại.</div>` : ''}
+        </div>
+
         ${!isSuccess && shipping.failReason ? `
           <div style="font-size:12px;color:var(--danger);background:#fef2f2;padding:6px 10px;border-radius:6px;border:1px solid #fecaca;margin-bottom:8px;">
             Lý do: <b>${esc(shipping.failReason)}</b> (Thử: ${shipping.attemptCount || 1} lần)

@@ -185,11 +185,20 @@ async function loadCustomerNotifications() {
             return;
         }
 
-        list.innerHTML = vouchers.map(voucher => `
-            <article class="customer-notification-item">
-                <strong>${escapeHtml(voucher.name || 'Voucher mới')}</strong>
-                <p>Mã voucher: <b>${escapeHtml(voucher.code)}</b></p>
-            </article>`).join('');
+        list.innerHTML = vouchers.map(voucher => {
+            const valText = Number(voucher.discountType) === 0 ? `${voucher.discountValue}%` : money(voucher.discountValue);
+            return `
+            <article class="customer-notification-item" style="padding:10px 12px;border-bottom:1px solid #f1f5f9;display:flex;justify-content:space-between;align-items:center;gap:8px;">
+                <div>
+                    <strong style="color:#0f172a;font-size:13px;display:block;">${escapeHtml(voucher.name || 'Voucher ưu đãi')}</strong>
+                    <div style="font-size:12px;color:#64748b;margin-top:2px;">Mã: <b style="color:var(--primary);">${escapeHtml(voucher.code)}</b> · Giảm <b>${valText}</b></div>
+                    <div style="font-size:11px;color:#94a3b8;">Đơn từ ${money(voucher.minimumOrderValue || 0)} · HSD: ${fmtVietnamDate(voucher.endDate)}</div>
+                </div>
+                <button type="button" style="padding:5px 10px;font-size:11.5px;white-space:nowrap;background:#2563eb;color:white;border:none;border-radius:6px;font-weight:700;cursor:pointer;" onclick="collectVoucherCode('${escapeHtml(voucher.code)}')">
+                    Thu thập
+                </button>
+            </article>`;
+        }).join('');
     } catch (error) {
         console.warn('Không thể tải thông báo voucher:', error.message);
         list.innerHTML = '<p class="customer-notification-empty">Không thể tải thông báo.</p>';
@@ -1124,49 +1133,103 @@ function populateCheckoutFromProfile(profile) {
 
     const phoneInput = document.getElementById('orderPhone');
     if (phoneInput) {
-        phoneInput.readOnly = Boolean(profile.phone);
-        phoneInput.title = profile.phone
-            ? 'Số điện thoại lấy từ hồ sơ khách hàng'
-            : '';
+        if (profile.phone) {
+            phoneInput.value = profile.phone;
+            phoneInput.readOnly = true;
+            phoneInput.style.backgroundColor = '#f1f5f9';
+            phoneInput.style.cursor = 'not-allowed';
+            phoneInput.title = 'Số điện thoại cố định theo tài khoản đăng nhập để bảo vệ mã giảm giá và quyền lợi thành viên';
+        } else {
+            phoneInput.readOnly = false;
+            phoneInput.style.backgroundColor = '';
+            phoneInput.style.cursor = '';
+        }
     }
 }
 
 async function loadAvailableVouchers() {
     const input = document.getElementById('orderVoucherCode');
-    if (!input) return;
+    const select = document.getElementById('orderVoucherSelect');
+    if (!input && !select) return;
 
-    let datalist = document.getElementById('availableVoucherCodes');
-    if (!datalist) {
-        datalist = document.createElement('datalist');
-        datalist.id = 'availableVoucherCodes';
-        input.parentElement?.appendChild(datalist);
+    try {
+        const response = await fetch(`${API_BASE}/api/Voucher/available`, {
+            cache: 'no-store'
+        });
+        if (!response.ok) return;
+
+        const vouchers = await response.json();
+        window.availableVouchersCache = vouchers;
+
+        if (select) {
+            select.innerHTML = '<option value="">-- Chọn nhanh mã voucher ưu đãi có sẵn --</option>' +
+                vouchers.map(v => {
+                    const discountText = Number(v.discountType) === 0 ? `${v.discountValue}%` : money(v.discountValue);
+                    const minText = Number(v.minimumOrderValue || 0) > 0 ? ` cho đơn từ ${money(v.minimumOrderValue)}` : '';
+                    const remainingText = v.remainingUses != null ? ` (còn ${v.remainingUses} lượt)` : '';
+                    return `<option value="${escapeHtml(v.code)}">[${escapeHtml(v.code)}] ${escapeHtml(v.name || 'Voucher')} - Giảm ${discountText}${minText}${remainingText}</option>`;
+                }).join('');
+        }
+
+        let datalist = document.getElementById('availableVoucherCodes');
+        if (!datalist && input) {
+            datalist = document.createElement('datalist');
+            datalist.id = 'availableVoucherCodes';
+            input.parentElement?.appendChild(datalist);
+        }
+        if (datalist) {
+            datalist.innerHTML = vouchers.map(voucher =>
+                `<option value="${escapeHtml(voucher.code)}" label="${escapeHtml(voucher.name)}"></option>`
+            ).join('');
+        }
+        if (input && datalist) input.setAttribute('list', datalist.id);
+
+        const noticeId = 'availableVoucherNotice';
+        let notice = document.getElementById(noticeId);
+        if (!notice && input) {
+            notice = document.createElement('small');
+            notice.id = noticeId;
+            notice.style.cssText = 'display:block;margin-top:5px;color:var(--primary);font-weight:600;';
+            input.parentElement?.appendChild(notice);
+        }
+        if (notice) {
+            notice.textContent = vouchers.length
+                ? `Đang có ${vouchers.length} voucher ưu đãi sẵn sàng áp dụng!`
+                : 'Hiện chưa có voucher khả dụng.';
+        }
+    } catch (e) {
+        console.warn('Không thể tải danh sách voucher:', e);
     }
-    input.setAttribute('list', datalist.id);
-
-    const response = await fetch(`${API_BASE}/api/Voucher/available`, {
-        cache: 'no-store'
-    });
-    if (!response.ok) {
-        throw new Error('Không thể tải danh sách voucher đang khả dụng.');
-    }
-
-    const vouchers = await response.json();
-    datalist.innerHTML = vouchers.map(voucher =>
-        `<option value="${escapeHtml(voucher.code)}" label="${escapeHtml(voucher.name)}"></option>`
-    ).join('');
-
-    const noticeId = 'availableVoucherNotice';
-    let notice = document.getElementById(noticeId);
-    if (!notice) {
-        notice = document.createElement('small');
-        notice.id = noticeId;
-        notice.style.cssText = 'display:block;margin-top:5px;color:var(--primary);font-weight:600;';
-        input.parentElement?.appendChild(notice);
-    }
-    notice.textContent = vouchers.length
-        ? `Voucher đang có: ${vouchers.map(voucher => voucher.code).join(', ')}`
-        : 'Hiện chưa có voucher khả dụng.';
 }
+
+window.onSelectVoucherDropdown = function(sel) {
+    const code = sel.value;
+    const input = document.getElementById('orderVoucherCode');
+    if (input) {
+        input.value = code;
+        if (code) {
+            applyVoucher();
+        } else {
+            appliedVoucher = null;
+            updateCheckoutTotal();
+            const message = document.getElementById('voucherMessage');
+            if (message) message.textContent = '';
+        }
+    }
+};
+
+window.collectVoucherCode = function(code) {
+    if (!code) return;
+    const input = document.getElementById('orderVoucherCode');
+    const select = document.getElementById('orderVoucherSelect');
+    if (input) input.value = code;
+    if (select) select.value = code;
+    try {
+        navigator.clipboard?.writeText(code);
+    } catch (_) {}
+    showToast(`Đã thu thập mã voucher ${code}! Mã đã được tự động áp dụng vào đơn hàng.`, 'success');
+    if (code) applyVoucher();
+};
 
 async function getVietnamProvinces() {
     if (!vietnamProvincesPromise) {
@@ -1970,9 +2033,27 @@ function renderOrderDetailContent(order, container) {
                 <div><span style="color:var(--text-muted);display:block;font-size:12px;">Số điện thoại</span><strong>${escapeHtml(receiverPhone)}</strong></div>
                 <div style="grid-column:1/-1;"><span style="color:var(--text-muted);display:block;font-size:12px;">Địa chỉ nhận hàng</span><strong>${escapeHtml(receiverAddress)}</strong></div>
                 <div><span style="color:var(--text-muted);display:block;font-size:12px;">Mã vận đơn</span><strong style="color:var(--accent);">${escapeHtml(trackingCode)}</strong></div>
+                <div>
+                    <span style="color:var(--text-muted);display:block;font-size:12px;">Dự kiến giao hàng</span>
+                    <strong style="color:#4f46e5;">${formatDeliveryWindow(shipping.estimatedDeliveryFromDate || shipping.estimatedDeliveryAt, shipping.estimatedDeliveryToDate)}</strong>
+                </div>
+                ${shipping.shippedAt ? `<div><span style="color:var(--text-muted);display:block;font-size:12px;">Shipper lấy hàng lúc</span><strong>${fmtVietnamDateTime(shipping.shippedAt)}</strong></div>` : ''}
+                ${(shipping.deliveredAt || shippingStatus === 4 || order.status === 4) ? `<div><span style="color:var(--text-muted);display:block;font-size:12px;">Ngày giờ nhận hàng</span><strong style="color:#059669;">${fmtVietnamDateTime(shipping.deliveredAt || order.updatedAt)}</strong></div>` : ''}
                 <div><span style="color:var(--text-muted);display:block;font-size:12px;">Trạng thái vận chuyển</span>
-                    <strong style="color:${shippingStatus === 2 ? '#059669' : (shippingStatus === 3 ? '#dc2626' : (shippingStatus === 1 ? '#2563eb' : '#d97706'))};">
-                        ${shippingStatus === 1 ? '🚚 Đang giao hàng' : (shippingStatus === 2 ? '✓ Giao thành công' : (shippingStatus === 3 ? '⚠️ Giao thất bại' : (shippingStatus === 4 ? '🔄 Đang giao lại' : (shippingStatus === 5 ? '📦 Hoàn kho' : 'Chờ xuất kho'))))}
+                    <strong style="color:${(shippingStatus === 4 || order.status === 4) ? '#059669' : (shippingStatus === 3 || order.status === 3 ? '#2563eb' : (shippingStatus === 2 ? '#0284c7' : (shippingStatus === 5 ? '#dc2626' : (shippingStatus === 6 ? '#7c3aed' : '#d97706'))))};">
+                        ${(shippingStatus === 4 || order.status === 4)
+                            ? '✓ Giao thành công'
+                            : (shippingStatus === 3 || order.status === 3)
+                                ? '🚚 Đang giao hàng'
+                                : (shippingStatus === 2)
+                                    ? '📦 Đã lấy hàng tại kho'
+                                    : (shippingStatus === 1)
+                                        ? '⏳ Đã tiếp nhận đơn'
+                                        : (shippingStatus === 5)
+                                            ? '⚠️ Giao thất bại'
+                                            : (shippingStatus === 6)
+                                                ? '↩️ Đã hoàn về kho'
+                                                : 'Chờ xuất kho'}
                     </strong>
                 </div>
 
@@ -2000,23 +2081,23 @@ function renderOrderDetailContent(order, container) {
                 </div>
                 `}
 
-                ${shippingStatus === 3 ? `
+                ${shippingStatus === 5 ? `
                 <div style="grid-column:1/-1;background:#fef2f2;border:1px solid #fecaca;border-radius:8px;padding:12px 14px;color:#991b1b;margin-top:6px;">
                     <div style="font-weight:700;font-size:13px;display:flex;align-items:center;gap:6px;margin-bottom:4px;">
                         <span>⚠️ Giao hàng không thành công (Lần ${attemptCount}/3)</span>
                     </div>
                     <div style="font-size:12.5px;color:#7f1d1d;">Lý do: <em>"${escapeHtml(failReason || 'Khách hẹn giao lại hoặc không liên lạc được')}"</em></div>
-                    <div style="font-size:11.5px;color:#b91c1c;margin-top:4px;">Đơn hàng sẽ được nhân viên giao lại hoặc liên hệ xác nhận thời gian phù hợp.</div>
+                    <div style="font-size:11.5px;color:#b91c1c;margin-top:4px;">Đơn hàng sẽ được nhân viên sắp xếp giao lại hoặc liên hệ xác nhận thời gian phù hợp.</div>
                 </div>
                 ` : ''}
 
-                ${shippingStatus === 4 ? `
+                ${shippingStatus === 3 && attemptCount > 0 ? `
                 <div style="grid-column:1/-1;background:#fffbeb;border:1px solid #fde68a;border-radius:8px;padding:10px 14px;color:#92400e;margin-top:6px;font-size:12.5px;">
-                    <strong>🔄 Đang giao lại (Lần ${attemptCount}):</strong> Shipper đang trên đường giao lại kiện hàng đến bạn.
+                    <strong>🔄 Đang giao lại (Lần ${attemptCount + 1}):</strong> Shipper đang trên đường giao lại kiện hàng đến bạn.
                 </div>
                 ` : ''}
 
-                ${shippingStatus === 5 ? `
+                ${shippingStatus === 6 ? `
                 <div style="grid-column:1/-1;background:#fef2f2;border:1px solid #f87171;border-radius:8px;padding:10px 14px;color:#991b1b;margin-top:6px;font-size:12.5px;">
                     <strong>📦 Kiện hàng đã được hoàn về kho:</strong> Do không thể liên hệ giao hàng sau 3 lần giao. Quý khách vui lòng liên hệ CSKH nếu cần đặt lại.
                 </div>

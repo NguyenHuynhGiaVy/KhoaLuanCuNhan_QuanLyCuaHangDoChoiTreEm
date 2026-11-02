@@ -8,6 +8,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:ital,wght@0,400;0,500;0,600;0,700;0,800;1,400;1,600&family=Space+Grotesk:wght@500;600;700;800&display=swap" rel="stylesheet">
+  <link rel="manifest" href="/manifest.json">
   <link rel="stylesheet" href="/css/customer.css?v=20261028-1">
   <link rel="stylesheet" href="/css/home.css?v=20260923-4">
   <link rel="stylesheet" href="/css/support-chat.css">
@@ -22,9 +23,9 @@
   </style>
 </head>
 <body>
-  <!-- TOP ANNOUNCEMENT -->
-  <div class="announcement">
-    <span>✦</span> Miễn phí giao hàng cho đơn từ 500.000đ <span>✦</span> Đổi trả trong 7 ngày <span>✦</span> Tích điểm 1% hoàn tiền <span>✦</span>
+  <!-- TOP ANNOUNCEMENT (VOUCHERS & PROMOTIONS) -->
+  <div class="announcement" id="topVoucherAnnouncement" style="cursor:pointer;" onclick="location.href='#vouchers'">
+    <span>🎁</span> <b>ƯU ĐÃI ĐỒ CHƠI HÔM NAY:</b> Nhập mã <span style="background:rgba(255,255,255,0.25);padding:2px 8px;border-radius:4px;font-weight:800;letter-spacing:0.5px;">TOY50K</span> hoặc chọn từ danh sách Voucher khi đặt hàng để giảm đến 50.000đ! <span>✦</span> Miễn phí giao hàng từ 500K <span>✦</span> Đổi trả 7 ngày <span>✦</span>
   </div>
 
   <!-- STORE HEADER -->
@@ -287,9 +288,14 @@
             <textarea id="orderNote" rows="2" placeholder="Ví dụ: Giao giờ hành chính, gọi trước khi đến..."></textarea>
           </div>
           <div class="cust-form-group">
-            <label>Mã Voucher giảm giá</label>
+            <label>Mã Voucher giảm giá (Chọn voucher có sẵn hoặc nhập mã)</label>
+            <div style="margin-bottom:6px;">
+              <select id="orderVoucherSelect" style="width:100%;padding:9px 12px;border:1.5px solid #3b82f6;border-radius:8px;font-size:13px;background:#f8fafc;font-weight:600;color:#1e293b;" onchange="onSelectVoucherDropdown(this)">
+                <option value="">-- Chọn nhanh mã voucher ưu đãi có sẵn --</option>
+              </select>
+            </div>
             <div style="display:flex;gap:8px;">
-              <input type="text" id="orderVoucherCode" placeholder="Nhập mã voucher (nếu có)">
+              <input type="text" id="orderVoucherCode" placeholder="Hoặc tự nhập mã voucher riêng">
               <button type="button" class="add-cart" id="applyVoucherBtn" style="margin:0;width:auto;white-space:nowrap;padding:8px 16px;">Áp dụng</button>
             </div>
             <small id="voucherMessage" style="color:var(--primary);font-weight:700;display:block;margin-top:4px;"></small>
@@ -434,5 +440,12 @@
   <script src="https://cdn.jsdelivr.net/npm/@microsoft/signalr@8.0.7/dist/browser/signalr.min.js"></script>
   <script src="/js/customer.js?v=20261028-1"></script>
   <script src="/js/support-chat.js"></script>
+  <script>
+    if ('serviceWorker' in navigator) {
+      window.addEventListener('load', () => {
+        navigator.serviceWorker.register('/sw.js').catch(console.warn);
+      });
+    }
+  </script>
 </body>
 </html>

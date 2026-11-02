@@ -181,16 +181,54 @@ namespace ToyStoreManagement.Infrastructure.Services
                 affectedProductIds.Add(variant.ProductId);
             }
 
+            // Áp dụng voucher và kiểm tra ràng buộc số điện thoại đối với khách hàng đăng nhập (Yêu cầu 7)
+            Voucher? appliedVoucher = null;
+            if (!string.IsNullOrWhiteSpace(dto.VoucherCode))
+            {
+                if (dto.CustomerId.HasValue)
+                {
+                    var customer = await _context.Customers.FindAsync(dto.CustomerId.Value);
+                    if (customer != null && !string.IsNullOrWhiteSpace(customer.Phone))
+                    {
+                        var normAccPhone = NormalizePhone(customer.Phone);
+                        var normReceiverPhone = NormalizePhone(dto.Shipping.ReceiverPhone);
+                        if (!string.Equals(normAccPhone, normReceiverPhone, StringComparison.OrdinalIgnoreCase))
+                        {
+                            throw new Exception("Số điện thoại nhận hàng không khớp với số điện thoại trong tài khoản khách hàng để áp dụng mã giảm giá này.");
+                        }
+                    }
+                }
+
+                appliedVoucher = await GetVoucherForCheckoutAsync(dto.VoucherCode, subtotal, dto.CustomerId);
+                if (appliedVoucher != null)
+                {
+                    order.DiscountAmount = CalculateVoucherDiscount(subtotal, appliedVoucher);
+                }
+            }
+
             order.Subtotal = subtotal;
             order.ShippingFee = subtotal >= 500000 ? 0 : 30000;
 
             order.TotalAmount =
-                order.Subtotal
-                - order.DiscountAmount
+                Math.Max(0, order.Subtotal - order.DiscountAmount)
                 + order.ShippingFee;
 
             await _orderRepository.AddAsync(order);
             await _unitOfWork.SaveChangesAsync();
+
+            if (appliedVoucher != null)
+            {
+                appliedVoucher.UsedCount += 1;
+                _context.VoucherUsages.Add(new VoucherUsage
+                {
+                    VoucherId = appliedVoucher.VoucherId,
+                    OrderId = order.OrderId,
+                    CustomerId = dto.CustomerId,
+                    DiscountAmount = order.DiscountAmount,
+                    UsedAt = DateTime.UtcNow
+                });
+                await _context.SaveChangesAsync();
+            }
 
             DateTime? estimatedDeliveryFromDate = null;
             DateTime? estimatedDeliveryToDate = null;

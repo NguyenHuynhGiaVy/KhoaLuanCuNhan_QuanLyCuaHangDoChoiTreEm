@@ -123,6 +123,121 @@ namespace ToyStoreManagement.API.Controllers
             });
         }
 
+        [HttpGet("inventory/period")]
+        public async Task<IActionResult> GetInventoryPeriodReport(
+            [FromQuery] int? month = null,
+            [FromQuery] int? year = null)
+        {
+            var now = DateTime.UtcNow.AddHours(7);
+            var selectedYear = year ?? now.Year;
+            var selectedMonth = month;
+
+            DateTime periodStart;
+            DateTime periodEnd;
+            string periodLabel;
+
+            if (selectedMonth.HasValue && selectedMonth.Value >= 1 && selectedMonth.Value <= 12)
+            {
+                periodStart = new DateTime(selectedYear, selectedMonth.Value, 1);
+                periodEnd = periodStart.AddMonths(1);
+                periodLabel = $"Tháng {selectedMonth:D2}/{selectedYear}";
+            }
+            else
+            {
+                periodStart = new DateTime(selectedYear, 1, 1);
+                periodEnd = periodStart.AddYears(1);
+                periodLabel = $"Năm {selectedYear}";
+            }
+
+            var variants = await _context.ProductVariants
+                .AsNoTracking()
+                .Select(x => new
+                {
+                    x.VariantId,
+                    x.SKU,
+                    ProductName = x.Product.Name,
+                    x.CostPrice
+                })
+                .ToListAsync();
+
+            var currentInventories = await _context.Inventories
+                .AsNoTracking()
+                .ToDictionaryAsync(x => x.VariantId);
+
+            var transactionsFromStart = await _context.InventoryTransactions
+                .AsNoTracking()
+                .Where(x => x.CreatedAt >= periodStart)
+                .GroupBy(x => x.VariantId)
+                .Select(x => new { VariantId = x.Key, Quantity = x.Sum(t => t.Quantity) })
+                .ToDictionaryAsync(x => x.VariantId, x => x.Quantity);
+
+            var periodInTransactions = await _context.InventoryTransactions
+                .AsNoTracking()
+                .Where(x => x.CreatedAt >= periodStart && x.CreatedAt < periodEnd && x.Quantity > 0)
+                .GroupBy(x => x.VariantId)
+                .Select(x => new { VariantId = x.Key, Quantity = x.Sum(t => t.Quantity) })
+                .ToDictionaryAsync(x => x.VariantId, x => x.Quantity);
+
+            var periodOutTransactions = await _context.InventoryTransactions
+                .AsNoTracking()
+                .Where(x => x.CreatedAt >= periodStart && x.CreatedAt < periodEnd && x.Quantity < 0)
+                .GroupBy(x => x.VariantId)
+                .Select(x => new { VariantId = x.Key, Quantity = Math.Abs(x.Sum(t => t.Quantity)) })
+                .ToDictionaryAsync(x => x.VariantId, x => x.Quantity);
+
+            var transactionsAfterEnd = await _context.InventoryTransactions
+                .AsNoTracking()
+                .Where(x => x.CreatedAt >= periodEnd)
+                .GroupBy(x => x.VariantId)
+                .Select(x => new { VariantId = x.Key, Quantity = x.Sum(t => t.Quantity) })
+                .ToDictionaryAsync(x => x.VariantId, x => x.Quantity);
+
+            var items = variants.Select(v =>
+            {
+                var curQty = currentInventories.TryGetValue(v.VariantId, out var inv) ? inv.Quantity : 0;
+                var netFromStart = transactionsFromStart.GetValueOrDefault(v.VariantId, 0);
+                var openingStock = Math.Max(0, curQty - netFromStart);
+                var importQty = periodInTransactions.GetValueOrDefault(v.VariantId, 0);
+                var exportQty = periodOutTransactions.GetValueOrDefault(v.VariantId, 0);
+                var netAfterEnd = transactionsAfterEnd.GetValueOrDefault(v.VariantId, 0);
+                var closingStock = Math.Max(0, curQty - netAfterEnd);
+                var inventoryValue = closingStock * v.CostPrice;
+                var needsImport = closingStock <= 10;
+
+                return new
+                {
+                    v.VariantId,
+                    v.SKU,
+                    v.ProductName,
+                    v.CostPrice,
+                    openingStock,
+                    importQty,
+                    exportQty,
+                    closingStock,
+                    inventoryValue,
+                    needsImport
+                };
+            })
+            .Where(x => x.openingStock > 0 || x.importQty > 0 || x.exportQty > 0 || x.closingStock > 0)
+            .OrderBy(x => x.needsImport ? 0 : 1)
+            .ThenBy(x => x.closingStock)
+            .ToList();
+
+            return Ok(new
+            {
+                periodLabel,
+                year = selectedYear,
+                month = selectedMonth,
+                totalOpeningStock = items.Sum(x => x.openingStock),
+                totalImportQty = items.Sum(x => x.importQty),
+                totalExportQty = items.Sum(x => x.exportQty),
+                totalClosingStock = items.Sum(x => x.closingStock),
+                totalInventoryValue = items.Sum(x => x.inventoryValue),
+                needsImportCount = items.Count(x => x.needsImport),
+                items
+            });
+        }
+
         [HttpPost("inventory/reconcile-approved-imports")]
         [Authorize(Policy = "AdminOrManager")]
         public async Task<IActionResult> ReconcileApprovedImports()
