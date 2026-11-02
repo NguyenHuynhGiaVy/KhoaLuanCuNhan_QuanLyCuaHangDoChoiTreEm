@@ -324,6 +324,8 @@ using (var scope = app.Services.CreateScope())
         await IdentitySeeder.SeedRolesAsync(roleManager);
         await IdentitySeeder.SeedAdminFromEnvironmentAsync(userManager);
         await IdentitySeeder.SeedShipperAsync(userManager);
+        await IdentitySeeder.SeedManagerAsync(userManager);
+        await IdentitySeeder.SeedStaffAsync(userManager);
     }
     catch (Exception ex)
     {

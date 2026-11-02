@@ -168,5 +168,106 @@ namespace ToyStoreManagement.Infrastructure.Data
                 await userManager.AddToRoleAsync(user, "Shipper");
             }
         }
+
+        public static async Task SeedManagerAsync(
+            UserManager<ApplicationUser> userManager)
+        {
+            var email = "manager@toystore.vn";
+            var password = "Manager@123";
+
+            var existingUser = await userManager.FindByEmailAsync(email);
+            if (existingUser != null)
+            {
+                bool needsUpdate = false;
+                if (!existingUser.IsActive)
+                {
+                    existingUser.IsActive = true;
+                    needsUpdate = true;
+                }
+
+                // Cập nhật lại mật khẩu chuẩn Manager@123
+                existingUser.PasswordHash = userManager.PasswordHasher.HashPassword(existingUser, password);
+                existingUser.SecurityStamp = Guid.NewGuid().ToString();
+                needsUpdate = true;
+
+                if (needsUpdate)
+                {
+                    await userManager.UpdateAsync(existingUser);
+                }
+
+                if (!await userManager.IsInRoleAsync(existingUser, "Manager"))
+                {
+                    await userManager.AddToRoleAsync(existingUser, "Manager");
+                }
+                return;
+            }
+
+            var user = new ApplicationUser
+            {
+                UserName = email,
+                Email = email,
+                FullName = "Nguyễn Quản Lý (Manager)",
+                PhoneNumber = "0908888999",
+                IsActive = true,
+                EmailConfirmed = true
+            };
+
+            user.PasswordHash = userManager.PasswordHasher.HashPassword(user, password);
+            var result = await userManager.CreateAsync(user);
+            if (result.Succeeded)
+            {
+                await userManager.AddToRoleAsync(user, "Manager");
+            }
+        }
+
+        public static async Task SeedStaffAsync(
+            UserManager<ApplicationUser> userManager)
+        {
+            var email = "staff@toystore.vn";
+            var password = "Staff@123";
+
+            var existingUser = await userManager.FindByEmailAsync(email);
+            if (existingUser != null)
+            {
+                bool needsUpdate = false;
+                if (!existingUser.IsActive)
+                {
+                    existingUser.IsActive = true;
+                    needsUpdate = true;
+                }
+
+                existingUser.PasswordHash = userManager.PasswordHasher.HashPassword(existingUser, password);
+                existingUser.SecurityStamp = Guid.NewGuid().ToString();
+                needsUpdate = true;
+
+                if (needsUpdate)
+                {
+                    await userManager.UpdateAsync(existingUser);
+                }
+
+                if (!await userManager.IsInRoleAsync(existingUser, "Staff"))
+                {
+                    await userManager.AddToRoleAsync(existingUser, "Staff");
+                }
+                return;
+            }
+
+            var user = new ApplicationUser
+            {
+                UserName = email,
+                Email = email,
+                FullName = "Nhân Viên Thu Ngân (Staff)",
+                PhoneNumber = "0907777888",
+                IsActive = true,
+                EmailConfirmed = true
+            };
+
+            user.PasswordHash = userManager.PasswordHasher.HashPassword(user, password);
+            var result = await userManager.CreateAsync(user);
+            if (result.Succeeded)
+            {
+                await userManager.AddToRoleAsync(user, "Staff");
+            }
+        }
     }
 }

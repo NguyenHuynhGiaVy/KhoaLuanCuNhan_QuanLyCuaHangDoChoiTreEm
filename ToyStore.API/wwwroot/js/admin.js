@@ -1792,7 +1792,7 @@ async function renderList(key) {
       ${key === 'imports' ? `
         <div style="margin:16px 24px 0;padding:16px 20px;background:linear-gradient(135deg,#eef2ff,#e0e7ff);border:1px solid #c7d2fe;border-radius:12px;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:12px;">
           <div>
-            <div style="font-size:12px;font-weight:700;color:#3730a3;text-transform:uppercase;letter-spacing:0.5px;"><span style='display:inline-flex;align-items:center;gap:6px;'>${iconSvg('package', 15)} Thống kê phiếu nhập kho hôm nay (Quy trình 1.2.3.1)</span></div>
+            <div style="font-size:12px;font-weight:700;color:#3730a3;text-transform:uppercase;letter-spacing:0.5px;"><span style='display:inline-flex;align-items:center;gap:6px;'>${iconSvg('package', 15)} Thống kê phiếu nhập kho hôm nay</span></div>
             <div style="font-size:18px;font-weight:800;color:#1e1b4b;margin-top:2px;">
               <span id="importStatCount">...</span> phiếu nhập
               <span style="font-size:13px;font-weight:600;color:#4338ca;">(Tổng <span id="importStatQty">...</span> sản phẩm)</span>
@@ -5124,7 +5124,10 @@ function renderFormFields(key, r) {
             </div>
             <div class="form-group">
               <label>Mật khẩu khởi tạo</label>
-              <input class="input-control" type="password" name="password" placeholder="Shipper@123">
+              <div class="password-input-wrap">
+                <input class="input-control" type="password" name="password" placeholder="Shipper@123">
+                <button type="button" class="btn-toggle-password" title="Hiện/Ẩn mật khẩu" aria-label="Hiện/Ẩn mật khẩu"><svg class="eye-open" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg><svg class="eye-closed" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="display:none;"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"/><line x1="1" y1="1" x2="23" y2="23"/></svg></button>
+              </div>
             </div>
           ` : ''}
           <div class="form-group full">
@@ -6409,15 +6412,24 @@ document.getElementById('adminChangePassBtn')?.addEventListener('click', () => {
           <div class="form-grid-2">
             <div class="form-group full">
               <label>Mật khẩu hiện tại *</label>
-              <input name="currentPassword" type="password" class="input-control" required placeholder="Nhập mật khẩu cũ">
+              <div class="password-input-wrap">
+                <input name="currentPassword" type="password" class="input-control" required placeholder="Nhập mật khẩu cũ">
+                <button type="button" class="btn-toggle-password" title="Hiện/Ẩn mật khẩu" aria-label="Hiện/Ẩn mật khẩu"><svg class="eye-open" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg><svg class="eye-closed" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="display:none;"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"/><line x1="1" y1="1" x2="23" y2="23"/></svg></button>
+              </div>
             </div>
             <div class="form-group">
               <label>Mật khẩu mới *</label>
-              <input name="newPassword" type="password" minlength="6" class="input-control" required placeholder="Tối thiểu 6 ký tự">
+              <div class="password-input-wrap">
+                <input name="newPassword" type="password" minlength="6" class="input-control" required placeholder="Tối thiểu 6 ký tự">
+                <button type="button" class="btn-toggle-password" title="Hiện/Ẩn mật khẩu" aria-label="Hiện/Ẩn mật khẩu"><svg class="eye-open" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg><svg class="eye-closed" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="display:none;"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"/><line x1="1" y1="1" x2="23" y2="23"/></svg></button>
+              </div>
             </div>
             <div class="form-group">
               <label>Xác nhận mật khẩu mới *</label>
-              <input name="confirmPassword" type="password" minlength="6" class="input-control" required placeholder="Nhập lại mật khẩu mới">
+              <div class="password-input-wrap">
+                <input name="confirmPassword" type="password" minlength="6" class="input-control" required placeholder="Nhập lại mật khẩu mới">
+                <button type="button" class="btn-toggle-password" title="Hiện/Ẩn mật khẩu" aria-label="Hiện/Ẩn mật khẩu"><svg class="eye-open" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg><svg class="eye-closed" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="display:none;"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"/><line x1="1" y1="1" x2="23" y2="23"/></svg></button>
+              </div>
             </div>
           </div>
         </div>
@@ -6620,3 +6632,49 @@ if (token && isShipperPortalUser(currentUser)) {
   });
   setTimeout(initOrderTrackingSignalR, 1000);
 }
+
+/* =========================================================
+   GLOBAL PASSWORD VISIBILITY TOGGLER (EYE ICON)
+   ========================================================= */
+window.togglePasswordVisibility = function(target, btn) {
+  const input = typeof target === 'string' ? document.getElementById(target) : target;
+  if (!input) return;
+  const isPass = input.type === 'password';
+  input.type = isPass ? 'text' : 'password';
+
+  if (!btn) {
+    const wrap = input.closest('.password-input-wrap');
+    if (wrap) btn = wrap.querySelector('.btn-toggle-password');
+  }
+
+  if (btn) {
+    const eyeOpen = btn.querySelector('.eye-open');
+    const eyeClosed = btn.querySelector('.eye-closed');
+    if (eyeOpen && eyeClosed) {
+      if (isPass) {
+        eyeOpen.style.display = 'none';
+        eyeClosed.style.display = 'block';
+        btn.setAttribute('title', 'Ẩn mật khẩu');
+        btn.setAttribute('aria-label', 'Ẩn mật khẩu');
+      } else {
+        eyeOpen.style.display = 'block';
+        eyeClosed.style.display = 'none';
+        btn.setAttribute('title', 'Hiện mật khẩu');
+        btn.setAttribute('aria-label', 'Hiện mật khẩu');
+      }
+    }
+  }
+};
+
+document.addEventListener('click', function(e) {
+  const toggleBtn = e.target.closest('.btn-toggle-password');
+  if (toggleBtn) {
+    e.preventDefault();
+    e.stopPropagation();
+    const wrap = toggleBtn.closest('.password-input-wrap');
+    const input = wrap ? wrap.querySelector('input') : null;
+    if (input) {
+      window.togglePasswordVisibility(input, toggleBtn);
+    }
+  }
+});

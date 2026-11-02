@@ -177,24 +177,27 @@ async function loadCustomerNotifications() {
         if (!response.ok) throw new Error(`HTTP ${response.status}`);
 
         const data = await response.json();
-        const vouchers = data.vouchers || [];
+        const rawVouchers = data.vouchers || [];
+        const collectedVouchers = getCollectedVouchers();
+        const vouchers = rawVouchers.filter(v => v.code && !collectedVouchers.includes(v.code));
+        
         badge.textContent = vouchers.length > 99 ? '99+' : String(vouchers.length);
         badge.classList.toggle('show', vouchers.length > 0);
         if (!vouchers.length) {
-            list.innerHTML = '<p class="customer-notification-empty">Hiện chưa có voucher khả dụng.</p>';
+            list.innerHTML = '<p class="customer-notification-empty">Hiện không có voucher mới (bạn đã thu thập hết).</p>';
             return;
         }
 
         list.innerHTML = vouchers.map(voucher => {
             const valText = Number(voucher.discountType) === 0 ? `${voucher.discountValue}%` : money(voucher.discountValue);
             return `
-            <article class="customer-notification-item" style="padding:10px 12px;border-bottom:1px solid #f1f5f9;display:flex;justify-content:space-between;align-items:center;gap:8px;">
+            <article class="customer-notification-item" id="notif-voucher-${escapeHtml(voucher.code)}" style="padding:10px 12px;border-bottom:1px solid #f1f5f9;display:flex;justify-content:space-between;align-items:center;gap:8px;transition:all 0.3s cubic-bezier(0.16, 1, 0.3, 1);">
                 <div>
                     <strong style="color:#0f172a;font-size:13px;display:block;">${escapeHtml(voucher.name || 'Voucher ưu đãi')}</strong>
                     <div style="font-size:12px;color:#64748b;margin-top:2px;">Mã: <b style="color:var(--primary);">${escapeHtml(voucher.code)}</b> · Giảm <b>${valText}</b></div>
                     <div style="font-size:11px;color:#94a3b8;">Đơn từ ${money(voucher.minimumOrderValue || 0)} · HSD: ${fmtVietnamDate(voucher.endDate)}</div>
                 </div>
-                <button type="button" style="padding:5px 10px;font-size:11.5px;white-space:nowrap;background:#2563eb;color:white;border:none;border-radius:6px;font-weight:700;cursor:pointer;" onclick="collectVoucherCode('${escapeHtml(voucher.code)}')">
+                <button type="button" class="btn-collect-voucher" style="padding:6px 12px;font-size:11.5px;white-space:nowrap;background:linear-gradient(135deg,#2563eb,#1d4ed8);color:white;border:none;border-radius:6px;font-weight:700;cursor:pointer;transition:all 0.2s;box-shadow:0 2px 6px rgba(37,99,235,0.25);" onclick="collectVoucherCode('${escapeHtml(voucher.code)}', this)">
                     Thu thập
                 </button>
             </article>`;
@@ -1235,8 +1238,34 @@ window.onSelectVoucherDropdown = function(sel) {
     }
 };
 
-window.collectVoucherCode = function(code) {
+// VOUCHER COLLECTION STATE PERSISTENCE (Hide collected vouchers)
+function getCollectedVouchers() {
+    try {
+        const raw = localStorage.getItem('toyStoreCollectedVouchers');
+        return raw ? JSON.parse(raw) : [];
+    } catch (_) {
+        return [];
+    }
+}
+
+function markVoucherAsCollected(code) {
     if (!code) return;
+    const list = getCollectedVouchers();
+    if (!list.includes(code)) {
+        list.push(code);
+        try {
+            localStorage.setItem('toyStoreCollectedVouchers', JSON.stringify(list));
+        } catch (_) {}
+    }
+}
+
+window.collectVoucherCode = function(code, btn) {
+    if (!code) return;
+    
+    // 1. Lưu vào danh sách đã thu thập
+    markVoucherAsCollected(code);
+
+    // 2. Điền mã vào ô nhập và dropdown chọn voucher đặt hàng
     const input = document.getElementById('orderVoucherCode');
     const select = document.getElementById('orderVoucherSelect');
     if (input) input.value = code;
@@ -1244,8 +1273,53 @@ window.collectVoucherCode = function(code) {
     try {
         navigator.clipboard?.writeText(code);
     } catch (_) {}
-    showToast(`Đã thu thập mã voucher ${code}! Mã đã được tự động áp dụng vào đơn hàng.`, 'success');
+    
+    showToast(`Đã thu thập mã voucher ${code}! Mã đã được lưu và tự động áp dụng vào đơn hàng.`, 'success');
     if (code) applyVoucher();
+
+    // 3. Biến mất khỏi danh sách thông báo với animation mượt mà
+    const itemEl = (btn && btn.closest) ? btn.closest('.customer-notification-item') : document.getElementById(`notif-voucher-${code}`);
+    if (itemEl) {
+        itemEl.style.transition = 'all 0.35s cubic-bezier(0.16, 1, 0.3, 1)';
+        itemEl.style.opacity = '0';
+        itemEl.style.transform = 'translateX(40px)';
+        itemEl.style.maxHeight = `${itemEl.offsetHeight}px`;
+        itemEl.style.overflow = 'hidden';
+        setTimeout(() => {
+            itemEl.style.maxHeight = '0';
+            itemEl.style.paddingTop = '0';
+            itemEl.style.paddingBottom = '0';
+            itemEl.style.marginTop = '0';
+            itemEl.style.marginBottom = '0';
+            itemEl.style.border = 'none';
+            setTimeout(() => {
+                itemEl.remove();
+                // Cập nhật lại số đếm badge
+                const list = document.getElementById('customerNotificationList');
+                const badge = document.getElementById('customerNotificationBadge');
+                if (list) {
+                    const remaining = list.querySelectorAll('.customer-notification-item');
+                    if (badge) {
+                        badge.textContent = remaining.length > 99 ? '99+' : String(remaining.length);
+                        badge.classList.toggle('show', remaining.length > 0);
+                    }
+                    if (remaining.length === 0) {
+                        list.innerHTML = '<p class="customer-notification-empty">Bạn đã thu thập tất cả voucher khả dụng!</p>';
+                    }
+                }
+            }, 300);
+        }, 180);
+    }
+
+    // 4. Cập nhật banner trên cùng nếu trùng mã
+    const topBar = document.getElementById('topVoucherAnnouncement');
+    if (topBar && topBar.textContent.includes(code)) {
+        const span = topBar.querySelector('span');
+        if (span) {
+            span.style.background = 'rgba(16, 185, 129, 0.4)';
+            span.innerHTML = `✓ ${escapeHtml(code)} (Đã thu thập)`;
+        }
+    }
 };
 
 async function getVietnamProvinces() {
@@ -2464,11 +2538,17 @@ function ensureCustomerAccountHtmlStructure() {
                 </div>
                 <div class="cust-form-group">
                     <label>Mật khẩu mới *</label>
-                    <input type="password" id="resetPassNewPassword" required minlength="6" placeholder="Tối thiểu 6 ký tự">
+                    <div class="password-input-wrap">
+                        <input type="password" id="resetPassNewPassword" required minlength="6" placeholder="Tối thiểu 6 ký tự">
+                        <button type="button" class="btn-toggle-password" title="Hiện/Ẩn mật khẩu" aria-label="Hiện/Ẩn mật khẩu"><svg class="eye-open" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg><svg class="eye-closed" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="display:none;"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"/><line x1="1" y1="1" x2="23" y2="23"/></svg></button>
+                    </div>
                 </div>
                 <div class="cust-form-group">
                     <label>Xác nhận mật khẩu mới *</label>
-                    <input type="password" id="resetPassConfirmPassword" required minlength="6" placeholder="Nhập lại mật khẩu">
+                    <div class="password-input-wrap">
+                        <input type="password" id="resetPassConfirmPassword" required minlength="6" placeholder="Nhập lại mật khẩu">
+                        <button type="button" class="btn-toggle-password" title="Hiện/Ẩn mật khẩu" aria-label="Hiện/Ẩn mật khẩu"><svg class="eye-open" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg><svg class="eye-closed" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="display:none;"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"/><line x1="1" y1="1" x2="23" y2="23"/></svg></button>
+                    </div>
                 </div>
                 <p id="resetPassError" style="color:var(--danger);font-size:12.5px;font-weight:700;margin-bottom:12px;"></p>
                 <button class="cart-checkout-btn" type="submit" id="resetPassSubmitBtn">Xác nhận đổi mật khẩu</button>
@@ -3048,9 +3128,23 @@ document.getElementById('clearFilters')?.addEventListener('click', () => {
 /* =========================================================
    INITIALIZATION
    ========================================================= */
+function checkTopVoucherAnnouncementState() {
+    const topBar = document.getElementById('topVoucherAnnouncement');
+    if (topBar && getCollectedVouchers().includes('TOY50K')) {
+        const btn = topBar.querySelector('.btn-top-collect');
+        if (btn) btn.style.display = 'none';
+        const span = topBar.querySelector('.voucher-code-pill');
+        if (span) {
+            span.style.background = 'rgba(16, 185, 129, 0.4)';
+            span.innerHTML = '✓ TOY50K (Đã thu thập)';
+        }
+    }
+}
+
 if (!redirectAdminPortalUser()) {
     initializeVietnamDeliveryAddress();
     loadCustomerNotifications();
+    checkTopVoucherAnnouncementState();
     updateCartCountBadge();
     checkApi();
     loadData();
@@ -3058,3 +3152,49 @@ if (!redirectAdminPortalUser()) {
     setInterval(loadData, 30000);
     setTimeout(initCustomerTrackingSignalR, 1000);
 }
+
+/* =========================================================
+   GLOBAL PASSWORD VISIBILITY TOGGLER (EYE ICON)
+   ========================================================= */
+window.togglePasswordVisibility = function(target, btn) {
+    const input = typeof target === 'string' ? document.getElementById(target) : target;
+    if (!input) return;
+    const isPass = input.type === 'password';
+    input.type = isPass ? 'text' : 'password';
+
+    if (!btn) {
+        const wrap = input.closest('.password-input-wrap');
+        if (wrap) btn = wrap.querySelector('.btn-toggle-password');
+    }
+
+    if (btn) {
+        const eyeOpen = btn.querySelector('.eye-open');
+        const eyeClosed = btn.querySelector('.eye-closed');
+        if (eyeOpen && eyeClosed) {
+            if (isPass) {
+                eyeOpen.style.display = 'none';
+                eyeClosed.style.display = 'block';
+                btn.setAttribute('title', 'Ẩn mật khẩu');
+                btn.setAttribute('aria-label', 'Ẩn mật khẩu');
+            } else {
+                eyeOpen.style.display = 'block';
+                eyeClosed.style.display = 'none';
+                btn.setAttribute('title', 'Hiện mật khẩu');
+                btn.setAttribute('aria-label', 'Hiện mật khẩu');
+            }
+        }
+    }
+};
+
+document.addEventListener('click', function(e) {
+    const toggleBtn = e.target.closest('.btn-toggle-password');
+    if (toggleBtn) {
+        e.preventDefault();
+        e.stopPropagation();
+        const wrap = toggleBtn.closest('.password-input-wrap');
+        const input = wrap ? wrap.querySelector('input') : null;
+        if (input) {
+            window.togglePasswordVisibility(input, toggleBtn);
+        }
+    }
+});
