@@ -3,169 +3,133 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <meta name="theme-color" content="#0f172a">
-  <title>ToyStore Admin - Quản Trị Cửa Hàng Đồ Chơi</title>
+  <title>ToyStore - Điều Hướng Hệ Thống</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:ital,wght@0,400;0,500;0,600;0,700;0,800;1,400;1,600&family=Space+Grotesk:wght@500;600;700;800&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="/css/admin.css?v=20260922-3">
-  <link rel="stylesheet" href="/css/support-chat.css">
-  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@500;700;800&display=swap" rel="stylesheet">
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: 'Plus Jakarta Sans', sans-serif;
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background: #0f172a;
+      color: #f8fafc;
+    }
+    .router-card {
+      background: #1e293b;
+      border: 1px solid #334155;
+      border-radius: 20px;
+      padding: 40px 32px;
+      text-align: center;
+      max-width: 420px;
+      width: 90%;
+      box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.5);
+    }
+    .logo-badge {
+      width: 56px;
+      height: 56px;
+      background: linear-gradient(135deg, #e11d48, #be123c);
+      border-radius: 14px;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 26px;
+      font-weight: 800;
+      color: white;
+      margin-bottom: 20px;
+      box-shadow: 0 10px 25px -5px rgba(225, 29, 72, 0.4);
+    }
+    h1 {
+      font-size: 20px;
+      font-weight: 800;
+      letter-spacing: -0.5px;
+      margin-bottom: 8px;
+    }
+    p {
+      color: #94a3b8;
+      font-size: 14px;
+      line-height: 1.5;
+      margin-bottom: 24px;
+    }
+    .spinner {
+      width: 32px;
+      height: 32px;
+      border: 3px solid rgba(255, 255, 255, 0.1);
+      border-radius: 50%;
+      border-top-color: #e11d48;
+      animation: spin 0.8s ease-in-out infinite;
+      margin: 0 auto 16px;
+    }
+    @keyframes spin {
+      to { transform: rotate(360deg); }
+    }
+    .quick-links {
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+      margin-top: 16px;
+      border-top: 1px solid #334155;
+      padding-top: 18px;
+    }
+    .quick-link-btn {
+      display: block;
+      padding: 10px 16px;
+      border-radius: 10px;
+      text-decoration: none;
+      font-size: 13.5px;
+      font-weight: 700;
+      transition: all 0.2s ease;
+    }
+    .btn-admin { background: #3b82f6; color: white; }
+    .btn-manager { background: #e11d48; color: white; }
+    .btn-customer { background: #334155; color: #cbd5e1; }
+    .quick-link-btn:hover { opacity: 0.9; transform: translateY(-1px); }
+  </style>
 </head>
 <body>
-  <!-- APP SHELL -->
-  <div class="app-shell">
-    <aside class="sidebar" id="sidebar">
-      <div class="brand">
-        <span class="brand-mark">T</span>
-        <span>ToyStore<span class="brand-dot">.</span></span>
-      </div>
-      <nav class="main-nav">
-        <p class="nav-label">Tổng quan</p>
-        <a class="nav-item active" href="#dashboard" data-view="dashboard">
-          <span class="nav-icon">◈</span>
-          <span>Dashboard</span>
-        </a>
+  <div class="router-card">
+    <div class="logo-badge">T</div>
+    <h1>ToyStore Management</h1>
+    <div class="spinner"></div>
+    <p id="routingStatus">Đang xác thực quyền hạn và chuyển hướng cổng làm việc...</p>
 
-        <p class="nav-label">Hàng hóa & Kho</p>
-        <a class="nav-item" href="#products" data-view="products">
-          <span class="nav-icon">▦</span>
-          <span>Sản phẩm</span>
-        </a>
-        <a class="nav-item" href="#categories" data-view="categories">
-          <span class="nav-icon">⊞</span>
-          <span>Danh mục</span>
-        </a>
-        <a class="nav-item" href="#brands" data-view="brands">
-          <span class="nav-icon">✺</span>
-          <span>Thương hiệu</span>
-        </a>
-        <a class="nav-item" href="#inventory" data-view="inventory">
-          <span class="nav-icon">▤</span>
-          <span>Tồn kho</span>
-        </a>
-        <a class="nav-item" href="#liquidation" data-view="liquidation">
-          <span class="nav-icon">♻</span>
-          <span>Thanh lý hàng</span>
-        </a>
-
-        <p class="nav-label">Bán hàng & Giao nhận COD</p>
-        <a class="nav-item" href="#orders" data-view="orders">
-          <span class="nav-icon">↗</span>
-          <span>Đơn hàng & Giao vận</span>
-        </a>
-        <a class="nav-item" href="#shippers" data-view="shippers">
-          <span class="nav-icon">🚚</span>
-          <span>Shipper & Gom tuyến</span>
-        </a>
-        <a class="nav-item" href="/shipper.html" target="_blank" style="color:var(--primary);font-weight:700;">
-          <span class="nav-icon">🛵</span>
-          <span>Cổng Shipper App ↗</span>
-        </a>
-
-        <p class="nav-label">Nhập hàng đa đối tác</p>
-        <a class="nav-item" href="#suppliers" data-view="suppliers">
-          <span class="nav-icon">♧</span>
-          <span>Nhà cung cấp</span>
-        </a>
-        <a class="nav-item" href="#imports" data-view="imports">
-          <span class="nav-icon">📦</span>
-          <span>Phiếu đặt hàng NCC</span>
-        </a>
-
-        <!-- CHỈ DÀNH CHO ADMIN / MANAGER: TÁCH RIÊNG TÀI CHÍNH THU TIỀN -->
-        <div id="financeNavGroup" data-role="admin">
-          <p class="nav-label">Tài chính (Chỉ Admin)</p>
-          <a class="nav-item" href="#collections" data-view="collections">
-            <span class="nav-icon">🏦</span>
-            <span>Thu tiền & Doanh thu</span>
-          </a>
-          <a class="nav-item" href="#cod" data-view="cod">
-            <span class="nav-icon">💵</span>
-            <span>Đối soát quỹ COD</span>
-          </a>
-        </div>
-
-        <p class="nav-label">Marketing & CSKH</p>
-        <a class="nav-item" href="#promotions" data-view="promotions">
-          <span class="nav-icon">🏷</span>
-          <span>Khuyến mãi</span>
-        </a>
-        <a class="nav-item" href="#vouchers" data-view="vouchers">
-          <span class="nav-icon">🎟</span>
-          <span>Voucher</span>
-        </a>
-        <a class="nav-item" href="#customers" data-view="customers">
-          <span class="nav-icon">◎</span>
-          <span>Khách hàng</span>
-        </a>
-        <a class="nav-item" href="#customer-care" data-view="customer-care">
-          <span class="nav-icon">💬</span>
-          <span>Chăm sóc khách hàng</span>
-        </a>
-
-        <!-- CHỈ DÀNH CHO ADMIN: PHÂN QUYỀN HỆ THỐNG -->
-        <div id="systemNavGroup" data-role="admin">
-          <p class="nav-label">Hệ thống</p>
-          <a class="nav-item" href="#users" data-view="users">
-            <span class="nav-icon">👥</span>
-            <span>Phân quyền người dùng</span>
-          </a>
-        </div>
-      </nav>
-
-      <div class="sidebar-footer">
-        <a href="/customer.html" target="_blank" class="portal-link-btn" title="Mở trang khách hàng">
-          <span>🛍</span> Xem Store Khách Hàng
-        </a>
-        <button class="logout-btn" id="logoutButton">
-          <span>↪</span> <b>Đăng xuất</b>
-        </button>
-      </div>
-    </aside>
-
-    <main class="main-content">
-      <header class="topbar">
-        <div class="breadcrumb">
-          <button class="menu-toggle" id="menuToggle" aria-label="Toggle menu">☰</button>
-          <span>ToyStore Admin</span>
-          <b>/</b>
-          <strong id="breadcrumbCurrent">Dashboard</strong>
-        </div>
-        <div class="top-actions">
-          <button class="topbar-action-btn" id="staffNotificationButton" title="Thông báo hệ thống">
-            <span>🔔</span> Thông báo <b id="staffNotificationBadge">0</b>
-          </button>
-          <button class="topbar-action-btn" id="adminChangePassBtn" title="Đổi mật khẩu tài khoản">
-            <span>🔒</span> Đổi mật khẩu
-          </button>
-          <button class="topbar-action-btn" id="apiBadge" onclick="checkApiStatus(true)" title="Kiểm tra trạng thái kết nối Backend API">
-            <span class="api-dot" id="apiDot"></span>
-            <span id="apiLabel">API Online</span>
-          </button>
-          <div class="user-menu" id="userMenuProfile">
-            <div class="avatar" id="userAvatar">AD</div>
-            <div class="user-info">
-              <b id="currentUserName">Admin</b>
-              <small id="userRole">Quản trị viên</small>
-            </div>
-          </div>
-        </div>
-      </header>
-
-      <div class="page-content" id="app">
-        <!-- Rendered in-page dynamically -->
-      </div>
-    </main>
+    <div class="quick-links" id="fallbackLinks" style="display:none;">
+      <a href="/admin.html" class="quick-link-btn btn-admin">Vào Cổng Admin (Quản trị hệ thống)</a>
+      <a href="/manager.html" class="quick-link-btn btn-manager">Vào Cổng Manager (Quản lý cửa hàng)</a>
+      <a href="/customer.html" class="quick-link-btn btn-customer">Vào Trang Store Khách Hàng</a>
+    </div>
   </div>
 
-  <!-- TOAST NOTIFICATION -->
-  <div class="toast" id="toast">
-    <span class="toast-icon" id="toastIcon">✓</span>
-    <span class="toast-msg" id="toastMsg"></span>
-  </div>
+  <script>
+    (function route() {
+      const token = localStorage.getItem('toyStoreToken') || localStorage.getItem('token') || sessionStorage.getItem('token');
+      const user = JSON.parse(localStorage.getItem('toyStoreUser') || 'null');
+      const role = String(user?.role || '').trim().toLowerCase();
 
-  <script src="https://cdn.jsdelivr.net/npm/@microsoft/signalr@8.0.7/dist/browser/signalr.min.js"></script>
-  <script src="/js/admin.js?v=20261028-4"></script>
+      if (!token || !user) {
+        location.replace('/customer.html');
+        return;
+      }
+
+      if (role === 'admin') {
+        location.replace('/admin.html' + location.hash);
+      } else if (role === 'manager' || role === 'staff') {
+        location.replace('/manager.html' + location.hash);
+      } else if (role === 'shipper') {
+        location.replace('/shipper.html');
+      } else {
+        location.replace('/customer.html');
+      }
+
+      // Sau 2.5s nếu trình duyệt chặn chuyển hướng tự động thì hiển thị nút bấm thủ công
+      setTimeout(() => {
+        document.getElementById('fallbackLinks').style.display = 'flex';
+        document.getElementById('routingStatus').textContent = 'Chọn cổng làm việc phù hợp với vai trò của bạn:';
+      }, 2500);
+    })();
+  </script>
 </body>
 </html>

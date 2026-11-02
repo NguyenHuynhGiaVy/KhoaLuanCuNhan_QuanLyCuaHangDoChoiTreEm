@@ -261,6 +261,51 @@ const productVariantsOf = product => product?.productVariants || product?.varian
 const hasAvailableStock = product => productVariantsOf(product)
   .some(variant => Number(variant.availableQuantity || 0) > 0);
 
+// ── PROFESSIONAL SVG ICONS HELPER (REPLACES ALL AI/EMOJI ICONS) ──
+function iconSvg(name, size = 16, cls = '') {
+  const s = size;
+  const c = cls ? ` class="${cls}"` : '';
+  const ICONS = {
+    view: `<svg width="${s}" height="${s}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"${c}><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>`,
+    edit: `<svg width="${s}" height="${s}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"${c}><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>`,
+    delete: `<svg width="${s}" height="${s}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"${c}><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/><line x1="10" y1="11" x2="10" y2="17"/><line x1="14" y1="11" x2="14" y2="17"/></svg>`,
+    close: `<svg width="${s}" height="${s}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"${c}><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>`,
+    check: `<svg width="${s}" height="${s}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"${c}><polyline points="20 6 9 17 4 12"/></svg>`,
+    plus: `<svg width="${s}" height="${s}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"${c}><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>`,
+    truck: `<svg width="${s}" height="${s}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"${c}><rect x="1" y="3" width="15" height="13"/><polygon points="16 8 20 8 23 11 23 16 16 16 16 8"/><circle cx="5.5" cy="18.5" r="2.5"/><circle cx="18.5" cy="18.5" r="2.5"/></svg>`,
+    bike: `<svg width="${s}" height="${s}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"${c}><circle cx="18.5" cy="17.5" r="3.5"/><circle cx="5.5" cy="17.5" r="3.5"/><circle cx="15" cy="5" r="1"/><path d="M12 17.5V14l-3-3 4-3 2 3h2"/></svg>`,
+    package: `<svg width="${s}" height="${s}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"${c}><line x1="16.5" y1="9.4" x2="7.5" y2="4.21"/><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/><polyline points="3.27 6.96 12 12.01 20.73 6.96"/><line x1="12" y1="22.08" x2="12" y2="12"/></svg>`,
+    toy: `<svg width="${s}" height="${s}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"${c}><path d="M6 2L3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4z"/><line x1="3" y1="6" x2="21" y2="6"/><path d="M16 10a4 4 0 0 1-8 0"/></svg>`,
+    users: `<svg width="${s}" height="${s}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"${c}><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>`,
+    user: `<svg width="${s}" height="${s}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"${c}><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>`,
+    lock: `<svg width="${s}" height="${s}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"${c}><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>`,
+    unlock: `<svg width="${s}" height="${s}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"${c}><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 9.9-1"/></svg>`,
+    cash: `<svg width="${s}" height="${s}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"${c}><rect x="2" y="6" width="20" height="12" rx="2"/><circle cx="12" cy="12" r="2"/><path d="M6 12h.01M18 12h.01"/></svg>`,
+    clock: `<svg width="${s}" height="${s}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"${c}><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>`,
+    chart: `<svg width="${s}" height="${s}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"${c}><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg>`,
+    card: `<svg width="${s}" height="${s}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"${c}><rect x="2" y="5" width="20" height="14" rx="2"/><line x1="2" y1="10" x2="22" y2="10"/></svg>`,
+    alert: `<svg width="${s}" height="${s}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"${c}><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>`,
+    info: `<svg width="${s}" height="${s}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"${c}><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>`,
+    calendar: `<svg width="${s}" height="${s}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"${c}><rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>`,
+    phone: `<svg width="${s}" height="${s}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"${c}><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z"/></svg>`,
+    download: `<svg width="${s}" height="${s}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"${c}><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>`,
+    refresh: `<svg width="${s}" height="${s}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"${c}><polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg>`,
+    chat: `<svg width="${s}" height="${s}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"${c}><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>`,
+    star: `<svg width="${s}" height="${s}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"${c}><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>`,
+    globe: `<svg width="${s}" height="${s}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"${c}><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg>`,
+    building: `<svg width="${s}" height="${s}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"${c}><rect x="4" y="2" width="16" height="20" rx="2" ry="2"/><line x1="9" y1="22" x2="9" y2="12"/><line x1="15" y1="22" x2="15" y2="12"/><line x1="18" y1="6" x2="18.01" y2="6"/><line x1="18" y1="10" x2="18.01" y2="10"/><line x1="6" y1="6" x2="6.01" y2="6"/><line x1="6" y1="10" x2="6.01" y2="10"/></svg>`,
+    bank: `<svg width="${s}" height="${s}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"${c}><path d="M3 21h18M3 10h18M5 10v11M9 10v11M15 10v11M19 10v11M12 2L2 7h20L12 2z"/></svg>`,
+    search: `<svg width="${s}" height="${s}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"${c}><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>`,
+    folder: `<svg width="${s}" height="${s}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"${c}><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>`,
+    sparkle: `<svg width="${s}" height="${s}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"${c}><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/></svg>`,
+    arrowRight: `<svg width="${s}" height="${s}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"${c}><line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/></svg>`,
+    arrowLeft: `<svg width="${s}" height="${s}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"${c}><line x1="19" y1="12" x2="5" y2="12"/><polyline points="12 19 5 12 12 5"/></svg>`,
+    shield: `<svg width="${s}" height="${s}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"${c}><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>`,
+    box: `<svg width="${s}" height="${s}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"${c}><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/></svg>`
+  };
+  return ICONS[name] || '';
+}
+
 function pill(text, type = 'neutral') {
   return `<span class="pill ${type}">${esc(text)}</span>`;
 }
@@ -449,7 +494,7 @@ async function renderDashboard(refreshOnly = false) {
       <div class="dashboard-filter-bar">
         <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
           <span style="font-size:13px;font-weight:700;color:var(--slate-700);display:flex;align-items:center;gap:6px;">
-            <span>📅</span> Kỳ báo cáo:
+            <span style="display:inline-flex;align-items:center;gap:6px;">${iconSvg('calendar', 15)} Kỳ báo cáo:</span>
           </span>
           <div class="dashboard-filter-pills">
             <button type="button" class="dashboard-filter-btn ${dashboardPeriod === 'today' ? 'active' : ''}" onclick="setDashboardPeriod('today')">Hôm nay</button>
@@ -486,7 +531,7 @@ async function renderDashboard(refreshOnly = false) {
       <div class="stats-grid-5">
         <!-- 1. Sản phẩm đã bán -->
         <div class="stat-card sold">
-          <div class="stat-icon-wrap sold">🧸</div>
+          <div class="stat-icon-wrap sold">${iconSvg('toy', 22)}</div>
           <div class="stat-label">Sản phẩm đã bán</div>
           <div class="stat-value" id="kpiSoldQuantity">...</div>
           <div class="stat-sub" id="kpiInventorySub">Tồn kho hiện tại: ...</div>
@@ -494,7 +539,7 @@ async function renderDashboard(refreshOnly = false) {
 
         <!-- 2. Thực thu (Đã thanh toán) -->
         <div class="stat-card paid">
-          <div class="stat-icon-wrap paid">💵</div>
+          <div class="stat-icon-wrap paid">${iconSvg('cash', 22)}</div>
           <div class="stat-label">Thực thu (Tiền về quỹ)</div>
           <div class="stat-value" id="kpiPaidAmount" style="color:#059669;">...</div>
           <div class="stat-sub" id="kpiPaidSub">Online: ... · COD: ...</div>
@@ -502,7 +547,7 @@ async function renderDashboard(refreshOnly = false) {
 
         <!-- 3. Chưa thanh toán (Công nợ & Chờ thu) -->
         <div class="stat-card unpaid">
-          <div class="stat-icon-wrap unpaid">⏳</div>
+          <div class="stat-icon-wrap unpaid">${iconSvg('clock', 22)}</div>
           <div class="stat-label">Chưa thu / Công nợ</div>
           <div class="stat-value" id="kpiUnpaidAmount" style="color:#d97706;">...</div>
           <div class="stat-sub" id="kpiUnpaidSub">Shipper giữ: ... · Đang giao: ...</div>
@@ -510,7 +555,7 @@ async function renderDashboard(refreshOnly = false) {
 
         <!-- 4. Doanh thu dự kiến -->
         <div class="stat-card expected">
-          <div class="stat-icon-wrap expected">📈</div>
+          <div class="stat-icon-wrap expected">${iconSvg('chart', 22)}</div>
           <div class="stat-label">Doanh thu dự kiến</div>
           <div class="stat-value" id="kpiExpectedRevenue" style="color:#4f46e5;">...</div>
           <div class="stat-sub" id="kpiOrdersSub">... đơn hợp lệ trong kỳ</div>
@@ -518,7 +563,7 @@ async function renderDashboard(refreshOnly = false) {
 
         <!-- 5. Vận hành & Logistics -->
         <div class="stat-card logistics">
-          <div class="stat-icon-wrap logistics">🚚</div>
+          <div class="stat-icon-wrap logistics">${iconSvg('truck', 22)}</div>
           <div class="stat-label">Giao hàng thành công</div>
           <div class="stat-value" id="kpiLogisticsRate" style="color:#db2777;">...</div>
           <div class="stat-sub" id="kpiLogisticsSub">Đang giao: ... · Hoàn: ...</div>
@@ -552,7 +597,7 @@ async function renderDashboard(refreshOnly = false) {
         <div class="panel" style="margin-bottom:0;">
           <div class="panel-header">
             <div class="panel-title-area">
-              <h2>💳 Phân bổ cơ cấu Dòng tiền trong kỳ</h2>
+              <h2 style="display:flex;align-items:center;gap:8px;">${iconSvg('card', 20)} Phân bổ cơ cấu Dòng tiền trong kỳ</h2>
               <p>Minh bạch trạng thái thanh toán và công nợ</p>
             </div>
             <button class="secondary-btn" onclick="location.hash='#collections'">Chi tiết thu tiền theo đơn →</button>
@@ -566,7 +611,7 @@ async function renderDashboard(refreshOnly = false) {
         <div class="panel" style="margin-bottom:0;">
           <div class="panel-header">
             <div class="panel-title-area">
-              <h2>🧸 Doanh thu theo Danh mục sản phẩm</h2>
+              <h2 style="display:flex;align-items:center;gap:8px;">${iconSvg('box', 20)} Doanh thu theo Danh mục sản phẩm</h2>
               <p>Top danh mục đồ chơi đóng góp doanh số cao nhất</p>
             </div>
           </div>
@@ -580,7 +625,7 @@ async function renderDashboard(refreshOnly = false) {
       <div class="panel" style="margin-bottom:28px;">
         <div class="panel-header">
           <div class="panel-title-area">
-            <h2>🚚 Hiệu suất giao hàng của đội ngũ Shipper</h2>
+            <h2 style="display:flex;align-items:center;gap:8px;">${iconSvg('truck', 20)} Hiệu suất giao hàng của đội ngũ Shipper</h2>
             <p>Theo dõi năng suất giao nhận và tiền mặt COD tài xế đang giữ</p>
           </div>
           <button class="secondary-btn" onclick="location.hash='#cod'">Đi đến Đối soát COD →</button>
@@ -615,7 +660,7 @@ async function renderDashboard(refreshOnly = false) {
         <div class="panel" style="margin-bottom:0;">
           <div class="panel-header">
             <div class="panel-title-area">
-              <h2>🏆 Top 5 Sản phẩm bán chạy nhất</h2>
+              <h2 style="display:flex;align-items:center;gap:8px;">${iconSvg('star', 20)} Top 5 Sản phẩm bán chạy nhất</h2>
               <p>Xếp theo số lượng đã bán trong kỳ</p>
             </div>
           </div>
@@ -640,7 +685,7 @@ async function renderDashboard(refreshOnly = false) {
         <div class="panel" style="margin-bottom:0;">
           <div class="panel-header">
             <div class="panel-title-area">
-              <h2>📦 Đơn hàng phát sinh gần đây</h2>
+              <h2 style="display:flex;align-items:center;gap:8px;">${iconSvg('package', 20)} Đơn hàng phát sinh gần đây</h2>
               <p>Các đơn hàng mới nhất cần xử lý</p>
             </div>
             <button class="secondary-btn" onclick="location.hash='#orders'">Xem tất cả →</button>
@@ -687,7 +732,7 @@ async function renderDashboard(refreshOnly = false) {
         <div class="panel" style="margin:0;border:1px solid #fca5a5;background:#fff7f7;">
           <div class="panel-header" style="border-bottom-color:#fecaca;">
             <div class="panel-title-area">
-              <h2 style="color:#b91c1c;">⚠️ Cảnh báo ${overdueOrders.length} đơn quá ngày giao dự kiến</h2>
+              <h2 style="color:#b91c1c;display:flex;align-items:center;gap:8px;">${iconSvg('alert', 20)} Cảnh báo ${overdueOrders.length} đơn quá ngày giao dự kiến</h2>
               <p style="color:#991b1b;">Các đơn chưa giao thành công dù đã quá hạn giao dự kiến. Vui lòng kiểm tra và xử lý.</p>
             </div>
             <button type="button" class="danger-btn" onclick="window.showOverdueOrders()">Xem và xử lý đơn quá hạn →</button>
@@ -697,7 +742,7 @@ async function renderDashboard(refreshOnly = false) {
               <div style="display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap;color:#7f1d1d;">
                 <span><strong>#${esc(order.orderCode || order.orderId)}</strong> · ${esc(order.customerName || order.shipping?.receiverName || 'Khách hàng')} · Hạn giao ${fmtDate(getOrderDeliveryDeadline(order))}</span>
                 <span style="font-weight:700;">Trễ ${daysPastDeliveryDeadline(order)} ngày
-                  <button type="button" class="icon-action-btn view" title="Xem đơn hàng" onclick="showOrderDetail(${order.orderId})">👁</button>
+                  <button type="button" class="icon-action-btn view" title="Xem đơn hàng" onclick="showOrderDetail(${order.orderId})">${iconSvg('view')}</button>
                 </span>
               </div>
             `).join('')}
@@ -813,7 +858,7 @@ async function renderDashboard(refreshOnly = false) {
         <div style="display:flex;flex-direction:column;gap:16px;">
           <div>
             <div style="display:flex;justify-content:space-between;font-size:13px;font-weight:700;">
-              <span>🌐 Thực thu Online (ZaloPay / Chuyển khoản):</span>
+              <span style="display:inline-flex;align-items:center;gap:6px;">${iconSvg('globe', 15)} Thực thu Online (ZaloPay / Chuyển khoản):</span>
               <span style="color:#2563eb;">${money(summary.onlinePaidAmount)} (${pctOnline}%)</span>
             </div>
             <div class="cashflow-progress-bar">
@@ -823,7 +868,7 @@ async function renderDashboard(refreshOnly = false) {
 
           <div>
             <div style="display:flex;justify-content:space-between;font-size:13px;font-weight:700;">
-              <span>🏢 Thực thu COD đã nộp về quỹ shop:</span>
+              <span style="display:inline-flex;align-items:center;gap:6px;">${iconSvg('building', 15)} Thực thu COD đã nộp về quỹ shop:</span>
               <span style="color:#059669;">${money(summary.codSubmittedAmount)} (${pctCodSub}%)</span>
             </div>
             <div class="cashflow-progress-bar">
@@ -833,7 +878,7 @@ async function renderDashboard(refreshOnly = false) {
 
           <div>
             <div style="display:flex;justify-content:space-between;font-size:13px;font-weight:700;">
-              <span>🛵 Tiền COD shipper đang giữ (công nợ):</span>
+              <span style="display:inline-flex;align-items:center;gap:6px;">${iconSvg('bike', 15)} Tiền COD shipper đang giữ (công nợ):</span>
               <span style="color:#d97706;">${money(summary.codHoldingAmount)} (${pctCodHold}%)</span>
             </div>
             <div class="cashflow-progress-bar">
@@ -843,7 +888,7 @@ async function renderDashboard(refreshOnly = false) {
 
           <div>
             <div style="display:flex;justify-content:space-between;font-size:13px;font-weight:700;">
-              <span>🔎 Shipper đã báo nộp, chờ admin kiểm tra:</span>
+              <span style="display:inline-flex;align-items:center;gap:6px;">${iconSvg('search', 15)} Shipper đã báo nộp, chờ admin kiểm tra:</span>
               <span style="color:#1d4ed8;">${money(summary.codPendingVerificationAmount)} (${pctCodReview}%)</span>
             </div>
             <div class="cashflow-progress-bar">
@@ -853,7 +898,7 @@ async function renderDashboard(refreshOnly = false) {
 
           <div>
             <div style="display:flex;justify-content:space-between;font-size:13px;font-weight:700;">
-              <span>⏳ Tiền chờ thu (Đơn đang đóng gói / đang giao):</span>
+              <span style="display:inline-flex;align-items:center;gap:6px;">${iconSvg('clock', 15)} Tiền chờ thu (Đơn đang đóng gói / đang giao):</span>
               <span style="color:#64748b;">${money(summary.pendingCollectionAmount)} (${pctPending}%)</span>
             </div>
             <div class="cashflow-progress-bar">
@@ -897,7 +942,7 @@ async function renderDashboard(refreshOnly = false) {
         shipBody.innerHTML = report.shipperPerformances.map(s => `
           <tr>
             <td><strong>${esc(s.fullName)}</strong></td>
-            <td><a href="tel:${esc(s.phoneNumber)}" style="color:var(--primary);text-decoration:none;">📞 ${esc(s.phoneNumber)}</a></td>
+            <td><a href="tel:${esc(s.phoneNumber)}" style="color:var(--primary);text-decoration:none;">SĐT: ${esc(s.phoneNumber)}</a></td>
             <td><span class="pill" style="background:#f1f5f9;color:#334155;">${esc(s.vehicleNumber || 'Chưa có')}</span></td>
             <td style="text-align:center;"><strong>${s.totalAssigned}</strong></td>
             <td style="text-align:center;"><span style="color:#059669;font-weight:700;">${s.completedDeliveries}</span></td>
@@ -954,7 +999,7 @@ async function renderDashboard(refreshOnly = false) {
             <td><strong style="color:var(--primary);">${money(o.finalAmount || o.totalAmount)}</strong></td>
             <td>${pill(ORDER_STATUS_LABELS[o.status] || 'Đang xử lý', o.status === 4 ? 'success' : (o.status === 5 ? 'danger' : 'warning'))}</td>
             <td style="text-align:right;">
-              <button class="icon-action-btn view" title="Xem chi tiết" onclick="showOrderDetail(${o.orderId})">👁</button>
+              <button class="icon-action-btn view" title="Xem chi tiết" onclick="showOrderDetail(${o.orderId})">${iconSvg('view')}</button>
             </td>
           </tr>
         `).join('');
@@ -1087,9 +1132,9 @@ async function renderLiquidation() {
 
     app.innerHTML = `
       <div class="stats-grid" style="margin-bottom:24px;">
-        <div class="stat-card"><div class="stat-icon-wrap prd">♻</div><div class="stat-label">Mặt hàng cần thanh lý</div><div class="stat-value">${candidates.length}</div><div class="stat-sub">Ngừng nhập mới hoặc tồn kho từ ${LIQUIDATION_STALE_DAYS} ngày</div></div>
-        <div class="stat-card"><div class="stat-icon-wrap ord">📦</div><div class="stat-label">Số lượng cần xử lý</div><div class="stat-value">${totalUnits.toLocaleString('vi-VN')}</div><div class="stat-sub">Sản phẩm còn có thể bán</div></div>
-        <div class="stat-card"><div class="stat-icon-wrap rev">💰</div><div class="stat-label">Giá trị theo giá bán</div><div class="stat-value" style="font-size:20px;">${money(totalValue)}</div><div class="stat-sub">Trước khi áp dụng ưu đãi thanh lý</div></div>
+        <div class="stat-card"><div class="stat-icon-wrap prd">${iconSvg('refresh', 20)}</div><div class="stat-label">Mặt hàng cần thanh lý</div><div class="stat-value">${candidates.length}</div><div class="stat-sub">Ngừng nhập mới hoặc tồn kho từ ${LIQUIDATION_STALE_DAYS} ngày</div></div>
+        <div class="stat-card"><div class="stat-icon-wrap ord">${iconSvg('package', 20)}</div><div class="stat-label">Số lượng cần xử lý</div><div class="stat-value">${totalUnits.toLocaleString('vi-VN')}</div><div class="stat-sub">Sản phẩm còn có thể bán</div></div>
+        <div class="stat-card"><div class="stat-icon-wrap rev">${iconSvg('cash', 20)}</div><div class="stat-label">Giá trị theo giá bán</div><div class="stat-value" style="font-size:20px;">${money(totalValue)}</div><div class="stat-sub">Trước khi áp dụng ưu đãi thanh lý</div></div>
       </div>
       <div class="panel">
         <div class="panel-header">
@@ -1295,16 +1340,16 @@ async function renderCustomerCare() {
 
     app.innerHTML = `
       <div class="stats-grid" style="margin-bottom:24px;">
-        <div class="stat-card"><div class="stat-icon-wrap cst">💬</div><div class="stat-label">Yêu cầu mới</div><div class="stat-value">${newCount}</div><div class="stat-sub">Bao gồm yêu cầu trả hàng mới</div></div>
-        <div class="stat-card"><div class="stat-icon-wrap ord">⌛</div><div class="stat-label">Đang xử lý</div><div class="stat-value">${processingCount}</div><div class="stat-sub">Phản hồi và trả hàng chờ xử lý</div></div>
-        <div class="stat-card"><div class="stat-icon-wrap rev">✓</div><div class="stat-label">Đã hoàn tất</div><div class="stat-value">${resolvedCount}</div><div class="stat-sub">Đã xử lý xong hoặc đã đóng</div></div>
+        <div class="stat-card"><div class="stat-icon-wrap cst">${iconSvg('chat', 20)}</div><div class="stat-label">Yêu cầu mới</div><div class="stat-value">${newCount}</div><div class="stat-sub">Bao gồm yêu cầu trả hàng mới</div></div>
+        <div class="stat-card"><div class="stat-icon-wrap ord">${iconSvg('clock', 20)}</div><div class="stat-label">Đang xử lý</div><div class="stat-value">${processingCount}</div><div class="stat-sub">Phản hồi và trả hàng chờ xử lý</div></div>
+        <div class="stat-card"><div class="stat-icon-wrap rev">${iconSvg('check', 20)}</div><div class="stat-label">Đã hoàn tất</div><div class="stat-value">${resolvedCount}</div><div class="stat-sub">Đã xử lý xong hoặc đã đóng</div></div>
       </div>
       <div class="panel">
         <div class="panel-header"><div class="panel-title-area"><h2>Hộp thư chăm sóc khách hàng</h2><p>Tiếp nhận, trả lời và theo dõi yêu cầu của khách hàng.</p></div></div>
         <div class="table-wrap"><table class="data-table"><thead><tr><th>Khách hàng</th><th>Nội dung yêu cầu</th><th>Loại</th><th>Đơn liên quan</th><th>Gửi lúc</th><th>Trạng thái</th><th></th></tr></thead>
           <tbody>${list.length ? list.map(item => {
             const state = customerCareStatus(item.status);
-            return `<tr><td><strong>${esc(item.customerName || 'Khách hàng')}</strong></td><td><strong>${esc(item.subject)}</strong><br><small style="color:var(--slate-500);">${esc(item.content)}</small></td><td>${esc(CUSTOMER_CARE_TYPES[Number(item.feedbackType)] || CUSTOMER_CARE_TYPES[3])}</td><td>${item.orderCode ? `<strong>#${esc(item.orderCode)}</strong>` : '—'}</td><td>${fmtDateTime(item.createdAt)}</td><td>${pill(state.label, state.pill)}</td><td style="text-align:right;"><button class="icon-action-btn view" title="Xử lý yêu cầu" onclick="showCustomerCareReply(${item.customerFeedbackId})">💬</button></td></tr>`;
+            return `<tr><td><strong>${esc(item.customerName || 'Khách hàng')}</strong></td><td><strong>${esc(item.subject)}</strong><br><small style="color:var(--slate-500);">${esc(item.content)}</small></td><td>${esc(CUSTOMER_CARE_TYPES[Number(item.feedbackType)] || CUSTOMER_CARE_TYPES[3])}</td><td>${item.orderCode ? `<strong>#${esc(item.orderCode)}</strong>` : '—'}</td><td>${fmtDateTime(item.createdAt)}</td><td>${pill(state.label, state.pill)}</td><td style="text-align:right;"><button class="icon-action-btn view" title="Xử lý yêu cầu" onclick="showCustomerCareReply(${item.customerFeedbackId})">${iconSvg('chat')}</button></td></tr>`;
           }).join('') : '<tr><td colspan="7" style="text-align:center;padding:40px;color:var(--slate-500);">Chưa có yêu cầu chăm sóc khách hàng.</td></tr>'}</tbody>
         </table></div>
       </div>
@@ -1548,10 +1593,10 @@ async function renderList(key) {
           <input type="text" id="tableSearchInput" placeholder="Tìm kiếm ${m.title.toLowerCase()}..." class="input-control" style="width:240px;padding:8px 14px;" onkeyup="filterTableData('${key}')">
           ${key === 'orders' ? `
             <a href="/data/ds_don_hang.xlsx" download="DanhSach_DonHang_ToyStore.xlsx" class="secondary-btn" style="display:inline-flex;align-items:center;gap:6px;text-decoration:none;" title="Tải file Excel lưu trữ nhiều đơn hàng">
-              <span>📥</span> Xuất Excel đơn hàng
+              <span style="display:inline-flex;align-items:center;gap:6px;">${iconSvg('download', 15)} Xuất Excel đơn hàng</span>
             </a>
             <button class="secondary-btn" onclick="showShippingBatchModal()" style="display:inline-flex;align-items:center;gap:6px;">
-              <span>🚚</span> Gợi ý gộp đơn
+              Gợi ý gộp đơn
             </button>
           ` : ''}
           ${m.canAdd ? `
@@ -1585,7 +1630,7 @@ async function renderList(key) {
                 <option value="2027">2027</option>
               </select>
             </div>
-            <button type="button" class="primary-btn" onclick="loadInventoryPeriodReport()">📊 Xem báo cáo Xuất-Nhập-Tồn kỳ</button>
+            <button type="button" class="primary-btn" onclick="loadInventoryPeriodReport()">Xem báo cáo Xuất-Nhập-Tồn kỳ</button>
 
             <div style="height:28px;width:1px;background:var(--slate-300);margin:0 4px;"></div>
 
@@ -1600,8 +1645,8 @@ async function renderList(key) {
             <div id="inventorySnapshotSummary" style="font-size:13.5px;color:var(--slate-700);font-weight:600;"></div>
             <div id="invFilterBtnGroup" style="display:flex;gap:6px;">
               <button type="button" class="order-tab-btn active" id="btnInvFilterAll" onclick="filterPeriodInventory('all')">Tất cả (<span id="cntInvAll">0</span>)</button>
-              <button type="button" class="order-tab-btn" id="btnInvFilterNeed" onclick="filterPeriodInventory('need')">⚠️ Cần nhập thêm (<span id="cntInvNeed">0</span>)</button>
-              <button type="button" class="order-tab-btn" id="btnInvFilterOk" onclick="filterPeriodInventory('ok')">✅ Đủ tồn kho (<span id="cntInvOk">0</span>)</button>
+              <button type="button" class="order-tab-btn" id="btnInvFilterNeed" onclick="filterPeriodInventory('need')">Cần nhập thêm (<span id="cntInvNeed">0</span>)</button>
+              <button type="button" class="order-tab-btn" id="btnInvFilterOk" onclick="filterPeriodInventory('ok')">Đủ tồn kho (<span id="cntInvOk">0</span>)</button>
             </div>
           </div>
         </div>
@@ -1611,9 +1656,9 @@ async function renderList(key) {
         <div style="padding:14px 24px;border-bottom:1px solid var(--slate-200);background:var(--slate-50);display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px;">
           <div style="display:flex;gap:8px;flex-wrap:wrap;">
             <button type="button" class="order-tab-btn active" id="vouchTabAll" onclick="filterVouchers('all')">Tất cả voucher</button>
-            <button type="button" class="order-tab-btn" id="vouchTabActive" onclick="filterVouchers('active')">🎟 Đang hiệu lực</button>
-            <button type="button" class="order-tab-btn" id="vouchTabExpired" onclick="filterVouchers('expired')">⏰ Đã hết hạn</button>
-            <button type="button" class="order-tab-btn" id="vouchTabLow" onclick="filterVouchers('low')">⚠️ Sắp hết lượt (≤ 5 lượt)</button>
+            <button type="button" class="order-tab-btn" id="vouchTabActive" onclick="filterVouchers('active')">Đang hiệu lực</button>
+            <button type="button" class="order-tab-btn" id="vouchTabExpired" onclick="filterVouchers('expired')">Đã hết hạn</button>
+            <button type="button" class="order-tab-btn" id="vouchTabLow" onclick="filterVouchers('low')">Sắp hết lượt (≤ 5 lượt)</button>
           </div>
           <span id="voucherSummaryText" style="font-size:12.5px;color:var(--slate-600);font-weight:600;"></span>
         </div>
@@ -1622,15 +1667,15 @@ async function renderList(key) {
       ${key === 'orders' ? `
         <div class="order-tabs-container">
           <button type="button" class="order-tab-btn ${orderActiveTab === 'processing' ? 'active' : ''}" onclick="switchOrderTab('processing')">
-            <span>⚡ Đang xử lý</span>
+            <span>Đang xử lý</span>
             <span class="order-tab-badge" id="orderTabProcessingCount">0</span>
           </button>
           <button type="button" class="order-tab-btn ${orderActiveTab === 'history' ? 'active' : ''}" onclick="switchOrderTab('history')">
-            <span>🏁 Lịch sử đơn hàng</span>
+            <span>Lịch sử đơn hàng</span>
             <span class="order-tab-badge" id="orderTabHistoryCount">0</span>
           </button>
           <button type="button" class="order-tab-btn ${orderActiveTab === 'all' ? 'active' : ''}" onclick="switchOrderTab('all')">
-            <span>📋 Tất cả đơn</span>
+            <span>Tất cả đơn</span>
             <span class="order-tab-badge" id="orderTabAllCount">0</span>
           </button>
         </div>
@@ -1672,7 +1717,7 @@ async function renderList(key) {
                 <option value="">-- Tất cả trạng thái giao --</option>
                 <option value="delivered">Đã giao</option>
                 <option value="not-delivered">Chưa giao</option>
-                <option value="overdue">⚠️ Quá ngày giao, chưa giao</option>
+                <option value="overdue">Quá hạn giao dự kiến</option>
                 <option value="in-delivery">Đang giao</option>
                 <option value="failed">Giao thất bại / Hoàn kho</option>
               </select>
@@ -1747,7 +1792,7 @@ async function renderList(key) {
       ${key === 'imports' ? `
         <div style="margin:16px 24px 0;padding:16px 20px;background:linear-gradient(135deg,#eef2ff,#e0e7ff);border:1px solid #c7d2fe;border-radius:12px;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:12px;">
           <div>
-            <div style="font-size:12px;font-weight:700;color:#3730a3;text-transform:uppercase;letter-spacing:0.5px;">📦 Thống kê phiếu nhập kho hôm nay (Quy trình 1.2.3.1)</div>
+            <div style="font-size:12px;font-weight:700;color:#3730a3;text-transform:uppercase;letter-spacing:0.5px;"><span style='display:inline-flex;align-items:center;gap:6px;'>${iconSvg('package', 15)} Thống kê phiếu nhập kho hôm nay (Quy trình 1.2.3.1)</span></div>
             <div style="font-size:18px;font-weight:800;color:#1e1b4b;margin-top:2px;">
               <span id="importStatCount">...</span> phiếu nhập
               <span style="font-size:13px;font-weight:600;color:#4338ca;">(Tổng <span id="importStatQty">...</span> sản phẩm)</span>
@@ -1803,28 +1848,28 @@ async function renderList(key) {
       ${key === 'cod' ? `
         <div class="cod-summary-bar" id="codSummaryCards">
           <div class="cod-kpi-card">
-            <div class="cod-kpi-icon" style="background:#fef3c7;color:#b45309;">⏳</div>
+            <div class="cod-kpi-icon" style="background:#fef3c7;color:#b45309;">${iconSvg('clock', 18)}</div>
             <div>
               <div class="cod-kpi-val" id="codHoldingAmount" style="color:#b45309;">0 đ</div>
               <div class="cod-kpi-label">Shipper đang giữ (cần nộp)</div>
             </div>
           </div>
           <div class="cod-kpi-card">
-            <div class="cod-kpi-icon" style="background:#fef3c7;color:#b45309;">🔎</div>
+            <div class="cod-kpi-icon" style="background:#eff6ff;color:#1d4ed8;">${iconSvg('search', 18)}</div>
             <div>
               <div class="cod-kpi-val" id="codPendingVerificationAmount" style="color:#b45309;">0 đ</div>
               <div class="cod-kpi-label">Đã báo nộp, chờ kiểm tra</div>
             </div>
           </div>
           <div class="cod-kpi-card">
-            <div class="cod-kpi-icon" style="background:#ecfdf5;color:#047857;">🏦</div>
+            <div class="cod-kpi-icon" style="background:#ecfdf5;color:#047857;">${iconSvg('bank', 18)}</div>
             <div>
               <div class="cod-kpi-val" id="codSubmittedAmount" style="color:#047857;">0 đ</div>
               <div class="cod-kpi-label">Admin đã xác nhận vào quỹ</div>
             </div>
           </div>
           <div class="cod-kpi-card">
-            <div class="cod-kpi-icon" style="background:#eff6ff;color:#1d4ed8;">📦</div>
+            <div class="cod-kpi-icon" style="background:#f1f5f9;color:#475569;">${iconSvg('package', 18)}</div>
             <div>
               <div class="cod-kpi-val" id="codTotalCount" style="color:#1d4ed8;">0</div>
               <div class="cod-kpi-label">Số khoản COD đang theo dõi</div>
@@ -1939,8 +1984,8 @@ async function renderList(key) {
           <td style="text-align:right;"><strong>${money(item.inventoryValue)}</strong></td>
           <td style="text-align:center;">
             ${item.needsImport 
-              ? `<span class="badge" style="background:#fee2e2;color:#991b1b;font-weight:700;padding:4px 8px;border-radius:6px;border:1px solid #f87171;">⚠️ CẦN NHẬP THÊM</span>` 
-              : `<span class="badge" style="background:#ecfdf5;color:#047857;font-weight:700;padding:4px 8px;border-radius:6px;border:1px solid #a7f3d0;">✅ ĐỦ TỒN KHO</span>`}
+              ? `<span class="badge" style="background:#fee2e2;color:#991b1b;font-weight:700;padding:4px 8px;border-radius:6px;border:1px solid #f87171;">CẦN NHẬP THÊM</span>` 
+              : `<span class="badge" style="background:#ecfdf5;color:#047857;font-weight:700;padding:4px 8px;border-radius:6px;border:1px solid #a7f3d0;">ĐỦ TỒN KHO</span>`}
           </td>
         </tr>
       `).join('');
@@ -2560,7 +2605,7 @@ function getRowCells(key, r) {
         `<strong style="color:var(--primary);">${money(r.finalAmount || r.totalAmount)}</strong>`,
         pill(r.paymentStatus === 1 ? 'Đã thanh toán' : 'Chưa thanh toán', r.paymentStatus === 1 ? 'success' : 'neutral'),
         pill(ORDER_STATUS_LABELS[r.status] || 'Đang xử lý', r.status === 4 ? 'success' : (r.status === 5 ? 'danger' : 'warning')),
-        `${getDeliveryStatusBadge(r)}${isOrderOverdueUndelivered(r) ? `<br><span class="pill danger" style="display:inline-block;margin-top:4px;">⚠️ Quá hạn ${daysPastDeliveryDeadline(r)} ngày</span>` : ''}`,
+        `${getDeliveryStatusBadge(r)}${isOrderOverdueUndelivered(r) ? `<br><span class="pill danger" style="display:inline-block;margin-top:4px;">Quá hạn ${daysPastDeliveryDeadline(r)} ngày</span>` : ''}`,
         fmtDateTime(r.shipping?.shippedAt),
         fmtDateTime(r.shipping?.deliveryStartedAt),
         fmtDateTime(r.shipping?.deliveredAt),
@@ -2594,10 +2639,10 @@ function getRowCells(key, r) {
         r.deliveryBatchCode ? `<span class="badge" style="background:#e0e7ff;color:#3730a3;font-weight:700;">${esc(r.deliveryBatchCode)}</span>` : '—',
         fmtDateTime(r.codCollectedAt),
         r.codStatus === 3
-          ? `<span class="badge" style="background:#ecfdf5;color:#047857;font-weight:700;">✅ Admin đã xác nhận</span>`
+          ? `<span class="badge" style="background:#ecfdf5;color:#047857;font-weight:700;">Admin đã xác nhận</span>`
           : r.codStatus === 2
-            ? `<span class="badge" style="background:#eff6ff;color:#1d4ed8;font-weight:700;">🔎 Chờ admin kiểm tra</span>`
-            : `<span class="badge" style="background:#fef3c7;color:#b45309;font-weight:700;">⏳ Shipper đang giữ tiền</span>`
+            ? `<span class="badge" style="background:#eff6ff;color:#1d4ed8;font-weight:700;">Chờ admin kiểm tra</span>`
+            : `<span class="badge" style="background:#fef3c7;color:#b45309;font-weight:700;">Shipper đang giữ tiền</span>`
       ];
     }
 
@@ -2650,11 +2695,11 @@ function getRowCells(key, r) {
 
       let voucherPill = '';
       if (voucherExpired) {
-        voucherPill = pill('⏰ Đã hết hạn', 'danger');
+        voucherPill = pill('Đã hết hạn', 'danger');
       } else if (isExhausted) {
-        voucherPill = pill('⛔ Hết lượt dùng', 'danger');
+        voucherPill = pill('Hết lượt dùng', 'danger');
       } else if (isLowUsage) {
-        voucherPill = `<span class="badge" style="background:#fef3c7;color:#b45309;font-weight:700;font-size:11px;padding:3px 8px;border-radius:6px;border:1px solid #fde68a;">⚠️ Sắp hết (${remainingUsage} lượt)</span>`;
+        voucherPill = `<span class="badge" style="background:#fef3c7;color:#b45309;font-weight:700;font-size:11px;padding:3px 8px;border-radius:6px;border:1px solid #fde68a;">Sắp hết (${remainingUsage} lượt)</span>`;
       } else {
         voucherPill = pill(voucherStatus === 1 ? 'Khả dụng' : 'Khóa', voucherStatus === 1 ? 'success' : 'neutral');
       }
@@ -2700,47 +2745,47 @@ function getRowActions(key, r, index) {
   let btns = '';
 
   if (key === 'imports') {
-    btns += `<button class="icon-action-btn view" title="Xem chi tiết & Duyệt nhập kho" onclick="showImportDetail(${r.importReceiptId})">👁</button> `;
+    btns += `<button class="icon-action-btn view" title="Xem chi tiết & Duyệt nhập kho" onclick="showImportDetail(${r.importReceiptId})">${iconSvg('view')}</button> `;
     if (r.status === 1) {
-      btns += `<button class="icon-action-btn" title="Chỉnh sửa phiếu" onclick="showForm('imports', ${index})">✎</button> `;
-      btns += `<button class="icon-action-btn del" title="Hủy / Xóa phiếu" onclick="confirmDelete('${key}', ${index})">🗑</button>`;
+      btns += `<button class="icon-action-btn" title="Chỉnh sửa phiếu" onclick="showForm('imports', ${index})">${iconSvg('edit')}</button> `;
+      btns += `<button class="icon-action-btn del" title="Hủy / Xóa phiếu" onclick="confirmDelete('${key}', ${index})">${iconSvg('delete')}</button>`;
     }
     return btns;
   }
 
   if (key === 'orders') {
-    let actionBtns = `<button class="icon-action-btn view" title="Xem chi tiết đơn hàng" onclick="showOrderDetail(${r.orderId})">👁</button>`;
+    let actionBtns = `<button class="icon-action-btn view" title="Xem chi tiết đơn hàng" onclick="showOrderDetail(${r.orderId})">${iconSvg('view')}</button>`;
     if (r.shipping?.deliveryBatchCode && Number(r.status) < 3) {
-      actionBtns += ` <button class="icon-action-btn del" title="Gỡ đơn này khỏi mã lô" onclick="unbatchOrderAction(${r.orderId})">✕</button>`;
+      actionBtns += ` <button class="icon-action-btn del" title="Gỡ đơn này khỏi mã lô" onclick="unbatchOrderAction(${r.orderId})">${iconSvg('close')}</button>`;
     }
     if (Number(r.status) < 4) {
-      actionBtns += ` <button class="icon-action-btn" title="Gán / Đổi nhân viên giao hàng" onclick="showAssignShipperModal(${r.orderId}, '${esc(r.shipping?.deliveryBatchCode || '')}')">🚚</button>`;
+      actionBtns += ` <button class="icon-action-btn" title="Gán / Đổi nhân viên giao hàng" onclick="showAssignShipperModal(${r.orderId}, '${esc(r.shipping?.deliveryBatchCode || '')}')">${iconSvg('truck')}</button>`;
     }
     return actionBtns;
   }
 
   if (key === 'cod') {
     if (r.codStatus === 2) {
-      return `<button class="primary-btn" style="padding:4px 10px;font-size:12px;white-space:nowrap;" onclick="confirmSingleCodSubmission(${r.paymentId}, null, ${Number(r.storeAmount) || 0})">✓ Xác nhận đã nhận</button>`;
+      return `<button class="primary-btn icon-text-btn" style="padding:4px 10px;font-size:12px;white-space:nowrap;" onclick="confirmSingleCodSubmission(${r.paymentId}, null, ${Number(r.storeAmount) || 0})">${iconSvg('check', 14)} Xác nhận đã nhận</button>`;
     }
     if (r.codStatus === 1) {
       return `<span style="color:#b45309;font-size:12px;font-weight:700;">Chờ shipper nộp</span>`;
     }
-    return `<span style="color:#059669;font-size:12px;font-weight:700;">✓ Đã xác nhận</span>`;
+    return `<span style="color:#059669;font-size:12px;font-weight:700;">Đã xác nhận</span>`;
   }
 
   if (key === 'users') {
     return `
-      <button class="icon-action-btn" title="Phân quyền vai trò" onclick="showUserRoleForm(${index})">👥</button>
-      <button class="icon-action-btn ${r.isActive !== false ? 'del' : ''}" title="${r.isActive !== false ? 'Khóa tài khoản' : 'Mở khóa'}" onclick="toggleUserStatus('${r.userId || r.id}')">${r.isActive !== false ? '🔒' : '🔓'}</button>
+      <button class="icon-action-btn" title="Phân quyền vai trò" onclick="showUserRoleForm(${index})">${iconSvg('users')}</button>
+      <button class="icon-action-btn ${r.isActive !== false ? 'del' : ''}" title="${r.isActive !== false ? 'Khóa tài khoản' : 'Mở khóa'}" onclick="toggleUserStatus('${r.userId || r.id}')">${r.isActive !== false ? iconSvg('lock') : iconSvg('unlock')}</button>
     `;
   }
 
   if (m.canEdit) {
-    btns += `<button class="icon-action-btn" title="Chỉnh sửa" onclick="showForm('${key}', ${index})">✎</button> `;
+    btns += `<button class="icon-action-btn" title="Chỉnh sửa" onclick="showForm('${key}', ${index})">${iconSvg('edit')}</button> `;
   }
   if (m.canDelete) {
-    btns += `<button class="icon-action-btn del" title="Xóa" onclick="confirmDelete('${key}', ${index})">🗑</button>`;
+    btns += `<button class="icon-action-btn del" title="Xóa" onclick="confirmDelete('${key}', ${index})">${iconSvg('delete')}</button>`;
   }
   return btns;
 }
@@ -2776,10 +2821,10 @@ function showForm(key, index = null) {
           <button type="button" class="ghost-btn" onclick="renderList('${key}')">Hủy bỏ</button>
           ${key === 'imports' ? `
             <button type="button" class="secondary-btn" onclick="submitImportReceiptForm(false, ${index})" style="background:var(--slate-100);color:var(--slate-700);border:1px solid var(--slate-300);">
-              💾 Lưu tạm (Chờ duyệt)
+              Lưu tạm (Chờ duyệt)
             </button>
             <button type="button" class="success-btn" onclick="submitImportReceiptForm(true, ${index})">
-              ✓ Hoàn tất nhập kho &amp; Mở bán
+              Hoàn tất nhập kho &amp; Mở bán
             </button>
           ` : `
             <button type="submit" class="primary-btn">Lưu ${m.title}</button>
@@ -2795,7 +2840,7 @@ function renderVariantAttributeRow(attribute = {}) {
     <div class="variant-attribute-row" style="display:grid;grid-template-columns:1fr 1fr auto;gap:8px;margin-top:8px;">
       <input type="text" class="input-control variant-attribute-name" value="${esc(attribute.attributeName)}" placeholder="Tên thuộc tính, ví dụ: Màu sắc">
       <input type="text" class="input-control variant-attribute-value" value="${esc(attribute.attributeValue)}" placeholder="Giá trị, ví dụ: Đỏ">
-      <button type="button" class="icon-action-btn del" title="Bỏ thuộc tính" onclick="removeVariantAttributeRow(this)">✕</button>
+      <button type="button" class="icon-action-btn del" title="Bỏ thuộc tính" onclick="removeVariantAttributeRow(this)">${iconSvg('close')}</button>
     </div>`;
 }
 
@@ -2836,7 +2881,7 @@ function renderProductVariantEditor(variant = {}) {
           <div style="display:flex;gap:6px;">
             <input type="url" class="input-control variant-image-url" id="varImg_${rowKey}" value="${esc(variant.imageUrl)}" placeholder="https://example.com/bien-the.jpg" style="flex:1;">
             <label class="secondary-btn" style="padding:6px 10px;cursor:pointer;display:inline-flex;align-items:center;gap:4px;font-size:12px;margin:0;" title="Tải ảnh từ máy">
-              📁 Tải ảnh
+              Tải ảnh
               <input type="file" accept="image/*" style="display:none;" onchange="handleFileInputForControl(this, 'varImg_${rowKey}', 'varImgPrev_${rowKey}')">
             </label>
           </div>
@@ -3141,7 +3186,7 @@ function renderProduct2ColView() {
         </div>
         <div style="display:flex;gap:10px;">
           <button type="button" class="ghost-btn" onclick="renderList('products')">Hủy bỏ</button>
-          <button type="button" class="primary-btn" onclick="saveProduct2ColForm()">✓ ${isEdit ? 'Lưu thay đổi sản phẩm' : 'Tạo mới sản phẩm'}</button>
+          <button type="button" class="primary-btn" onclick="saveProduct2ColForm()">${isEdit ? 'Lưu thay đổi sản phẩm' : 'Tạo mới sản phẩm'}</button>
         </div>
       </div>
 
@@ -3235,7 +3280,7 @@ function renderProduct2ColView() {
                 <div style="display:flex;gap:8px;align-items:center;">
                   <input id="p2c_imageUrl" class="input-control" value="${esc(p.imageUrl || '')}" placeholder="https://... hoặc tải từ máy" oninput="updateImagePreview(this.value)" style="flex:1;">
                   <label class="secondary-btn" style="padding:7px 12px;cursor:pointer;display:inline-flex;align-items:center;gap:6px;font-size:12.5px;white-space:nowrap;margin:0;" title="Chọn file từ máy tính">
-                    📁 Tải ảnh từ máy
+                    Tải ảnh từ máy
                     <input type="file" accept="image/*" style="display:none;" onchange="handleFileInputForControl(this, 'p2c_imageUrl', 'p2c_imgPreviewElement')">
                   </label>
                 </div>
@@ -3285,7 +3330,7 @@ function renderProduct2ColView() {
 
       <div class="form-footer-actions">
         <button type="button" class="ghost-btn" onclick="renderList('products')">Hủy bỏ</button>
-        <button type="button" class="primary-btn" onclick="saveProduct2ColForm()">✓ ${isEdit ? 'Lưu thay đổi sản phẩm' : 'Tạo mới sản phẩm'}</button>
+        <button type="button" class="primary-btn" onclick="saveProduct2ColForm()">${isEdit ? 'Lưu thay đổi sản phẩm' : 'Tạo mới sản phẩm'}</button>
       </div>
     </div>
   `;
@@ -3310,17 +3355,17 @@ function renderP2CSupplierChips() {
       return `
         <div class="supplier-chip" style="display:inline-flex;align-items:center;gap:8px;padding:6px 12px;border-radius:20px;background:${isDef ? 'var(--primary-light, #e0e7ff)' : '#fff'};border:1px solid ${isDef ? 'var(--primary, #6366f1)' : 'var(--slate-200, #e2e8f0)'};box-shadow:0 1px 2px rgba(0,0,0,0.05);font-size:13px;transition:all 0.2s ease;">
           <span style="font-weight:${isDef ? '600' : '500'};color:${isDef ? 'var(--primary-dark, #4338ca)' : 'var(--slate-800, #1e293b)'};">
-            🏢 ${esc(s.supplierName || 'NCC #' + s.supplierId)}
+            ${esc(s.supplierName || 'NCC #' + s.supplierId)}
           </span>
           ${list.length > 1 ? `
             <button type="button" onclick="handleSetDefaultSupplier(${s.supplierId})" title="${isDef ? 'Nhà cung cấp chính' : 'Nhấp để đặt làm NCC mặc định'}" style="background:none;border:none;cursor:pointer;padding:2px 8px;border-radius:12px;font-size:11px;font-weight:600;display:inline-flex;align-items:center;gap:3px;${isDef ? 'background:var(--primary, #6366f1);color:#fff;' : 'background:var(--slate-100, #f1f5f9);color:var(--slate-600, #475569);'}">
-              ${isDef ? '★ NCC Chính' : '☆ Đặt làm chính'}
+              ${isDef ? 'NCC Chính' : 'Đặt làm chính'}
             </button>
           ` : `
-            <span style="background:var(--primary, #6366f1);color:#fff;font-size:11px;font-weight:600;padding:2px 8px;border-radius:12px;">★ NCC Chính</span>
+            <span style="background:var(--primary, #6366f1);color:#fff;font-size:11px;font-weight:600;padding:2px 8px;border-radius:12px;">NCC Chính</span>
           `}
           <button type="button" onclick="handleRemoveSupplierFromProduct(${s.supplierId})" title="Gỡ liên kết nhà cung cấp này" style="background:none;border:none;cursor:pointer;color:var(--slate-400, #94a3b8);font-size:15px;line-height:1;display:flex;align-items:center;padding:0 2px;">
-            ✕
+            &times;
           </button>
         </div>
       `;
@@ -3430,7 +3475,7 @@ function renderProduct2ColRight() {
         </div>
         <div style="display:flex;gap:8px;flex-wrap:wrap;">
           <button type="button" class="secondary-btn" style="padding:8px 14px;font-size:12.5px;" onclick="generateVariantMatrix()">
-            ⚡ Tạo tổ hợp tự động
+            Tạo tổ hợp tự động
           </button>
           <button type="button" class="secondary-btn" style="padding:8px 14px;font-size:12.5px;" onclick="addManualVariantRow()">
             + Thêm dòng biến thể
@@ -3470,7 +3515,7 @@ function renderAttributeValuesBoxes() {
           ${attr.values.map(val => `
             <span class="attr-val-tag">
               <span>${esc(val)}</span>
-              <span class="tag-remove" onclick="removeValueFromAttribute('${esc(attr.name)}', '${esc(val)}')">✕</span>
+              <span class="tag-remove" onclick="removeValueFromAttribute('${esc(attr.name)}', '${esc(val)}')">×</span>
             </span>
           `).join('')}
           ${attr.values.length === 0 ? '<span style="font-size:12px;color:var(--slate-400);font-style:italic;">Chưa có giá trị nào (nhập bên dưới để thêm)</span>' : ''}
@@ -3491,7 +3536,7 @@ function renderMatrixTableHtml() {
   if (rows.length === 0) {
     return `
       <div style="text-align:center;padding:30px;color:var(--slate-400);background:var(--slate-50);border-radius:8px;border:1px dashed var(--slate-300);">
-        Chưa có biến thể nào. Hãy bấm <b>"⚡ Tạo tổ hợp tự động"</b> hoặc <b>"+ Thêm dòng biến thể"</b> để bắt đầu cấu hình.
+        Chưa có biến thể nào. Hãy bấm <b>"Tạo tổ hợp tự động"</b> hoặc <b>"+ Thêm dòng biến thể"</b> để bắt đầu cấu hình.
       </div>
     `;
   }
@@ -3544,14 +3589,14 @@ function renderMatrixTableHtml() {
                   <div style="display:flex;align-items:center;gap:4px;">
                     <input type="url" class="matrix-input matrix-image" id="img_${idx}" value="${esc(row.imageUrl || '')}" placeholder="URL hoặc tải..." oninput="onMatrixImageInput(${idx}, this.value)" style="flex:1;">
                     <label class="secondary-btn" style="padding:4px 6px;cursor:pointer;font-size:11px;margin:0;display:inline-flex;align-items:center;" title="Tải ảnh từ máy tính">
-                      📁
+                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>
                       <input type="file" accept="image/*" style="display:none;" onchange="handleVariantMatrixFileUpload(this, ${idx})">
                     </label>
                   </div>
                   ${row.imageUrl ? `<img src="${esc(row.imageUrl)}" class="matrix-preview-thumb" style="width:28px;height:28px;object-fit:cover;border-radius:4px;border:1px solid #cbd5e1;margin-top:4px;display:block;">` : ''}
                 </td>
                 <td style="text-align:center;">
-                  <button type="button" class="icon-action-btn del" title="Xóa dòng biến thể" onclick="removeMatrixRow(${idx})">✕</button>
+                  <button type="button" class="icon-action-btn del" title="Xóa dòng biến thể" onclick="removeMatrixRow(${idx})">${iconSvg('close')}</button>
                 </td>
               </tr>
             `;
@@ -3560,7 +3605,7 @@ function renderMatrixTableHtml() {
       </table>
     </div>
     <div style="margin-top:8px;font-size:12px;color:var(--slate-500);font-style:italic;display:flex;align-items:center;gap:6px;">
-      <span>💡</span>
+      
       <span>* <b>Giá bán dự kiến</b>: Có thể để trống và cập nhật chính thức khi làm phiếu nhập kho.</span>
     </div>
   `;
@@ -4083,7 +4128,7 @@ function validateMatrixCombinations() {
       alertEl.style.display = 'block';
       alertEl.innerHTML = `
         <div style="font-weight:600;margin-bottom:6px;display:flex;align-items:center;gap:6px;">
-          <span>⚠️</span> Cần chuẩn hóa dữ liệu biến thể trước khi lưu:
+          Cần chuẩn hóa dữ liệu biến thể trước khi lưu:
         </div>
         <ul style="margin:0;padding-left:20px;line-height:1.5;">
           ${allErrors.map(err => `<li>${esc(err)}</li>`).join('')}
@@ -4426,10 +4471,10 @@ async function showShippingBatchModal() {
     <div style="background:white;border-radius:16px;width:100%;max-width:850px;max-height:90vh;display:flex;flex-direction:column;box-shadow:0 25px 50px -12px rgba(0,0,0,0.25);">
       <div style="padding:20px 24px;border-bottom:1px solid var(--slate-200);display:flex;justify-content:space-between;align-items:center;">
         <div>
-          <h3 style="margin:0;font-size:18px;">🚚 Đề Xuất Gộp Đơn Giao Hàng</h3>
+          <h3 style="margin:0;font-size:18px;display:flex;align-items:center;gap:8px;">${iconSvg('truck', 20)} Đề Xuất Gộp Đơn Giao Hàng</h3>
           <p style="margin:4px 0 0;font-size:13px;color:var(--slate-500);">Tự động phát hiện các đơn hàng cùng khách nhận hoặc cùng tuyến đường lân cận (≤ 3km) để gom chuyến tối ưu chi phí vận chuyển.</p>
         </div>
-        <button type="button" class="icon-action-btn del" onclick="document.getElementById('${modalId}').remove()" style="font-size:18px;">✕</button>
+        <button type="button" class="icon-action-btn del" onclick="document.getElementById('${modalId}').remove()">${iconSvg('close')}</button>
       </div>
       <div id="shippingBatchModalBody" style="padding:24px;overflow-y:auto;flex:1;">
         <div style="text-align:center;padding:30px;color:var(--slate-400);">Đang tải các đề xuất gộp đơn từ máy chủ...</div>
@@ -4444,7 +4489,7 @@ async function showShippingBatchModal() {
     if (!suggestions || suggestions.length === 0) {
       container.innerHTML = `
         <div style="text-align:center;padding:40px 20px;">
-          <div style="font-size:40px;margin-bottom:12px;">📦</div>
+          <div style="margin-bottom:12px;color:var(--slate-400);display:flex;justify-content:center;">${iconSvg('package', 44)}</div>
           <h4>Hiện chưa có đơn hàng nào cần gộp</h4>
           <p style="color:var(--slate-500);font-size:13px;">Tất cả các đơn chờ giao hiện tại đều có lộ trình riêng biệt hoặc đã được phân bổ mã lô.</p>
         </div>
@@ -4467,8 +4512,8 @@ async function showShippingBatchModal() {
 
       const isCustomerGroup = (group.reason || '').toLowerCase().includes('cùng người nhận') || (group.reason || '').toLowerCase().includes('cùng khách');
       const badgeHtml = isCustomerGroup
-        ? `<span class="batch-badge-customer">👤 Gộp đơn cùng khách</span>`
-        : `<span class="batch-badge-route">🗺️ Gom chuyến theo tuyến đường</span>`;
+        ? `<span class="batch-badge-customer">Gộp đơn cùng khách</span>`
+        : `<span class="batch-badge-route">Gom chuyến theo tuyến đường</span>`;
 
       return `
       <div style="border:1px solid var(--slate-200);border-radius:12px;padding:18px;margin-bottom:16px;background:var(--slate-50);">
@@ -4489,7 +4534,7 @@ async function showShippingBatchModal() {
               Gộp ${group.totalOrders} đơn
             </button>
             <button class="primary-btn" style="padding:8px 14px;font-size:13px;" onclick="executeMergeAndDispatchBatch(${JSON.stringify(group.orderIds).replace(/"/g, '&quot;')}, '${esc(group.targetBatchCode)}')">
-              Gộp & Xuất giao ngay 🚚
+              Gộp & Xuất giao ngay
             </button>
           </div>
         </div>
@@ -4570,10 +4615,10 @@ async function showAssignShipperModal(orderId, batchCode) {
     <div style="background:white;border-radius:16px;width:100%;max-width:580px;box-shadow:0 25px 50px -12px rgba(0,0,0,0.25);overflow:hidden;">
       <div style="padding:18px 24px;border-bottom:1px solid var(--slate-200);display:flex;justify-content:space-between;align-items:center;">
         <div>
-          <h3 style="margin:0;font-size:17px;font-weight:700;">🚚 Phân công Shipper giao hàng</h3>
+          <h3 style="margin:0;font-size:17px;font-weight:700;display:flex;align-items:center;gap:8px;">${iconSvg('truck', 20)} Phân công Shipper giao hàng</h3>
           <p style="margin:4px 0 0;font-size:13px;color:var(--slate-500);">${batchCode ? `Gán shipper cho toàn bộ đơn trong lô <b>${batchCode}</b>` : orderId ? `Đơn hàng #${orderId}` : ''}</p>
         </div>
-        <button type="button" class="icon-action-btn del" onclick="document.getElementById('${modalId}').remove()" style="font-size:18px;">✕</button>
+        <button type="button" class="icon-action-btn del" onclick="document.getElementById('${modalId}').remove()">${iconSvg('close')}</button>
       </div>
       <div id="assignShipperModalBody" style="padding:20px 24px;max-height:70vh;overflow-y:auto;">
         <div style="text-align:center;padding:30px;color:var(--slate-400);">Đang tải danh sách shipper...</div>
@@ -4600,7 +4645,7 @@ async function showAssignShipperModal(orderId, batchCode) {
               <div>
                 <strong style="font-size:14px;color:var(--slate-800);">${esc(s.fullName)}</strong>
                 <div style="font-size:12.5px;color:var(--slate-500);margin-top:2px;">
-                  📞 ${esc(s.phoneNumber)} · Xe: <b>${esc(s.vehicleNumber || '—')}</b>
+                  SĐT: ${esc(s.phoneNumber)} · Xe: <b>${esc(s.vehicleNumber || '—')}</b>
                 </div>
                 <div style="font-size:12px;color:var(--slate-400);margin-top:2px;">Tuyến phụ trách: <b>${esc(s.assignedArea || 'Linh hoạt')}</b></div>
               </div>
@@ -4614,7 +4659,7 @@ async function showAssignShipperModal(orderId, batchCode) {
       </div>
       <div style="margin-top:20px;display:flex;justify-content:flex-end;gap:10px;">
         <button type="button" class="ghost-btn" onclick="document.getElementById('${modalId}').remove()">Hủy</button>
-        <button type="button" class="primary-btn" onclick="executeAssignShipper(${orderId || 'null'}, ${batchCode ? `'${batchCode}'` : 'null'})">Xác nhận phân công 🚚</button>
+        <button type="button" class="primary-btn" onclick="executeAssignShipper(${orderId || 'null'}, ${batchCode ? `'${batchCode}'` : 'null'})">Xác nhận phân công</button>
       </div>
     `;
   } catch (err) {
@@ -4707,7 +4752,7 @@ async function initOrderTrackingSignalR() {
 
     orderTrackingConnection.on('ReceiveOrderStateChanged', data => {
       console.log('[SignalR Admin] ReceiveOrderStateChanged:', data);
-      toast(`⚡ Cập nhật vận chuyển: ${data.message || 'Đơn hàng vừa thay đổi trạng thái'}`, 'info');
+      toast(`Cập nhật vận chuyển: ${data.message || 'Đơn hàng vừa thay đổi trạng thái'}`, 'info');
       // Nếu đang mở trang Đơn hàng hoặc Đối soát COD -> Tự động nạp lại dữ liệu
       const hash = window.location.hash.slice(1);
       if (hash === 'orders' || hash === 'cod' || hash === 'shippers') {
@@ -4868,7 +4913,7 @@ function renderFormFields(key, r) {
             <div style="display:flex;gap:8px;">
               <input name="imageUrl" id="prodForm_imageUrl" type="url" class="input-control" value="${esc(v.imageUrl)}" placeholder="https://example.com/hinh-san-pham.jpg" style="flex:1;">
               <label class="secondary-btn" style="padding:6px 12px;cursor:pointer;display:inline-flex;align-items:center;gap:5px;font-size:13px;white-space:nowrap;margin:0;">
-                📁 Chọn ảnh từ máy tính
+                Chọn ảnh từ máy tính
                 <input type="file" accept="image/*" style="display:none;" onchange="handleFileInputForControl(this, 'prodForm_imageUrl', 'prodForm_imgPrev')">
               </label>
             </div>
@@ -5156,7 +5201,7 @@ function renderCustomerForm(v = {}) {
     <!-- DANH SÁCH ĐƠN HÀNG CỦA KHÁCH HÀNG -->
     <div class="form-section-card" style="margin-top:24px;">
       <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;">
-        <h3 style="margin:0;display:flex;align-items:center;gap:8px;">📦 Lịch sử đơn hàng của khách hàng</h3>
+        <h3 style="margin:0;display:flex;align-items:center;gap:8px;">${iconSvg('package', 18)} Lịch sử đơn hàng của khách hàng</h3>
         <span id="adminCustomerOrdersSummary" style="font-size:13px;font-weight:700;color:var(--slate-500);">${customerId ? 'Đang tải...' : 'Chưa có đơn hàng'}</span>
       </div>
       <div class="table-wrap">
@@ -5211,7 +5256,7 @@ async function loadCustomerOrdersForAdmin(customerId) {
           <td><strong style="color:var(--primary);">${money(o.totalAmount)}</strong></td>
           <td>${pill(stLabel, stPill)}</td>
           <td style="text-align:right;">
-            <button type="button" class="icon-action-btn view" title="Xem chi tiết đơn hàng" onclick="showOrderDetail(${o.orderId})">👁</button>
+            <button type="button" class="icon-action-btn view" title="Xem chi tiết đơn hàng" onclick="showOrderDetail(${o.orderId})">${iconSvg('view')}</button>
           </td>
         </tr>
       `;
@@ -5366,13 +5411,13 @@ function generatePOVariantOptionsHtml(supplierId, selectedVariantId) {
       data-current-price="${currentPrice}" 
       data-full-name="${esc(fullDisplayName)}" 
       ${isSel ? 'selected' : ''}>
-      ${isSupplierMatch ? '⭐ ' : ''}${esc(fullDisplayName)} [${esc(sku)}]${costVal ? ` (Giá vốn: ${money(costVal)})` : ''}
+      ${esc(fullDisplayName)} [${esc(sku)}]${costVal ? ` (Giá vốn: ${money(costVal)})` : ''}
     </option>`;
   };
 
   let html = '';
   if (supplied.length > 0) {
-    html += `<optgroup label="⭐ Sản phẩm của nhà cung cấp này (${supplied.length} sản phẩm)">`;
+    html += `<optgroup label="Sản phẩm của nhà cung cấp này (${supplied.length} sản phẩm)">`;
     supplied.forEach(p => {
       const supInfo = p.suppliers ? p.suppliers.find(s => s.supplierId === sIdNum) : null;
       const refCost = supInfo?.giaNhapThamKhao;
@@ -5386,8 +5431,8 @@ function generatePOVariantOptionsHtml(supplierId, selectedVariantId) {
 
   if (others.length > 0) {
     const groupLabel = supplied.length > 0
-      ? '📦 Các sản phẩm khác trong hệ thống (Nhập phát sinh ngoài danh mục)'
-      : '📦 Tất cả sản phẩm trong hệ thống';
+      ? 'Các sản phẩm khác trong hệ thống (Nhập phát sinh ngoài danh mục)'
+      : 'Tất cả sản phẩm trong hệ thống';
     html += `<optgroup label="${groupLabel}">`;
     others.forEach(p => {
       productVariantsOf(p).forEach(vr => {
@@ -5459,7 +5504,7 @@ function renderPurchaseOrderItemRow(item = {}, idx = null, supplierId = null) {
       </td>
       <!-- 8. Nút Xóa dòng -->
       <td style="text-align:center;vertical-align:middle;">
-        <button type="button" class="icon-action-btn del" title="Xóa dòng" onclick="removePurchaseOrderItemRow('poRow_${rIdx}')">✕</button>
+        <button type="button" class="icon-action-btn del" title="Xóa dòng" onclick="removePurchaseOrderItemRow('poRow_${rIdx}')">${iconSvg('close')}</button>
       </td>
     </tr>
   `;
@@ -5809,12 +5854,12 @@ async function showImportDetail(id) {
           <div class="form-actions" style="margin:0;padding:0;border:none;">
             ${canApprove ? `
               <button class="success-btn" onclick="approvePurchaseOrder(${receipt.importReceiptId})">
-                <span>✓</span> Duyệt phiếu & Nhập kho
+                Duyệt phiếu & Nhập kho
               </button>
             ` : ''}
             ${canCancel ? `
               <button class="danger-btn" onclick="cancelPurchaseOrder(${receipt.importReceiptId})">
-                <span>✕</span> Hủy phiếu đặt
+                Hủy phiếu đặt
               </button>
             ` : ''}
           </div>
@@ -6038,10 +6083,10 @@ async function showOrderDetail(id) {
                 <span style="font-weight:700;color:var(--primary);">${esc(order.shipping?.deliveryBatchCode || 'Chưa phân lô')}</span>
                 ${order.shipping?.deliveryBatchCode && currentStatus < 3 ? `
                   <button class="secondary-btn" style="padding:2px 8px;font-size:11px;margin-left:8px;" onclick="dispatchShippingBatch('${esc(order.shipping.deliveryBatchCode)}', ${order.orderId})" title="Chuyển toàn bộ các đơn cùng mã lô này sang Đang giao">
-                    🚚 Xuất giao cả lô
+                    Xuất giao cả lô
                   </button>
                   <button class="icon-action-btn del" style="padding:2px 8px;font-size:11px;margin-left:4px;border:1px solid #fecaca;color:#dc2626;background:#fff;" onclick="unbatchOrderAction(${order.orderId})" title="Tách đơn này ra khỏi lô giao hiện tại">
-                    ✕ Gỡ khỏi lô
+                    Gỡ khỏi lô
                   </button>
                 ` : ''}
               </p>
@@ -6056,25 +6101,25 @@ async function showOrderDetail(id) {
                 ` : `
                   <span style="color:var(--slate-400);">Chưa phân công</span>
                   ${currentStatus < 4 ? `
-                    <button class="primary-btn" style="padding:2px 8px;font-size:11px;margin-left:6px;" onclick="showAssignShipperModal(${order.orderId}, '${esc(order.shipping?.deliveryBatchCode || '')}')">🚚 Gán Shipper</button>
+                    <button class="primary-btn" style="padding:2px 8px;font-size:11px;margin-left:6px;" onclick="showAssignShipperModal(${order.orderId}, '${esc(order.shipping?.deliveryBatchCode || '')}')">Gán Shipper</button>
                   ` : ''}
                 `}
               </p>
               ${order.shipping?.status === 5 ? `
                 <div style="background:#fef2f2;border:1px solid #fecaca;color:#991b1b;padding:8px 12px;border-radius:8px;font-size:12.5px;margin:8px 0;">
-                  <strong>⚠️ Giao thất bại lần ${order.shipping.attemptCount || 1}:</strong> ${esc(order.shipping.failReason || 'Khách hẹn lại')}
-                  <br><button class="primary-btn" style="padding:3px 8px;font-size:11.5px;margin-top:6px;" onclick="retryDeliveryAction(${order.orderId})">🔄 Xuất giao lại</button>
+                  <strong>Giao thất bại lần ${order.shipping.attemptCount || 1}:</strong> ${esc(order.shipping.failReason || 'Khách hẹn lại')}
+                  <br><button class="primary-btn" style="padding:3px 8px;font-size:11.5px;margin-top:6px;" onclick="retryDeliveryAction(${order.orderId})">Xuất giao lại</button>
                 </div>
               ` : ''}
               ${order.shipping?.status === 6 ? `
                 <div style="background:#fef2f2;border:1px solid #fecaca;color:#991b1b;padding:8px 12px;border-radius:8px;font-size:12.5px;margin:8px 0;">
-                  <strong>❌ Đã hoàn hàng về kho</strong> (Đã thử giao ${order.shipping.attemptCount || 3} lần)
+                  <strong>Đã hoàn hàng về kho</strong> (Đã thử giao ${order.shipping.attemptCount || 3} lần)
                 </div>
               ` : ''}
               ${order.payment?.codStatus === 1 ? `
                 <div style="background:#fef3c7;border:1px solid #fde68a;color:#92400e;padding:8px 12px;border-radius:8px;font-size:12.5px;margin:8px 0;display:flex;justify-content:space-between;align-items:center;gap:8px;">
                   <div>
-                    <strong>💵 Shipper đang giữ COD:</strong> ${money(order.payment.amount)}
+                    <strong>Shipper đang giữ COD:</strong> ${money(order.payment.amount)}
                     <div style="font-size:11.5px;color:#92400e;">Phí ship của shipper: ${money(order.shipping?.shippingFee)} · Cần nộp shop: ${money(Math.max(0, Number(order.payment.amount || 0) - Number(order.shipping?.shippingFee || 0)))}</div>
                     <div style="font-size:11.5px;color:#b45309;">Thu lúc: ${fmtDateTime(order.payment.codCollectedAt)}</div>
                   </div>
@@ -6083,16 +6128,16 @@ async function showOrderDetail(id) {
               ${order.payment?.codStatus === 2 ? `
                 <div style="background:#eff6ff;border:1px solid #bfdbfe;color:#1e40af;padding:8px 12px;border-radius:8px;font-size:12.5px;margin:8px 0;display:flex;justify-content:space-between;align-items:center;gap:8px;">
                   <div>
-                    <strong>🔎 Shipper đã báo nộp COD, chờ admin kiểm tra</strong>
+                    <strong>Shipper đã báo nộp COD, chờ admin kiểm tra</strong>
                     <div style="font-size:11.5px;">Tiền COD: ${money(order.payment.amount)} · Phí ship của shipper: ${money(order.shipping?.shippingFee)} · Cần xác nhận vào quỹ: ${money(Math.max(0, Number(order.payment.amount || 0) - Number(order.shipping?.shippingFee || 0)))}</div>
                     <div style="font-size:11.5px;">Shipper báo lúc: ${fmtDateTime(order.payment.codSubmittedAt)}</div>
                   </div>
-                  <button class="primary-btn" style="padding:4px 10px;font-size:11.5px;white-space:nowrap;" onclick="confirmSingleCodSubmission(${order.payment.paymentId}, ${order.orderId}, ${Math.max(0, Number(order.payment.amount || 0) - Number(order.shipping?.shippingFee || 0))})">✓ Xác nhận đã nhận</button>
+                  <button class="primary-btn" style="padding:4px 10px;font-size:11.5px;white-space:nowrap;" onclick="confirmSingleCodSubmission(${order.payment.paymentId}, ${order.orderId}, ${Math.max(0, Number(order.payment.amount || 0) - Number(order.shipping?.shippingFee || 0))})">Xác nhận đã nhận</button>
                 </div>
               ` : ''}
               ${order.payment?.codStatus === 3 ? `
                 <div style="background:#ecfdf5;border:1px solid #a7f3d0;color:#065f46;padding:8px 12px;border-radius:8px;font-size:12.5px;margin:8px 0;">
-                  <strong>✅ Admin đã kiểm tra và xác nhận tiền COD vào quỹ</strong> (${fmtDateTime(order.payment.codConfirmedAt)})
+                  <strong>Admin đã kiểm tra và xác nhận tiền COD vào quỹ</strong> (${fmtDateTime(order.payment.codConfirmedAt)})
                 </div>
               ` : ''}
               <p><strong>Giao dự kiến:</strong> ${fmtDeliveryWindow(order.shipping?.estimatedDeliveryFromDate || order.shipping?.estimatedDeliveryAt, order.shipping?.estimatedDeliveryToDate)}</p>
@@ -6107,7 +6152,7 @@ async function showOrderDetail(id) {
               ${order.shipping?.address ? `
                 <div style="margin-top:12px;padding-top:10px;border-top:1px dashed var(--slate-200);">
                   <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;">
-                    <strong style="font-size:12px;color:var(--slate-700);">🗺️ Lộ trình Google Maps:</strong>
+                    <strong style="font-size:12px;color:var(--slate-700);">Lộ trình Google Maps:</strong>
                     <a href="https://www.google.com/maps/dir/?api=1&origin=${encodeURIComponent('123 Nguyễn Thị Minh Khai, Phường Bến Thành, Quận 1, TP. Hồ Chí Minh')}&destination=${encodeURIComponent(order.shipping.address)}" target="_blank" style="font-size:11.5px;color:var(--primary);text-decoration:none;font-weight:700;">Mở Maps ↗</a>
                   </div>
                   <div style="border-radius:8px;overflow:hidden;border:1px solid var(--slate-200);height:140px;background:#f1f5f9;">
@@ -6152,7 +6197,7 @@ async function showOrderDetail(id) {
                     <tr>
                       <td>
                         <strong>${esc(it.productName || 'Sản phẩm')}</strong>
-                        ${variantText ? `<div style="font-size:12px;color:var(--slate-500);margin-top:3px;"><span style="background:#f1f5f9;color:#475569;border:1px solid #e2e8f0;padding:2px 6px;border-radius:4px;font-weight:600;display:inline-block;">🏷️ ${esc(variantText)}</span></div>` : ''}
+                        ${variantText ? `<div style="font-size:12px;color:var(--slate-500);margin-top:3px;"><span style="background:#f1f5f9;color:#475569;border:1px solid #e2e8f0;padding:2px 6px;border-radius:4px;font-weight:600;display:inline-block;">${esc(variantText)}</span></div>` : ''}
                       </td>
                       <td>${money(it.unitPrice)}</td>
                       <td><strong>${it.quantity}</strong></td>
@@ -6173,11 +6218,11 @@ async function showOrderDetail(id) {
             <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px;border-bottom:1px solid #f1f5f9;padding-bottom:10px;">
               <div>
                 <h4 style="margin:0;display:flex;align-items:center;gap:8px;">
-                  <span>📜 Lịch sử quy trình & Kiểm toán (Audit Timeline Log)</span>
+                  <span>Lịch sử quy trình & Kiểm toán (Audit Timeline Log)</span>
                 </h4>
                 <p style="margin:4px 0 0;font-size:12px;color:var(--slate-500);">Theo dõi toàn bộ 5 bước quy trình giao hàng, thời gian, người thực hiện và đối soát COD.</p>
               </div>
-              <button class="secondary-btn" style="padding:4px 10px;font-size:12px;" onclick="loadAdminOrderTrackingLogs(${order.orderId})">🔄 Tải lại nhật ký</button>
+              <button class="secondary-btn" style="padding:4px 10px;font-size:12px;" onclick="loadAdminOrderTrackingLogs(${order.orderId})">Tải lại nhật ký</button>
             </div>
             <div id="adminOrderTrackingTimeline" style="padding:4px 0;">
               <div style="color:var(--slate-400);font-size:13px;font-style:italic;">Đang tải nhật ký kiểm toán...</div>
@@ -6197,9 +6242,9 @@ async function showOrderDetail(id) {
         const infoEl = document.getElementById('adminOrderEtaInfo');
         if (infoEl && est) {
           infoEl.innerHTML = `
-            🛣️ Quãng đường: <b>${esc(est.distanceText || `${est.distanceInKm} km`)}</b> · 
-            ⏱️ Di chuyển: <b>${esc(est.durationText || `${est.durationInMinutes} phút`)}</b>
-            ${order.status === 3 ? '<br><span style="color:#059669;font-weight:700;">⚡ Shipper đang trên lộ trình giao hàng</span>' : ''}
+            Quãng đường: <b>${esc(est.distanceText || `${est.distanceInKm} km`)}</b> · 
+            Thời gian di chuyển: <b>${esc(est.durationText || `${est.durationInMinutes} phút`)}</b>
+            ${order.status === 3 ? '<br><span style="color:#059669;font-weight:700;">Shipper đang trên lộ trình giao hàng</span>' : ''}
           `;
         }
       }).catch(e => {
@@ -6223,21 +6268,21 @@ async function loadAdminOrderTrackingLogs(orderId) {
     }
 
     const actionIcons = {
-      'Nhận đơn': '📋',
-      'Đến cửa hàng nhận hàng': '🏬',
-      'Giao hàng cho KH': '🛵',
-      'Giao thành công & Thu tiền': '💵',
-      'Giao thành công': '✅',
-      'Gửi lại tiền cho cửa hàng': '🏦',
-      'Giao thất bại': '⚠️',
-      'Xuất giao lại': '🔄',
-      'Khởi tạo': '✨',
-      'Gán Shipper': '🚚'
+      'Nhận đơn': iconSvg('package', 18),
+      'Đến cửa hàng nhận hàng': iconSvg('building', 18),
+      'Giao hàng cho KH': iconSvg('bike', 18),
+      'Giao thành công & Thu tiền': iconSvg('cash', 18),
+      'Giao thành công': iconSvg('check', 18),
+      'Gửi lại tiền cho cửa hàng': iconSvg('bank', 18),
+      'Giao thất bại': iconSvg('alert', 18),
+      'Xuất giao lại': iconSvg('refresh', 18),
+      'Khởi tạo': iconSvg('sparkle', 18),
+      'Gán Shipper': iconSvg('truck', 18)
     };
 
     let html = '<div class="tracking-timeline" style="position:relative;padding-left:26px;border-left:2px solid #e2e8f0;display:flex;flex-direction:column;gap:14px;margin-left:10px;">';
     logs.forEach(log => {
-      const icon = actionIcons[log.action] || '📌';
+      const icon = actionIcons[log.action] || iconSvg('package');
       html += `
         <div class="tracking-item" style="position:relative;">
           <div style="position:absolute;left:-36px;top:0;width:20px;height:20px;border-radius:50%;background:#4f46e5;color:#fff;display:flex;align-items:center;justify-content:center;font-size:10px;box-shadow:0 0 0 3px #e0e7ff;">
@@ -6250,12 +6295,12 @@ async function loadAdminOrderTrackingLogs(orderId) {
           </div>
           ${(log.previousStatus && log.previousStatus !== log.newStatus) ? `
             <div style="font-size:12px;color:var(--slate-500);margin-top:3px;">
-              Trạng thái: <em>${esc(log.previousStatus)}</em> ➔ <strong style="color:var(--primary);">${esc(log.newStatus)}</strong>
+              Trạng thái: <em>${esc(log.previousStatus)}</em> → <strong style="color:var(--primary);">${esc(log.newStatus)}</strong>
             </div>
           ` : ''}
           ${log.note ? `
             <div style="font-size:12px;background:#f8fafc;border:1px solid #e2e8f0;border-radius:6px;padding:6px 10px;margin-top:4px;color:var(--slate-600);">
-              💬 <strong>Ghi chú:</strong> ${esc(log.note)}
+              <strong>Ghi chú:</strong> ${esc(log.note)}
             </div>
           ` : ''}
         </div>
@@ -6420,7 +6465,7 @@ function confirmDelete(key, index) {
     <td colspan="${m.columns.length + 1}" style="padding:16px 20px;background:var(--danger-bg);">
       <div style="display:flex;align-items:center;justify-content:space-between;">
         <span style="color:var(--danger);font-weight:700;">
-          ⚠ Bạn có chắc chắn muốn xóa mục này? Hành động này không thể hoàn tác.
+          Bạn có chắc chắn muốn xóa mục này? Hành động này không thể hoàn tác.
         </span>
         <div style="display:flex;gap:8px;">
           <button class="ghost-btn" style="padding:6px 14px;font-size:12px;" onclick="renderList('${key}')">Hủy</button>
@@ -6531,32 +6576,41 @@ document.getElementById('menuToggle')?.addEventListener('click', () => {
   document.getElementById('sidebar')?.classList.toggle('open');
 });
 
-// Chỉ tài khoản thuộc khu vực quản trị mới được mở trang Admin.
+// KIỂM TRA PHÂN HỆ VÀ ĐIỀU HƯỚNG TRANG (TÁCH BIỆT ADMIN vs MANAGER)
+const isCurrentAdminPage = location.pathname.endsWith('/admin.html') || location.pathname === '/admin';
+const isCurrentManagerPage = location.pathname.endsWith('/manager.html') || location.pathname === '/manager';
+const userRole = String(currentUser?.role || '').trim().toLowerCase();
 const adminPortalRoles = ['admin', 'manager', 'staff'];
-const canAccessAdminPortal = user => adminPortalRoles.includes(String(user?.role || '').trim().toLowerCase());
+const canAccessInternalPortal = user => adminPortalRoles.includes(String(user?.role || '').trim().toLowerCase());
 const isShipperPortalUser = user => String(user?.role || '').trim().toLowerCase() === 'shipper';
 
-// Nếu là Shipper thì chuyển thẳng đến trang Shipper Portal
 if (token && isShipperPortalUser(currentUser)) {
   location.replace('/shipper.html');
-} else if (!token || !canAccessAdminPortal(currentUser)) {
-  // Không đăng nhập hoặc không có quyền quản trị thì trở về trang khách hàng.
+} else if (!token || !canAccessInternalPortal(currentUser)) {
   location.replace('/customer.html');
+} else if (isCurrentAdminPage && userRole !== 'admin') {
+  // Nhân viên hoặc Quản lý không được vào Admin Console, tự động chuyển sang Manager Portal
+  location.replace('/manager.html' + location.hash);
 } else {
   document.querySelector('.app-shell')?.classList.add('show');
   if (currentUser) {
     const uName = document.getElementById('currentUserName');
     const uRole = document.getElementById('userRole');
     const uAvatar = document.getElementById('userAvatar');
-    if (uName) uName.textContent = currentUser.fullName || currentUser.userName || 'Admin';
-    if (uRole) uRole.textContent = currentUser.role || 'Quản trị viên';
-    if (uAvatar) uAvatar.textContent = (currentUser.fullName || currentUser.userName || 'AD').slice(0, 2).toUpperCase();
+    if (uName) uName.textContent = currentUser.fullName || currentUser.userName || (userRole === 'admin' ? 'Quản Trị Viên' : 'Quản Lý Cửa Hàng');
+    if (uRole) uRole.textContent = currentUser.role || (userRole === 'admin' ? 'Hệ Thống Admin' : 'Quản Lý');
+    if (uAvatar) uAvatar.textContent = (currentUser.fullName || currentUser.userName || (userRole === 'admin' ? 'AD' : 'MG')).slice(0, 2).toUpperCase();
 
-    // Ẩn nhóm Tài chính & Hệ thống đối với vai trò Staff (Yêu cầu 14)
-    const role = String(currentUser.role || '').trim().toLowerCase();
-    const isAdminOrManager = ['admin', 'manager'].includes(role);
+    // Ẩn nhóm Tài chính & Phân quyền đối với Staff nếu ở manager portal
+    const isAdminOrManager = ['admin', 'manager'].includes(userRole);
     if (!isAdminOrManager) {
       document.querySelectorAll('[data-role="admin"]').forEach(el => el.style.display = 'none');
+    }
+    
+    // Nếu ở manager.html mà user là admin, hiển thị link chuyển sang admin.html
+    const adminSwitch = document.getElementById('adminSwitchLink');
+    if (adminSwitch) {
+      adminSwitch.style.display = userRole === 'admin' ? 'flex' : 'none';
     }
   }
   checkApiStatus();

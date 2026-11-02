@@ -1671,3 +1671,127 @@ body {
   outline: none !important;
 }
 
+/* ============================================================
+   ROLE-BASED THEMES (ADMIN vs MANAGER) & CLEAN SVG UI 2026
+   ============================================================ */
+
+/* Brand & Sidebar Typography */
+.brand-text-wrap {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.brand-title {
+  font-family: 'Space Grotesk', sans-serif;
+  font-weight: 700;
+  font-size: 20px;
+  line-height: 1.1;
+  color: #ffffff;
+}
+.brand-role-tag {
+  font-size: 10px;
+  text-transform: uppercase;
+  font-weight: 700;
+  letter-spacing: 0.8px;
+  padding: 2px 7px;
+  border-radius: 99px;
+  display: inline-block;
+  align-self: flex-start;
+  line-height: 1.2;
+}
+
+/* Nav SVG icons */
+.nav-item .nav-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  flex-shrink: 0;
+}
+.nav-item .nav-icon svg {
+  width: 17px;
+  height: 17px;
+  display: block;
+  stroke-width: 2.1px;
+}
+.nav-external-link {
+  color: #38bdf8 !important;
+}
+
+/* Action button SVG */
+.icon-action-btn svg {
+  width: 15px;
+  height: 15px;
+  display: block;
+}
+.stat-icon-wrap svg {
+  width: 22px;
+  height: 22px;
+  display: block;
+}
+.icon-text-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.icon-text-btn svg {
+  width: 15px;
+  height: 15px;
+}
+
+/* 1. ADMIN THEME: Sleek Executive Dark Slate & Indigo / Gold Accent */
+body.admin-portal-theme {
+  --primary: #4f46e5;
+  --primary-hover: #4338ca;
+  --primary-light: #eef2ff;
+  --primary-glow: rgba(79, 70, 229, 0.25);
+}
+body.admin-portal-theme .sidebar {
+  background: linear-gradient(180deg, #090e17 0%, #0f172a 60%, #0b1120 100%);
+  border-right: 1px solid rgba(255, 255, 255, 0.08);
+}
+body.admin-portal-theme .admin-mark {
+  background: linear-gradient(135deg, #4f46e5 0%, #7c3aed 100%);
+  box-shadow: 0 4px 14px rgba(79, 70, 229, 0.45);
+}
+body.admin-portal-theme .brand-role-tag {
+  background: rgba(99, 102, 241, 0.18);
+  color: #a5b4fc;
+  border: 1px solid rgba(99, 102, 241, 0.35);
+}
+
+/* 2. MANAGER THEME: Dynamic Retail Operations (Toy Store / MyKingdom aesthetic) */
+body.manager-portal-theme {
+  --primary: #e11d48;
+  --primary-hover: #be123c;
+  --primary-light: #fff1f2;
+  --primary-glow: rgba(225, 29, 72, 0.22);
+}
+body.manager-portal-theme .sidebar {
+  background: linear-gradient(180deg, #111827 0%, #1f2937 50%, #111827 100%);
+  border-right: 1px solid rgba(255, 255, 255, 0.08);
+}
+body.manager-portal-theme .manager-mark {
+  background: linear-gradient(135deg, #e11d48 0%, #f97316 100%);
+  box-shadow: 0 4px 14px rgba(225, 29, 72, 0.4);
+}
+body.manager-portal-theme .brand-role-tag.manager-tag {
+  background: rgba(225, 29, 72, 0.18);
+  color: #fda4af;
+  border: 1px solid rgba(225, 29, 72, 0.35);
+}
+body.manager-portal-theme .brand-dot {
+  color: #e11d48;
+}
+body.manager-portal-theme .nav-item.active {
+  background: linear-gradient(135deg, #e11d48 0%, #be123c 100%);
+  box-shadow: 0 4px 16px rgba(225, 29, 72, 0.3);
+}
+body.manager-portal-theme .primary-btn {
+  background: linear-gradient(135deg, #e11d48 0%, #be123c 100%);
+}
+body.manager-portal-theme .primary-btn:hover {
+  background: linear-gradient(135deg, #be123c 0%, #9f1239 100%);
+}
+

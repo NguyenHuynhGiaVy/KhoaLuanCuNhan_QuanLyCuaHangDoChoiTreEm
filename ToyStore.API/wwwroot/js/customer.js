@@ -342,11 +342,17 @@ function productCard(p) {
                             : `<b>${money(price)}</b>`}
                         ${price === null ? '' : `<small style="color:var(--secondary);font-weight:700;font-size:11.5px;">+${estPoints} điểm</small>`}
                     </div>
+                    <div style="margin-top:6px;display:flex;align-items:center;gap:6px;">
+                        <span style="font-size:11px;font-weight:700;color:#059669;background:#ecfdf5;border:1px solid #a7f3d0;padding:1px 6px;border-radius:4px;display:inline-flex;align-items:center;gap:3px;">
+                            <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><polyline points="20 6 9 17 4 12"/></svg> Chuẩn CR
+                        </span>
+                        <span style="font-size:11px;font-weight:600;color:var(--text-muted);">Chính hãng 100%</span>
+                    </div>
                 </div>
             </a>
             <div class="product-card-actions">
-                <button class="add-cart" data-id="${p.productId}" ${unavailable ? 'disabled aria-disabled="true" style="opacity:.58;cursor:not-allowed;"' : ''}><span>🛍</span> ${unavailable ? unavailableLabel : 'Thêm vào giỏ'}</button>
-                <button class="buy-now-card" data-id="${p.productId}" ${unavailable ? 'disabled aria-disabled="true"' : ''}><span>⚡</span> ${unavailable ? unavailableLabel : 'Mua ngay'}</button>
+                <button class="add-cart" data-id="${p.productId}" ${unavailable ? 'disabled aria-disabled="true" style="opacity:.58;cursor:not-allowed;"' : ''}><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M6 2L3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4z"/><line x1="3" y1="6" x2="21" y2="6"/><path d="M16 10a4 4 0 0 1-8 0"/></svg> ${unavailable ? unavailableLabel : 'Thêm vào giỏ'}</button>
+                <button class="buy-now-card" data-id="${p.productId}" ${unavailable ? 'disabled aria-disabled="true"' : ''}><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg> ${unavailable ? unavailableLabel : 'Mua ngay'}</button>
             </div>
         </article>
     `;
@@ -559,10 +565,17 @@ function renderHomeCategories() {
     const homeCat = document.getElementById('homeCategoryList');
     if (!homeCat || !categories.length) return;
 
-    const icons = ['🧸', '🚀', '🧩', '🎨', '🏰', '🚗', '🤖', '👑'];
+    const categorySvgs = [
+        '<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 2L3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4z"/><line x1="3" y1="6" x2="21" y2="6"/><path d="M16 10a4 4 0 0 1-8 0"/></svg>',
+        '<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/></svg>',
+        '<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 2a14.5 14.5 0 0 0 0 20 14.5 14.5 0 0 0 0-20"/><path d="M2 12h20"/></svg>',
+        '<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>',
+        '<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/></svg>',
+        '<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="8" r="6"/><path d="M15.477 12.89 17 22l-5-3-5 3 1.523-9.11"/></svg>'
+    ];
     homeCat.innerHTML = categories.slice(0, 8).map((c, idx) => `
         <div onclick="location.href='/products.html'">
-            <span class="category-icon">${icons[idx % icons.length]}</span>
+            <span class="category-icon">${categorySvgs[idx % categorySvgs.length]}</span>
             <b>${escapeHtml(c.name)}</b>
             <small>${escapeHtml(c.description || 'Khám phá ngay')}</small>
         </div>
@@ -1082,8 +1095,12 @@ function redirectInternalPortalUser(user = getAuthUser()) {
         window.location.replace('/shipper.html');
         return true;
     }
-    if (['admin', 'manager', 'staff'].includes(role)) {
-        window.location.replace('/index.html');
+    if (role === 'admin') {
+        window.location.replace('/admin.html');
+        return true;
+    }
+    if (['manager', 'staff'].includes(role)) {
+        window.location.replace('/manager.html');
         return true;
     }
     return false;

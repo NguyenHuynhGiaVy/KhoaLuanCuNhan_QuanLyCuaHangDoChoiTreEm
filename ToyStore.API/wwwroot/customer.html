@@ -25,7 +25,8 @@
 <body>
   <!-- TOP ANNOUNCEMENT (VOUCHERS & PROMOTIONS) -->
   <div class="announcement" id="topVoucherAnnouncement" style="cursor:pointer;" onclick="location.href='#vouchers'">
-    <span>🎁</span> <b>ƯU ĐÃI ĐỒ CHƠI HÔM NAY:</b> Nhập mã <span style="background:rgba(255,255,255,0.25);padding:2px 8px;border-radius:4px;font-weight:800;letter-spacing:0.5px;">TOY50K</span> hoặc chọn từ danh sách Voucher khi đặt hàng để giảm đến 50.000đ! <span>✦</span> Miễn phí giao hàng từ 500K <span>✦</span> Đổi trả 7 ngày <span>✦</span>
+    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" style="vertical-align:middle;margin-right:4px;"><polyline points="20 12 20 22 4 22 4 12"/><rect x="2" y="7" width="20" height="5"/><line x1="12" y1="22" x2="12" y2="7"/><path d="M12 7H7.5a2.5 2.5 0 0 1 0-5C11 2 12 7 12 7z"/><path d="M12 7h4.5a2.5 2.5 0 0 0 0-5C13 2 12 7 12 7z"/></svg>
+    <b>ƯU ĐÃI ĐỒ CHƠI HÔM NAY:</b> Nhập mã <span style="background:rgba(255,255,255,0.25);padding:2px 8px;border-radius:4px;font-weight:800;letter-spacing:0.5px;">TOY50K</span> hoặc chọn từ Voucher khi đặt hàng để giảm đến 50.000đ! · Miễn phí giao hàng từ 500K · Đổi trả 7 ngày
   </div>
 
   <!-- STORE HEADER -->
@@ -44,13 +45,19 @@
       </nav>
       <div class="header-actions">
         <span class="customer-api-status" id="customerApiStatus">Đang kết nối API</span>
-        <button class="header-icon search-trigger" aria-label="Tìm kiếm" onclick="location.href='/products.html'">⌕</button>
-        <button class="header-icon" id="custAccountBtn" aria-label="Tài khoản & Tích điểm" title="Tài khoản & Tích điểm">◎</button>
+        <button class="header-icon search-trigger" aria-label="Tìm kiếm" onclick="location.href='/products.html'" title="Tìm kiếm đồ chơi">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+        </button>
+        <button class="header-icon" id="custAccountBtn" aria-label="Tài khoản & Tích điểm" title="Tài khoản & Tích điểm">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
+        </button>
         <button class="cart-button" id="custCartBtn" aria-label="Giỏ hàng">
-          <span>🛍</span>
+          <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 2L3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4z"/><line x1="3" y1="6" x2="21" y2="6"/><path d="M16 10a4 4 0 0 1-8 0"/></svg>
           <i id="cartCount">0</i>
         </button>
-        <button class="mobile-menu" id="mobileMenu" aria-label="Mở menu">☰</button>
+        <button class="mobile-menu" id="mobileMenu" aria-label="Mở menu">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="18" x2="21" y2="18"/></svg>
+        </button>
       </div>
     </div>
     <div class="mobile-nav" id="mobileNav">
@@ -61,6 +68,22 @@
       <a href="#contact">Liên hệ</a>
     </div>
   </header>
+
+  <!-- TOP TOY BRANDS STRIP (MYKINGDOM-INSPIRED OFFICIAL PARTNERS) -->
+  <section class="toy-brands-strip">
+    <div class="brands-container">
+      <span class="brands-label">Thương hiệu đồ chơi:</span>
+      <div class="brands-list">
+        <a href="/products.html" class="toy-brand-pill">LEGO® Official</a>
+        <a href="/products.html" class="toy-brand-pill">Hot Wheels™</a>
+        <a href="/products.html" class="toy-brand-pill">Barbie®</a>
+        <a href="/products.html" class="toy-brand-pill">Fisher-Price</a>
+        <a href="/products.html" class="toy-brand-pill">Play-Doh</a>
+        <a href="/products.html" class="toy-brand-pill">Bandai</a>
+        <a href="/products.html" class="toy-brand-pill">Takara Tomy</a>
+      </div>
+    </div>
+  </section>
 
   <main>
     <!-- HERO -->
@@ -92,11 +115,52 @@
       </div>
     </section>
 
+    <!-- TOY AGE SELECTION STRIP (MYKINGDOM-INSPIRED DEVELOPMENTAL STAGES) -->
+    <section class="toy-age-section">
+      <div class="toy-age-container">
+        <div class="toy-age-header">
+          <div>
+            <span class="age-kicker">GỢI Ý TỪ CHUYÊN GIA GIÁO DỤC</span>
+            <h2>Chọn đồ chơi đúng độ tuổi của bé</h2>
+          </div>
+          <p class="age-desc">Mỗi giai đoạn phát triển đòi hỏi các nhóm đồ chơi chuyên biệt giúp kích thích trí tuệ và giác quan tối đa.</p>
+        </div>
+        <div class="toy-age-grid">
+          <a href="/products.html?age=0-1" class="toy-age-card age-infant">
+            <div class="age-tag">0 - 12 Tháng</div>
+            <div class="age-title">Giác Quan & Vận Động Sớm</div>
+            <p>Xúc xắc, gặm nướu silicone chuẩn y tế, thảm nhạc nằm chơi cho bé sơ sinh.</p>
+            <span class="age-link">Khám phá ngay →</span>
+          </a>
+          <a href="/products.html?age=1-3" class="toy-age-card age-toddler">
+            <div class="age-tag">1 - 3 Tuổi</div>
+            <div class="age-title">Vận Động Tinh & Nhận Thức</div>
+            <p>Xe chòi chân thăng bằng, khối xếp hình hạt to, đồ chơi thả hình và âm thanh.</p>
+            <span class="age-link">Khám phá ngay →</span>
+          </a>
+          <a href="/products.html?age=3-6" class="toy-age-card age-preschool">
+            <div class="age-tag">3 - 6 Tuổi</div>
+            <div class="age-title">Tư Duy & Trí Tưởng Tượng</div>
+            <p>Lắp ráp sáng tạo, đồ chơi nhập vai nghề nghiệp, búp bê và đất nặn an toàn.</p>
+            <span class="age-link">Khám phá ngay →</span>
+          </a>
+          <a href="/products.html?age=6-12" class="toy-age-card age-school">
+            <div class="age-tag">6 - 12 Tuổi</div>
+            <div class="age-title">Kỹ Thuật & Thử Thách</div>
+            <p>Lego nâng cao, xe điều khiển từ xa, mô hình robot và đồ chơi khoa học STEM.</p>
+            <span class="age-link">Khám phá ngay →</span>
+          </a>
+        </div>
+      </div>
+    </section>
+
     <!-- CATEGORIES STRIP -->
     <section class="category-strip" id="categories">
       <div id="homeCategoryList">
         <div>
-          <span class="category-icon">◈</span>
+          <span class="category-icon">
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/></svg>
+          </span>
           <b>Đang tải danh mục...</b>
           <small>Kết nối API xem danh mục</small>
         </div>
@@ -155,8 +219,8 @@
         <h2>Tích điểm thả ga<br><span>Mua sắm càng nhiều, quà càng lớn.</span></h2>
         <p>Tích lũy 1 điểm cho mỗi 10.000đ khi mua hàng. Dễ dàng đổi điểm trừ tiền trực tiếp trên hóa đơn hoặc nhận voucher quà tặng độc quyền!</p>
       </div>
-      <button class="hero-button" id="joinLoyaltyBtn" style="background:#ffffff;color:var(--text-main);box-shadow:var(--shadow-md);">
-        <span>👑</span> Xem Điểm Tích Lũy Của Bạn
+      <button class="hero-button" id="joinLoyaltyBtn" style="background:#ffffff;color:var(--text-main);box-shadow:var(--shadow-md);display:inline-flex;align-items:center;gap:8px;">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" style="color:var(--secondary);"><circle cx="12" cy="8" r="6"/><path d="M15.477 12.89 17 22l-5-3-5 3 1.523-9.11"/></svg> Xem Điểm Tích Lũy Của Bạn
       </button>
     </section>
 
@@ -182,6 +246,48 @@
           <h3>Đổi Trả Dễ Dàng</h3>
           <p>Hỗ trợ đổi mới tận nhà trong 7 ngày đầu nếu có lỗi sản xuất.</p>
         </article>
+      </div>
+    </section>
+
+    <!-- QUALITY & SAFETY ASSURANCE (MYKINGDOM STYLE) -->
+    <section class="toy-trust-strip">
+      <div class="trust-container">
+        <div class="trust-item">
+          <div class="trust-icon">
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
+          </div>
+          <div>
+            <strong>100% Chính Hãng Ủy Quyền</strong>
+            <p>Nguồn gốc xuất xứ rõ ràng, đầy đủ tem mác kiểm định</p>
+          </div>
+        </div>
+        <div class="trust-item">
+          <div class="trust-icon">
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><circle cx="12" cy="12" r="10"/><path d="m9 12 2 2 4-4"/></svg>
+          </div>
+          <div>
+            <strong>Chứng Nhận Hợp Quy CR</strong>
+            <p>Nhựa an toàn không chứa BPA, chuẩn an toàn trẻ nhỏ QCVN</p>
+          </div>
+        </div>
+        <div class="trust-item">
+          <div class="trust-icon">
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg>
+          </div>
+          <div>
+            <strong>Đổi Trả Tận Nhà 7 Ngày</strong>
+            <p>Đổi mới 1 - 1 nhanh chóng nếu phát sinh lỗi nhà sản xuất</p>
+          </div>
+        </div>
+        <div class="trust-item">
+          <div class="trust-icon">
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><rect x="1" y="3" width="15" height="13"/><polygon points="16 8 20 8 23 11 23 16 16 16 16 8"/><circle cx="5.5" cy="18.5" r="2.5"/><circle cx="18.5" cy="18.5" r="2.5"/></svg>
+          </div>
+          <div>
+            <strong>Giao Hàng Siêu Tốc 2-4 Giờ</strong>
+            <p>Hộp quà bọc bảo vệ chuyên dụng chống móp méo</p>
+          </div>
+        </div>
       </div>
     </section>
   </main>
