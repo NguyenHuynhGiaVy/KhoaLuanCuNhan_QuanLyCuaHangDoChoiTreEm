@@ -200,7 +200,7 @@ namespace ToyStoreManagement.API.Controllers
                 return Ok(new
                 {
                     message =
-                        "Xóa sản phẩm thành công."
+                        "Đã chuyển sản phẩm sang trạng thái ngừng kinh doanh (Soft Delete)."
                 });
             }
             catch (Exception ex)

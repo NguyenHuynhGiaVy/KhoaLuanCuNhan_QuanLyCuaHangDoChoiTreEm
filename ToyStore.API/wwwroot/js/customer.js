@@ -26,6 +26,51 @@ let selectedPrices = [];
 let selectedBrands = [];
 let selectedGenders = [];
 let selectedAges = [];
+let urlFiltersInitialized = false;
+
+function initFiltersFromUrl() {
+    if (urlFiltersInitialized) return;
+    urlFiltersInitialized = true;
+
+    try {
+        const urlParams = new URLSearchParams(window.location.search);
+        
+        // 1. Tự động tích chọn và lọc theo Độ Tuổi từ URL (hỗ trợ cả tháng và năm)
+        if (urlParams.has('age')) {
+            const rawAge = (urlParams.get('age') || '').trim();
+            let targetAge = rawAge;
+            if (rawAge === '0-1' || rawAge === '0-12') targetAge = '0-12';
+            else if (rawAge === '1-3' || rawAge === '13-36') targetAge = '13-36';
+            else if (rawAge === '3-6' || rawAge === '37-72') targetAge = '37-72';
+            else if (rawAge === '6-12' || rawAge === '6-11' || rawAge === '73-132') targetAge = '73-132';
+            else if (rawAge === '12+' || rawAge === '12-20' || rawAge === '133-240') targetAge = '133-240';
+
+            const ageBox = document.querySelector(`.age-filter[value="${targetAge}"]`);
+            if (ageBox) {
+                ageBox.checked = true;
+                selectedAges = [targetAge];
+                setTimeout(() => {
+                    ageBox.closest('.filter-section')?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+                }, 200);
+            }
+        }
+
+        // 2. Danh mục từ URL (nếu có)
+        if (urlParams.has('category') || urlParams.has('categoryId')) {
+            const catId = urlParams.get('category') || urlParams.get('categoryId');
+            activeFilter = catId;
+        }
+
+        // 3. Từ khóa tìm kiếm từ URL
+        if (urlParams.has('search') || urlParams.has('q')) {
+            const searchKeyword = urlParams.get('search') || urlParams.get('q');
+            const searchInput = document.getElementById('productSearch');
+            if (searchInput) searchInput.value = searchKeyword;
+        }
+    } catch (err) {
+        console.warn('Không thể đọc URL filters:', err);
+    }
+}
 
 let currentPage = 1;
 const pageSize = 12;
@@ -113,12 +158,12 @@ async function loadData() {
         const newProducts = await resP.json();
         const newCategories = await resC.json();
 
-        // Không hiển thị hàng đã tạm ngưng; trạng thái 2 là hàng thanh lý
-        // vẫn được phép bán đến khi hết tồn.
+        // Chỉ hiển thị sản phẩm đang mở bán (Status = 1); không hiển thị hàng chờ nhập (0), ngừng kinh doanh / soft deleted (2) và hết hàng (3)
         products = (newProducts || []).filter(product =>
-            Number(product.status) !== 0 && Number(product.status) !== 3);
+            Number(product.status) === 1);
         categories = newCategories || [];
         refreshCartPricesFromProducts();
+        initFiltersFromUrl();
 
         renderCategories();
         renderBrandFilters();

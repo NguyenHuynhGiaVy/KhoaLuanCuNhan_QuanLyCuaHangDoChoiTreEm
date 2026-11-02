@@ -480,7 +480,260 @@ function revenueYAxisScale(values) {
   };
 }
 
+let lastDashboardOrders = [];
+let lastDashboardDateFilter = null;
+let managerSalesViewMode = 'summary';
+
+window.switchManagerSalesMode = function(mode) {
+  managerSalesViewMode = mode;
+  renderManagerSalesBreakdown(lastDashboardOrders, lastDashboardDateFilter);
+};
+
+function renderManagerSalesBreakdown(orders, dateFilter) {
+  lastDashboardOrders = orders || [];
+  lastDashboardDateFilter = dateFilter || getDashboardDates();
+
+  const container = document.getElementById('managerSalesContent');
+  const toggleWrap = document.getElementById('managerSalesModeToggle');
+  const titleEl = document.getElementById('managerSalesPanelTitle');
+  if (titleEl && dateFilter?.label) {
+    titleEl.innerHTML = `${iconSvg('package', 20)} Chi tiết các mặt hàng bán được trong ${esc(dateFilter.label)}`;
+  }
+  if (!container) return;
+
+  const fromStr = dateFilter?.from || '';
+  const toStr = dateFilter?.to || '';
+
+  // Trích xuất các mặt hàng bán được trong kỳ (loại trừ đơn hàng đã hủy - status === 5)
+  const soldItems = [];
+  (lastDashboardOrders || []).forEach(order => {
+    if (order.status === 5) return;
+    const dStr = (order.orderDate || order.createdAt || '').slice(0, 10);
+    if (dStr >= fromStr && dStr <= toStr) {
+      (order.orderDetails || []).forEach(detail => {
+        const qty = Number(detail.quantity) || 1;
+        const unitPrice = Number(detail.unitPrice) || 0;
+        const lineTotal = Number(detail.totalAmount) || (qty * unitPrice);
+        soldItems.push({
+          orderId: order.orderId,
+          orderCode: order.orderCode || order.orderId,
+          customerName: order.customerName || order.shipping?.receiverName || 'Khách vãng lai',
+          orderDate: order.orderDate || order.createdAt,
+          orderStatus: order.status,
+          paymentStatus: order.paymentStatus,
+          variantId: detail.variantId,
+          productName: detail.productName || 'Sản phẩm đồ chơi',
+          sku: detail.sku || '—',
+          imageUrl: detail.imageUrl || '',
+          variantAttributes: detail.variantAttributes || '',
+          quantity: qty,
+          unitPrice: unitPrice,
+          totalAmount: lineTotal
+        });
+      });
+    }
+  });
+
+  // Gom nhóm theo mặt hàng / SKU
+  const groupedMap = new Map();
+  soldItems.forEach(item => {
+    const key = item.variantId ? `var_${item.variantId}` : `${item.productName}_${item.sku}`;
+    if (!groupedMap.has(key)) {
+      groupedMap.set(key, {
+        productName: item.productName,
+        sku: item.sku,
+        imageUrl: item.imageUrl,
+        variantAttributes: item.variantAttributes,
+        unitPrice: item.unitPrice,
+        totalQuantity: 0,
+        totalRevenue: 0,
+        orderCodes: []
+      });
+    }
+    const group = groupedMap.get(key);
+    group.totalQuantity += item.quantity;
+    group.totalRevenue += item.totalAmount;
+    if (!group.orderCodes.some(o => o.orderId === item.orderId)) {
+      group.orderCodes.push({ orderId: item.orderId, orderCode: item.orderCode });
+    }
+  });
+  const groupedList = Array.from(groupedMap.values()).sort((a, b) => b.totalQuantity - a.totalQuantity);
+
+  // Render các nút chuyển đổi chế độ xem (Mode Toggle)
+  if (toggleWrap) {
+    toggleWrap.innerHTML = `
+      <div style="display:inline-flex;background:var(--slate-100);border-radius:8px;padding:3px;gap:3px;">
+        <button type="button" class="btn-toggle ${managerSalesViewMode === 'summary' ? 'active' : ''}" 
+                style="border:none;background:${managerSalesViewMode === 'summary' ? '#ffffff' : 'transparent'};color:${managerSalesViewMode === 'summary' ? 'var(--primary)' : 'var(--slate-600)'};font-weight:${managerSalesViewMode === 'summary' ? '700' : '500'};padding:5px 12px;font-size:12px;border-radius:6px;cursor:pointer;box-shadow:${managerSalesViewMode === 'summary' ? '0 1px 3px rgba(0,0,0,0.1)' : 'none'};transition:all 0.2s;"
+                onclick="window.switchManagerSalesMode('summary')">
+          Theo mặt hàng (${groupedList.length})
+        </button>
+        <button type="button" class="btn-toggle ${managerSalesViewMode === 'orders' ? 'active' : ''}" 
+                style="border:none;background:${managerSalesViewMode === 'orders' ? '#ffffff' : 'transparent'};color:${managerSalesViewMode === 'orders' ? 'var(--primary)' : 'var(--slate-600)'};font-weight:${managerSalesViewMode === 'orders' ? '700' : '500'};padding:5px 12px;font-size:12px;border-radius:6px;cursor:pointer;box-shadow:${managerSalesViewMode === 'orders' ? '0 1px 3px rgba(0,0,0,0.1)' : 'none'};transition:all 0.2s;"
+                onclick="window.switchManagerSalesMode('orders')">
+          Theo từng đơn hàng (${soldItems.length})
+        </button>
+      </div>
+    `;
+  }
+
+  // Trường hợp không có dữ liệu bán trong kỳ đã chọn
+  if (soldItems.length === 0) {
+    container.innerHTML = `
+      <div style="text-align:center;padding:48px 20px;color:var(--slate-500);">
+        <div style="width:64px;height:64px;margin:0 auto 16px;background:var(--slate-100);border-radius:50%;display:flex;align-items:center;justify-content:center;color:var(--slate-400);">
+          ${iconSvg('package', 32)}
+        </div>
+        <h3 style="font-size:16px;font-weight:700;color:var(--slate-800);margin-bottom:6px;">
+          Chưa có sản phẩm nào được bán trong ${esc(dateFilter?.label || 'kỳ này')}
+        </h3>
+        <p style="font-size:13px;color:var(--slate-500);max-width:440px;margin:0 auto 18px;line-height:1.5;">
+          Không có đơn hàng nào được tạo và ghi nhận trong khoảng thời gian này (hoặc các đơn đã bị hủy). Bạn có thể chọn kỳ báo cáo khác để xem:
+        </p>
+        <div style="display:flex;gap:8px;justify-content:center;flex-wrap:wrap;">
+          <button type="button" class="secondary-btn" style="padding:6px 14px;font-size:12px;" onclick="setDashboardPeriod('7days')">Xem 7 ngày qua</button>
+          <button type="button" class="secondary-btn" style="padding:6px 14px;font-size:12px;" onclick="setDashboardPeriod('30days')">Xem 30 ngày qua</button>
+          <button type="button" class="secondary-btn" style="padding:6px 14px;font-size:12px;" onclick="setDashboardPeriod('month')">Xem tháng này</button>
+        </div>
+      </div>
+    `;
+    return;
+  }
+
+  const totalQtyAll = soldItems.reduce((sum, it) => sum + it.quantity, 0);
+  const totalRevAll = soldItems.reduce((sum, it) => sum + it.totalAmount, 0);
+
+  // Chế độ 1: Tổng hợp theo mặt hàng (Grouped summary)
+  if (managerSalesViewMode === 'summary') {
+    container.innerHTML = `
+      <div class="table-wrap" style="max-height:420px;overflow-y:auto;">
+        <table class="data-table">
+          <thead>
+            <tr>
+              <th style="width:40px;text-align:center;">#</th>
+              <th>Sản phẩm &amp; Biến thể</th>
+              <th>Mã SKU</th>
+              <th style="text-align:right;">Đơn giá</th>
+              <th style="text-align:center;">Số lượng đã bán</th>
+              <th style="text-align:right;">Doanh thu</th>
+              <th>Đơn hàng liên quan</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${groupedList.map((g, idx) => {
+              const img = g.imageUrl || 'https://placehold.co/80x80/e2e8f0/475569?text=Toy';
+              const orderLinks = g.orderCodes.map(o => `
+                <button type="button" class="secondary-btn" style="padding:1px 6px;font-size:11px;margin:2px;" onclick="showOrderDetail(${o.orderId})" title="Xem chi tiết đơn hàng">
+                  #${esc(o.orderCode)}
+                </button>
+              `).join('');
+              return `
+                <tr>
+                  <td style="text-align:center;color:var(--slate-400);font-weight:600;">${idx + 1}</td>
+                  <td>
+                    <div style="display:flex;align-items:center;gap:12px;">
+                      <img src="${esc(img)}" onerror="this.onerror=null;this.src='https://placehold.co/80x80/e2e8f0/475569?text=Toy';" style="width:38px;height:38px;object-fit:cover;border-radius:6px;border:1px solid var(--slate-200);flex-shrink:0;">
+                      <div>
+                        <strong style="color:var(--slate-800);display:block;line-height:1.3;">${esc(g.productName)}</strong>
+                        ${g.variantAttributes ? `<small style="color:var(--slate-500);font-size:12px;">${esc(g.variantAttributes)}</small>` : ''}
+                      </div>
+                    </div>
+                  </td>
+                  <td><code style="background:var(--slate-100);padding:2px 6px;border-radius:4px;font-size:11.5px;font-weight:600;">${esc(g.sku)}</code></td>
+                  <td style="text-align:right;font-weight:600;color:var(--slate-700);">${money(g.unitPrice)}</td>
+                  <td style="text-align:center;">
+                    <span class="badge" style="background:#e0e7ff;color:#3730a3;font-weight:700;font-size:12.5px;padding:3px 10px;border-radius:12px;">
+                      ${g.totalQuantity.toLocaleString('vi-VN')} sản phẩm
+                    </span>
+                  </td>
+                  <td style="text-align:right;"><strong style="color:var(--primary);font-size:13.5px;">${money(g.totalRevenue)}</strong></td>
+                  <td><div style="display:flex;flex-wrap:wrap;max-width:240px;">${orderLinks}</div></td>
+                </tr>
+              `;
+            }).join('')}
+          </tbody>
+          <tfoot>
+            <tr style="background:var(--slate-50);font-weight:700;">
+              <td colspan="4" style="text-align:right;padding:12px 16px;color:var(--slate-700);">Tổng cộng trong kỳ:</td>
+              <td style="text-align:center;padding:12px 16px;">
+                <span class="badge" style="background:#dcfce7;color:#15803d;font-weight:800;font-size:13px;padding:4px 12px;border-radius:12px;">
+                  ${totalQtyAll.toLocaleString('vi-VN')} sản phẩm
+                </span>
+              </td>
+              <td style="text-align:right;padding:12px 16px;color:var(--primary);font-size:14px;">
+                ${money(totalRevAll)}
+              </td>
+              <td style="color:var(--slate-500);font-size:12px;padding:12px 16px;">${groupedList.length} mặt hàng khác nhau</td>
+            </tr>
+          </tfoot>
+        </table>
+      </div>
+    `;
+    return;
+  }
+
+  // Chế độ 2: Chi tiết theo từng đơn hàng (Order transaction view)
+  container.innerHTML = `
+    <div class="table-wrap" style="max-height:420px;overflow-y:auto;">
+      <table class="data-table">
+        <thead>
+          <tr>
+            <th>Thời gian</th>
+            <th>Mã đơn</th>
+            <th>Khách hàng</th>
+            <th>Sản phẩm &amp; Biến thể</th>
+            <th style="text-align:center;">SL</th>
+            <th style="text-align:right;">Thành tiền</th>
+            <th style="text-align:center;">Trạng thái đơn</th>
+            <th style="text-align:center;">Thao tác</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${soldItems.map(item => {
+            const statusLabel = ORDER_STATUS_LABELS[item.orderStatus] || 'Đang xử lý';
+            const statusPillType = item.orderStatus === 4 ? 'success' : (item.orderStatus === 5 ? 'danger' : 'warning');
+            return `
+              <tr>
+                <td style="font-size:12px;color:var(--slate-600);white-space:nowrap;">${fmtDateTime(item.orderDate)}</td>
+                <td><strong style="color:var(--primary);">#${esc(item.orderCode)}</strong></td>
+                <td><span style="font-weight:600;color:var(--slate-800);">${esc(item.customerName)}</span></td>
+                <td>
+                  <div>
+                    <strong style="color:var(--slate-800);">${esc(item.productName)}</strong>
+                    <div style="font-size:11.5px;color:var(--slate-500);">${esc(item.sku)}${item.variantAttributes ? ` · ${esc(item.variantAttributes)}` : ''}</div>
+                  </div>
+                </td>
+                <td style="text-align:center;"><strong>${item.quantity}</strong></td>
+                <td style="text-align:right;"><strong style="color:var(--primary);">${money(item.totalAmount)}</strong></td>
+                <td style="text-align:center;">${pill(statusLabel, statusPillType)}</td>
+                <td style="text-align:center;">
+                  <button type="button" class="icon-action-btn view" onclick="showOrderDetail(${item.orderId})" title="Xem chi tiết đơn hàng">${iconSvg('view')}</button>
+                </td>
+              </tr>
+            `;
+          }).join('')}
+        </tbody>
+        <tfoot>
+          <tr style="background:var(--slate-50);font-weight:700;">
+            <td colspan="4" style="text-align:right;padding:12px 16px;color:var(--slate-700);">Tổng cộng:</td>
+            <td style="text-align:center;padding:12px 16px;">
+              <span class="badge" style="background:#dcfce7;color:#15803d;font-weight:800;font-size:13px;padding:4px 12px;border-radius:12px;">
+                ${totalQtyAll.toLocaleString('vi-VN')}
+              </span>
+            </td>
+            <td style="text-align:right;padding:12px 16px;color:var(--primary);font-size:14px;">
+              ${money(totalRevAll)}
+            </td>
+            <td colspan="2" style="color:var(--slate-500);font-size:12px;padding:12px 16px;">${soldItems.length} lượt bán</td>
+          </tr>
+        </tfoot>
+      </table>
+    </div>
+  `;
+}
+
 async function renderDashboard(refreshOnly = false) {
+  const isAdmin = String(currentUser?.role || '').trim().toLowerCase() === 'admin';
   if (!refreshOnly && revenueChart) {
     revenueChart.destroy();
     revenueChart = null;
@@ -570,25 +823,42 @@ async function renderDashboard(refreshOnly = false) {
         </div>
       </div>
 
-      <!-- 3. CHARTS & QUICK ACTIONS -->
+      <!-- 3. CHARTS FOR ADMIN OR DETAILED SALES PANEL FOR MANAGER -->
       <div style="display:grid;grid-template-columns:1fr;gap:24px;margin-bottom:28px;">
-        <!-- Left: Revenue & Cashflow Chart -->
-        <div class="panel" style="margin-bottom:0;">
-          <div class="panel-header">
-            <div class="panel-title-area">
-              <h2 id="revenueChartTitle">Biểu đồ Doanh thu ghi nhận & Thực thu theo kỳ</h2>
-              <p>COD chỉ được tính vào doanh thu sau khi cửa hàng xác nhận đã nhận tiền. <span id="dashboardLastUpdated"></span></p>
+        ${isAdmin ? `
+          <!-- Admin: Revenue & Cashflow Chart -->
+          <div class="panel" style="margin-bottom:0;">
+            <div class="panel-header">
+              <div class="panel-title-area">
+                <h2 id="revenueChartTitle">Biểu đồ Doanh thu ghi nhận &amp; Thực thu theo kỳ</h2>
+                <p>COD chỉ được tính vào doanh thu sau khi cửa hàng xác nhận đã nhận tiền. <span id="dashboardLastUpdated"></span></p>
+              </div>
+              <div style="display:flex;align-items:center;gap:14px;">
+                <span style="font-size:12px;font-weight:600;display:flex;align-items:center;gap:5px;"><span style="display:inline-block;width:12px;height:12px;border-radius:3px;background:#6366f1;"></span> Doanh thu ghi nhận</span>
+                <span style="font-size:12px;font-weight:600;display:flex;align-items:center;gap:5px;"><span style="display:inline-block;width:12px;height:12px;border-radius:3px;background:#10b981;"></span> Thực thu quỹ</span>
+              </div>
             </div>
-            <div style="display:flex;align-items:center;gap:14px;">
-              <span style="font-size:12px;font-weight:600;display:flex;align-items:center;gap:5px;"><span style="display:inline-block;width:12px;height:12px;border-radius:3px;background:#6366f1;"></span> Doanh thu ghi nhận</span>
-              <span style="font-size:12px;font-weight:600;display:flex;align-items:center;gap:5px;"><span style="display:inline-block;width:12px;height:12px;border-radius:3px;background:#10b981;"></span> Thực thu quỹ</span>
+            <div style="padding:22px;">
+              <canvas id="revenueChartCanvas" height="155"></canvas>
             </div>
           </div>
-          <div style="padding:22px;">
-            <canvas id="revenueChartCanvas" height="155"></canvas>
+        ` : `
+          <!-- Manager: Chi tiết mặt hàng bán được trong kỳ -->
+          <div class="panel" style="margin-bottom:0;" id="managerSalesPanel">
+            <div class="panel-header" style="flex-wrap:wrap;gap:12px;">
+              <div class="panel-title-area">
+                <h2 id="managerSalesPanelTitle" style="display:flex;align-items:center;gap:8px;">
+                  ${iconSvg('package', 20)} Chi tiết các mặt hàng bán được trong ${esc(dateFilter.label)}
+                </h2>
+                <p id="managerSalesPanelSub">Thống kê chi tiết từng sản phẩm, biến thể và đơn hàng tương ứng theo kỳ đã chọn. <span id="dashboardLastUpdated"></span></p>
+              </div>
+              <div id="managerSalesModeToggle" style="display:flex;align-items:center;gap:8px;"></div>
+            </div>
+            <div id="managerSalesContent" style="padding:0;">
+              <p style="text-align:center;padding:32px;color:var(--slate-400);">Đang tổng hợp dữ liệu bán hàng...</p>
+            </div>
           </div>
-        </div>
-
+        `}
       </div>
 
       <!-- 4. CASHFLOW BREAKDOWN & CATEGORY REVENUE -->
@@ -779,69 +1049,73 @@ async function renderDashboard(refreshOnly = false) {
       if (logSub) logSub.textContent = `Đang giao: ${summary.shippingOrders || 0} · Tỷ lệ hoàn: ${summary.returnRate || 0}%`;
     }
 
-    // 2. Render Chart (Doanh thu ghi nhận vs Thực thu)
-    const ctx = document.getElementById('revenueChartCanvas')?.getContext('2d');
-    if (ctx && report && report.items && report.items.length > 0) {
-      if (revenueChart) revenueChart.destroy();
-      const labels = report.items.map(it => it.periodLabel);
-      const grossData = report.items.map(it => it.grossRevenue);
-      const paidData = report.items.map(it => it.paidAmount);
-      const yAxisScale = revenueYAxisScale(grossData.concat(paidData));
+    // 2. Render Chart (Cho Admin) HOẶC Bảng Chi Tiết Mặt Hàng Đã Bán (Cho Quản Lý)
+    if (isAdmin) {
+      const ctx = document.getElementById('revenueChartCanvas')?.getContext('2d');
+      if (ctx && report && report.items && report.items.length > 0) {
+        if (revenueChart) revenueChart.destroy();
+        const labels = report.items.map(it => it.periodLabel);
+        const grossData = report.items.map(it => it.grossRevenue);
+        const paidData = report.items.map(it => it.paidAmount);
+        const yAxisScale = revenueYAxisScale(grossData.concat(paidData));
 
-      revenueChart = new Chart(ctx, {
-        type: 'bar',
-        data: {
-          labels,
-          datasets: [
-            {
-              label: 'Doanh thu ghi nhận (VNĐ)',
-              data: grossData,
-              backgroundColor: '#6366f1',
-              hoverBackgroundColor: '#4f46e5',
-              borderRadius: 6,
-              maxBarThickness: labels.length > 15 ? 18 : 36
-            },
-            {
-              label: 'Thực thu về quỹ (VNĐ)',
-              data: paidData,
-              backgroundColor: '#10b981',
-              hoverBackgroundColor: '#059669',
-              borderRadius: 6,
-              maxBarThickness: labels.length > 15 ? 18 : 36
-            }
-          ]
-        },
-        options: {
-          responsive: true,
-          maintainAspectRatio: false,
-          plugins: {
-            legend: { display: false },
-            tooltip: {
-              callbacks: {
-                label: function(context) {
-                  return `${context.dataset.label}: ${Number(context.parsed.y || 0).toLocaleString('vi-VN')} đ`;
+        revenueChart = new Chart(ctx, {
+          type: 'bar',
+          data: {
+            labels,
+            datasets: [
+              {
+                label: 'Doanh thu ghi nhận (VNĐ)',
+                data: grossData,
+                backgroundColor: '#6366f1',
+                hoverBackgroundColor: '#4f46e5',
+                borderRadius: 6,
+                maxBarThickness: labels.length > 15 ? 18 : 36
+              },
+              {
+                label: 'Thực thu về quỹ (VNĐ)',
+                data: paidData,
+                backgroundColor: '#10b981',
+                hoverBackgroundColor: '#059669',
+                borderRadius: 6,
+                maxBarThickness: labels.length > 15 ? 18 : 36
+              }
+            ]
+          },
+          options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: {
+              legend: { display: false },
+              tooltip: {
+                callbacks: {
+                  label: function(context) {
+                    return `${context.dataset.label}: ${Number(context.parsed.y || 0).toLocaleString('vi-VN')} đ`;
+                  }
                 }
               }
-            }
-          },
-          scales: {
-            y: {
-              beginAtZero: true,
-              max: yAxisScale.max,
-              ticks: {
-                stepSize: yAxisScale.stepSize,
-                maxTicksLimit: 10,
-                callback: v => Number(v).toLocaleString('vi-VN') + ' đ'
-              },
-              grid: { color: '#f1f5f9' }
             },
-            x: {
-              grid: { display: false },
-              ticks: { autoSkip: true, maxTicksLimit: labels.length > 15 ? 10 : 12 }
+            scales: {
+              y: {
+                beginAtZero: true,
+                max: yAxisScale.max,
+                ticks: {
+                  stepSize: yAxisScale.stepSize,
+                  maxTicksLimit: 10,
+                  callback: v => Number(v).toLocaleString('vi-VN') + ' đ'
+                },
+                grid: { color: '#f1f5f9' }
+              },
+              x: {
+                grid: { display: false },
+                ticks: { autoSkip: true, maxTicksLimit: labels.length > 15 ? 10 : 12 }
+              }
             }
           }
-        }
-      });
+        });
+      }
+    } else {
+      renderManagerSalesBreakdown(orders, dateFilter);
     }
 
     // 3. Render Cashflow Breakdown
@@ -6513,16 +6787,21 @@ function confirmDelete(key, index) {
   if (!targetRow) return;
 
   const id = record.productId || record.id || record.categoryId || record.brandId || record.supplierId || record.importReceiptId || record.promotionId || record.voucherId;
+  const isProduct = key === 'products';
+  const confirmMsg = isProduct 
+    ? 'Bạn có chắc chắn muốn ngừng kinh doanh sản phẩm này? Hệ thống sẽ chuyển sang trạng thái "Ngừng kinh doanh" (Soft Delete) để bảo toàn lịch sử hóa đơn và kho.'
+    : 'Bạn có chắc chắn muốn xóa mục này? Hành động này không thể hoàn tác.';
+  const btnText = isProduct ? 'Ngừng kinh doanh' : 'Xóa vĩnh viễn';
 
   targetRow.innerHTML = `
     <td colspan="${m.columns.length + 1}" style="padding:16px 20px;background:var(--danger-bg);">
       <div style="display:flex;align-items:center;justify-content:space-between;">
         <span style="color:var(--danger);font-weight:700;">
-          Bạn có chắc chắn muốn xóa mục này? Hành động này không thể hoàn tác.
+          ${confirmMsg}
         </span>
         <div style="display:flex;gap:8px;">
           <button class="ghost-btn" style="padding:6px 14px;font-size:12px;" onclick="renderList('${key}')">Hủy</button>
-          <button class="danger-btn" style="padding:6px 14px;font-size:12px;" onclick="executeDelete('${key}', '${id}')">Xóa vĩnh viễn</button>
+          <button class="danger-btn" style="padding:6px 14px;font-size:12px;" onclick="executeDelete('${key}', '${id}')">${btnText}</button>
         </div>
       </div>
     </td>
@@ -6532,8 +6811,8 @@ function confirmDelete(key, index) {
 async function executeDelete(key, id) {
   const m = MODULES[key];
   try {
-    await api(`${m.endpoint}/${id}`, { method: 'DELETE' });
-    toast('Đã xóa thành công!', 'success');
+    const res = await api(`${m.endpoint}/${id}`, { method: 'DELETE' });
+    toast(res?.message || 'Đã thực hiện thành công!', 'success');
     renderList(key);
   } catch (err) {
     toast(`Lỗi xóa: ${err.message}`, 'error');

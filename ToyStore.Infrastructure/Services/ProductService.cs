@@ -399,6 +399,10 @@ namespace ToyStoreManagement.Infrastructure.Services
         // DELETE PRODUCT
         // ==========================================
 
+        // ==========================================
+        // DELETE PRODUCT (SOFT DELETE)
+        // ==========================================
+
         public async Task<bool> DeleteAsync(int productId)
         {
             var product = await _productRepository
@@ -407,76 +411,23 @@ namespace ToyStoreManagement.Infrastructure.Services
             if (product == null)
                 return false;
 
-            // Lấy toàn bộ Variant của sản phẩm
-            var variantIds = await _context.ProductVariants
+            // Chuyển sang Soft Delete (Status = 2: Ngừng kinh doanh)
+            // để bảo toàn toàn bộ dữ liệu lịch sử đơn hàng, phiếu nhập kho, biến động tồn kho và đánh giá
+            product.Status = 2; // 2: Ngừng kinh doanh
+            product.UpdatedAt = DateTime.UtcNow;
+
+            // Đồng thời chuyển tất cả các biến thể của sản phẩm sang ngừng bán (Status = 0)
+            var variants = await _context.ProductVariants
                 .Where(x => x.ProductId == productId)
-                .Select(x => x.VariantId)
                 .ToListAsync();
 
-            if (variantIds.Count > 0)
+            foreach (var variant in variants)
             {
-                // Xóa đánh giá sản phẩm
-                var reviews = await _context.ProductReviews
-                    .Where(x =>
-                        x.ProductId == productId ||
-                        variantIds.Contains(x.VariantId))
-                    .ToListAsync();
-
-                _context.ProductReviews.RemoveRange(reviews);
-
-                // Xóa chi tiết yêu cầu trả hàng
-                var returnDetails = await _context.ReturnRequestDetails
-                    .Where(x => variantIds.Contains(x.VariantId))
-                    .ToListAsync();
-
-                _context.ReturnRequestDetails.RemoveRange(returnDetails);
-
-                // Xóa chi tiết phiếu nhập
-                var importDetails = await _context.ImportReceiptDetails
-                    .Where(x => variantIds.Contains(x.VariantId))
-                    .ToListAsync();
-
-                _context.ImportReceiptDetails.RemoveRange(importDetails);
-
-                // Xóa chi tiết đơn hàng
-                var orderDetails = await _context.OrderDetails
-                    .Where(x => variantIds.Contains(x.VariantId))
-                    .ToListAsync();
-
-                _context.OrderDetails.RemoveRange(orderDetails);
-
-                // Xóa sản phẩm khỏi chương trình khuyến mãi
-                var promotionProducts = await _context.PromotionProducts
-                    .Where(x => variantIds.Contains(x.VariantId))
-                    .ToListAsync();
-
-                _context.PromotionProducts.RemoveRange(promotionProducts);
-
-                // Xóa lịch sử biến động kho
-                var inventoryTransactions = await _context.InventoryTransactions
-                    .Where(x => variantIds.Contains(x.VariantId))
-                    .ToListAsync();
-
-                _context.InventoryTransactions.RemoveRange(inventoryTransactions);
-
-                // Xóa tồn kho
-                var inventories = await _context.Inventories
-                    .Where(x => variantIds.Contains(x.VariantId))
-                    .ToListAsync();
-
-                _context.Inventories.RemoveRange(inventories);
-
-                // Xóa toàn bộ Variant
-                var variants = await _context.ProductVariants
-                    .Where(x => variantIds.Contains(x.VariantId))
-                    .ToListAsync();
-
-                _context.ProductVariants.RemoveRange(variants);
+                variant.Status = 0; // Ngừng bán / ẩn biến thể
+                variant.UpdatedAt = DateTime.UtcNow;
             }
 
-            // Cuối cùng xóa Product
-            _context.Products.Remove(product);
-
+            _productRepository.Update(product);
             await _unitOfWork.SaveChangesAsync();
 
             return true;
