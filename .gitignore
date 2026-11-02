@@ -50,6 +50,8 @@ node_modules/
 *.temp
 *.txt
 *.docx
+*.csv
+ds_don_hang.csv
 ~$*.doc*
 ~$*.xls*
 ~$*.ppt*

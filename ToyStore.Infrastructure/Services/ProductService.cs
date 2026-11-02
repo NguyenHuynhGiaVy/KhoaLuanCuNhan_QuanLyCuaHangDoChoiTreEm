@@ -1118,5 +1118,88 @@ namespace ToyStoreManagement.Infrastructure.Services
                 inventory.VariantId == variantId &&
                 inventory.Quantity - inventory.ReservedQuantity > 0);
         }
+
+        public async Task<int> ReconcilePricesAndStockAsync()
+        {
+            var products = await _context.Products
+                .Include(p => p.ProductVariants)
+                .ToListAsync();
+
+            int updatedCount = 0;
+
+            foreach (var product in products)
+            {
+                bool isChanged = false;
+                var variants = product.ProductVariants.ToList();
+
+                foreach (var variant in variants)
+                {
+                    // Nếu giá bán biến thể đang là 0 hoặc chưa có, tìm giá từ phiếu nhập gần nhất
+                    if (variant.Price <= 0)
+                    {
+                        var lastReceiptDetail = await _context.ImportReceiptDetails
+                            .Include(d => d.ImportReceipt)
+                            .Where(d => d.VariantId == variant.VariantId && (d.NewPrice > 0 || d.UnitCost > 0))
+                            .OrderByDescending(d => d.ImportReceiptDetailId)
+                            .FirstOrDefaultAsync();
+
+                        if (lastReceiptDetail != null)
+                        {
+                            if (lastReceiptDetail.NewPrice.HasValue && lastReceiptDetail.NewPrice.Value > 0)
+                            {
+                                variant.Price = lastReceiptDetail.NewPrice.Value;
+                                isChanged = true;
+                            }
+                            else if (lastReceiptDetail.UnitCost > 0)
+                            {
+                                variant.Price = Math.Round(lastReceiptDetail.UnitCost * 1.25m, 0);
+                                isChanged = true;
+                            }
+
+                            if (lastReceiptDetail.UnitCost > 0 && variant.CostPrice <= 0)
+                            {
+                                variant.CostPrice = lastReceiptDetail.UnitCost;
+                                isChanged = true;
+                            }
+                        }
+                    }
+                }
+
+                var activePrices = variants.Where(v => v.Price > 0).Select(v => v.Price).ToList();
+                if (activePrices.Count > 0)
+                {
+                    var minPrice = activePrices.Min();
+                    if (product.BasePrice != minPrice)
+                    {
+                        product.BasePrice = minPrice;
+                        isChanged = true;
+                    }
+                }
+
+                var totalQty = await _context.Inventories
+                    .Where(i => i.ProductVariant.ProductId == product.ProductId)
+                    .SumAsync(i => (int?)i.Quantity) ?? 0;
+
+                // Nếu có hàng tồn kho hoặc có giá bán hợp lệ, kích hoạt Đang bán (1)
+                if ((totalQty > 0 || activePrices.Count > 0) && (product.Status == 0 || product.Status == 3))
+                {
+                    product.Status = 1; // 1: Đang bán
+                    isChanged = true;
+                }
+
+                if (isChanged)
+                {
+                    product.UpdatedAt = DateTime.UtcNow;
+                    updatedCount++;
+                }
+            }
+
+            if (updatedCount > 0)
+            {
+                await _unitOfWork.SaveChangesAsync();
+            }
+
+            return updatedCount;
+        }
     }
 }

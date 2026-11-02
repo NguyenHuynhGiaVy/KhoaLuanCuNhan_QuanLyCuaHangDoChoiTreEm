@@ -754,7 +754,7 @@ async function renderDashboard(refreshOnly = false) {
     // 1. Update 5 KPI Cards
     if (summary) {
       const soldEl = document.getElementById('kpiSoldQuantity');
-      if (soldEl) soldEl.textContent = `${(summary.totalSoldQuantity || 0).toLocaleString('vi-VN')} cái`;
+      if (soldEl) soldEl.textContent = `${(summary.totalSoldQuantity || 0).toLocaleString('vi-VN')} sản phẩm`;
       const invSub = document.getElementById('kpiInventorySub');
       if (invSub) invSub.textContent = `Tồn kho: ${(summary.currentInventoryQuantity || 0).toLocaleString('vi-VN')} sp (${summary.lowStockCount || 0} mã sắp hết)`;
 
@@ -1597,6 +1597,11 @@ async function renderList(key) {
             </a>
             <button class="secondary-btn" onclick="showShippingBatchModal()" style="display:inline-flex;align-items:center;gap:6px;">
               Gợi ý gộp đơn
+            </button>
+          ` : ''}
+          ${key === 'products' ? `
+            <button class="secondary-btn" onclick="reconcileProductPricesAndStatus()" style="display:inline-flex;align-items:center;gap:6px;" title="Cập nhật giá bán và kích hoạt mở bán từ các phiếu nhập kho">
+              <span>↻</span> Đồng bộ giá & mở bán
             </button>
           ` : ''}
           ${m.canAdd ? `
@@ -2557,7 +2562,7 @@ function getRowCells(key, r) {
       }
 
       return [
-        `<img src="${esc(img)}" style="width:42px;height:42px;object-fit:cover;border-radius:8px;border:1px solid var(--slate-200);">`,
+        `<img src="${esc(img)}" onerror="this.onerror=null;this.src='https://placehold.co/80x80/e2e8f0/475569?text=Toy';" style="width:42px;height:42px;object-fit:cover;border-radius:8px;border:1px solid var(--slate-200);">`,
         `<strong>${esc(r.name)}</strong><br><small style="color:var(--slate-400);">Mã: ${esc(r.productId)}</small>`,
         esc(r.categoryName || '—'),
         esc(r.brandName || '—'),
@@ -2747,6 +2752,7 @@ function getRowActions(key, r, index) {
   if (key === 'imports') {
     btns += `<button class="icon-action-btn view" title="Xem chi tiết & Duyệt nhập kho" onclick="showImportDetail(${r.importReceiptId})">${iconSvg('view')}</button> `;
     if (r.status === 1) {
+      btns += `<button class="icon-action-btn" style="color:var(--success);" title="Duyệt nhanh & Mở bán ngay" onclick="quickApproveImport(${r.importReceiptId})">${iconSvg('check')}</button> `;
       btns += `<button class="icon-action-btn" title="Chỉnh sửa phiếu" onclick="showForm('imports', ${index})">${iconSvg('edit')}</button> `;
       btns += `<button class="icon-action-btn del" title="Hủy / Xóa phiếu" onclick="confirmDelete('${key}', ${index})">${iconSvg('delete')}</button>`;
     }
@@ -5703,7 +5709,9 @@ window.submitImportReceiptForm = async function(isComplete, index) {
           method: 'POST',
           body: JSON.stringify({
             details: details.map(d => ({
+              importReceiptDetailId: d.importReceiptDetailId || 0,
               variantId: d.variantId,
+              quantity: d.quantity,
               receivedQuantity: d.quantity,
               newPrice: d.newPrice
             }))
@@ -5719,6 +5727,9 @@ window.submitImportReceiptForm = async function(isComplete, index) {
       toast(isComplete ? 'Tạo phiếu & Hoàn tất nhập kho thành công! Giá bán và trạng thái đang bán đã kích hoạt.' : 'Tạo phiếu nhập kho tạm (chờ duyệt) thành công!', 'success');
     }
 
+    delete cache.products;
+    delete cache.inventory;
+    delete cache.imports;
     await loadRef();
     renderList('imports');
   } catch (err) {
@@ -6031,9 +6042,39 @@ window.executeCancelPurchaseOrder = async function(id) {
   try {
     await api(`ImportReceipt/${id}/cancel`, { method: 'POST' });
     toast('Đã hủy phiếu đặt hàng.', 'success');
+    delete cache.imports;
     showImportDetail(id);
   } catch (err) {
     toast(`Lỗi: ${err.message}`, 'error');
+  }
+};
+
+window.quickApproveImport = async function(id) {
+  try {
+    toast('Đang duyệt phiếu nhập kho & cập nhật giá bán...', 'info');
+    await api(`ImportReceipt/${id}/approve`, { method: 'POST', body: JSON.stringify({}) });
+    toast('Duyệt nhập kho & kích hoạt mở bán sản phẩm thành công!', 'success');
+    delete cache.products;
+    delete cache.inventory;
+    delete cache.imports;
+    await loadRef();
+    renderList('imports');
+  } catch (err) {
+    toast(`Lỗi duyệt: ${err.message}`, 'error');
+  }
+};
+
+window.reconcileProductPricesAndStatus = async function() {
+  try {
+    toast('Đang đồng bộ giá bán & kích hoạt mở bán từ các phiếu nhập...', 'info');
+    const res = await api('Product/reconcile-prices-and-status', { method: 'POST' });
+    toast(res.message || 'Đồng bộ thành công!', 'success');
+    delete cache.products;
+    delete cache.inventory;
+    await loadRef();
+    renderList('products');
+  } catch (err) {
+    toast(`Lỗi đồng bộ: ${err.message}`, 'error');
   }
 };
 

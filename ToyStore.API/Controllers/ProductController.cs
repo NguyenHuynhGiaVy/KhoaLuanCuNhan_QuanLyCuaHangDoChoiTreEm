@@ -319,6 +319,25 @@ namespace ToyStoreManagement.API.Controllers
             });
         }
 
+        [HttpPost("reconcile-prices-and-status")]
+        [Authorize(Policy = "AdminOrManager")]
+        public async Task<IActionResult> ReconcilePricesAndStatus()
+        {
+            try
+            {
+                var updated = await _productService.ReconcilePricesAndStockAsync();
+                return Ok(new
+                {
+                    message = $"Đã đồng bộ giá bán và kích hoạt mở bán thành công cho {updated} sản phẩm.",
+                    updatedCount = updated
+                });
+            }
+            catch (Exception ex)
+            {
+                return BadRequest(new { message = $"Lỗi đồng bộ: {ex.Message}" });
+            }
+        }
+
         private static string GetFriendlyErrorMessage(Exception ex)
         {
             var msg = ex.InnerException != null ? ex.InnerException.Message : ex.Message;

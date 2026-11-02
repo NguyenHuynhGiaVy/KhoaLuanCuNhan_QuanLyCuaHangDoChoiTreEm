@@ -139,7 +139,7 @@ namespace ToyStoreManagement.Infrastructure.Services
                 OrderedByUserId = orderedByUserId,
                 ReceiptCode = receiptCode,
                 ImportDate = dto.ImportDate,
-                Status = dto.Status,
+                Status = 1, // Ban đầu lưu tạm (1) để ReceiveAsync có thể xử lý hoàn tất mà không bị chặn
                 Note = dto.Note ?? string.Empty,
                 CreatedAt = DateTime.UtcNow,
                 TotalAmount = 0
@@ -195,6 +195,7 @@ namespace ToyStoreManagement.Infrastructure.Services
                     Details = receipt.ImportReceiptDetails.Select(d => new ReceiveImportReceiptDetailDto
                     {
                         ImportReceiptDetailId = d.ImportReceiptDetailId,
+                        VariantId = d.VariantId,
                         Quantity = d.Quantity,
                         NewPrice = d.NewPrice
                     }).ToList()
@@ -305,11 +306,14 @@ namespace ToyStoreManagement.Infrastructure.Services
 
                 foreach (var received in dto.Details)
                 {
-                    if (received.Quantity <= 0)
+                    var qtyToProcess = received.Quantity > 0 ? received.Quantity : received.ReceivedQuantity;
+                    if (qtyToProcess <= 0)
                         throw new Exception("Số lượng nhập phải lớn hơn 0.");
 
                     var detail = receipt.ImportReceiptDetails
-                        .FirstOrDefault(x => x.ImportReceiptDetailId == received.ImportReceiptDetailId);
+                        .FirstOrDefault(x => 
+                            (received.ImportReceiptDetailId > 0 && x.ImportReceiptDetailId == received.ImportReceiptDetailId) ||
+                            (received.VariantId > 0 && x.VariantId == received.VariantId));
 
                     if (detail == null)
                         throw new Exception("Chi tiết nhập hàng không thuộc phiếu này.");
@@ -427,7 +431,11 @@ namespace ToyStoreManagement.Infrastructure.Services
                         .Where(x => x.ProductVariant.ProductId == productId)
                         .SumAsync(x => (int?)x.Quantity) ?? 0;
 
-                    var activeVariantPrices = product.ProductVariants
+                    var allVariants = await _context.ProductVariants
+                        .Where(v => v.ProductId == productId)
+                        .ToListAsync();
+
+                    var activeVariantPrices = allVariants
                         .Where(v => v.Price > 0)
                         .Select(v => v.Price)
                         .ToList();
@@ -436,15 +444,21 @@ namespace ToyStoreManagement.Infrastructure.Services
                     {
                         product.BasePrice = activeVariantPrices.Min();
                     }
+                    else
+                    {
+                        var productDetail = receipt.ImportReceiptDetails
+                            .FirstOrDefault(d => d.ProductVariant != null && d.ProductVariant.ProductId == productId);
+                        if (productDetail?.NewPrice.HasValue == true && productDetail.NewPrice.Value > 0)
+                        {
+                            product.BasePrice = productDetail.NewPrice.Value;
+                        }
+                    }
 
                     // 3. Tự động kích hoạt trạng thái "Đang bán" (1):
-                    // Khi tồn kho > 0 VÀ có biến thể có giá bán > 0:
-                    if (totalQuantity > 0 && activeVariantPrices.Count > 0)
+                    // Khi có tồn kho hoặc có giá bán hợp lệ:
+                    if (totalQuantity > 0 || activeVariantPrices.Count > 0)
                     {
-                        if (product.Status == 0 || product.Status == 3)
-                        {
-                            product.Status = 1; // Đang bán
-                        }
+                        product.Status = 1; // Đang bán
                     }
                     else if (product.Status != 2)
                     {
@@ -495,15 +509,19 @@ namespace ToyStoreManagement.Infrastructure.Services
                 var remaining = detail.Quantity - alreadyReceived;
                 if (remaining > 0)
                 {
-                    var matchingDtoDetail = dto?.Details?.FirstOrDefault(d => d.ImportReceiptDetailId == detail.ImportReceiptDetailId);
+                    var matchingDtoDetail = dto?.Details?.FirstOrDefault(d => 
+                        (d.ImportReceiptDetailId > 0 && d.ImportReceiptDetailId == detail.ImportReceiptDetailId) ||
+                        (d.VariantId > 0 && d.VariantId == detail.VariantId));
                     var newPriceVal = matchingDtoDetail?.NewPrice ?? detail.NewPrice;
-                    var qtyToReceive = (matchingDtoDetail != null && matchingDtoDetail.Quantity > 0)
-                        ? Math.Min(matchingDtoDetail.Quantity, remaining)
+                    var requestedQty = matchingDtoDetail != null ? (matchingDtoDetail.Quantity > 0 ? matchingDtoDetail.Quantity : matchingDtoDetail.ReceivedQuantity) : 0;
+                    var qtyToReceive = requestedQty > 0
+                        ? Math.Min(requestedQty, remaining)
                         : remaining;
 
                     detailsToReceive.Add(new ReceiveImportReceiptDetailDto
                     {
                         ImportReceiptDetailId = detail.ImportReceiptDetailId,
+                        VariantId = detail.VariantId,
                         Quantity = qtyToReceive,
                         NewPrice = newPriceVal
                     });

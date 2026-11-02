@@ -3,9 +3,9 @@ using System.IO;
 using System.Linq;
 using System.Threading.Tasks;
 using Microsoft.AspNetCore.Authorization;
-using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
+using ToyStoreManagement.Application.Interfaces.Services;
 
 namespace ToyStoreManagement.API.Controllers
 {
@@ -13,17 +13,17 @@ namespace ToyStoreManagement.API.Controllers
     [Route("api/[controller]")]
     public class UploadController : ControllerBase
     {
-        private readonly IWebHostEnvironment _env;
+        private readonly IFileStorageService _storageService;
         private static readonly string[] AllowedImageExtensions = { ".jpg", ".jpeg", ".png", ".webp", ".gif", ".svg" };
         private const long MaxFileSize = 10 * 1024 * 1024; // 10MB
 
-        public UploadController(IWebHostEnvironment env)
+        public UploadController(IFileStorageService storageService)
         {
-            _env = env;
+            _storageService = storageService;
         }
 
         /// <summary>
-        /// Tải ảnh lên từ máy tính (Multipart Form File)
+        /// Tải ảnh lên từ máy tính (Multipart Form File) sử dụng MinIO S3 API với fallback lưu trữ dự phòng
         /// </summary>
         [HttpPost("image")]
         [AllowAnonymous]
@@ -48,29 +48,14 @@ namespace ToyStoreManagement.API.Controllers
 
             try
             {
-                var subFolder = string.IsNullOrWhiteSpace(folder) ? "general" : folder.Trim().ToLowerInvariant();
-                // Bảo vệ đường dẫn không bị Directory Traversal
-                subFolder = string.Join("_", subFolder.Split(Path.GetInvalidFileNameChars()));
+                var subFolder = string.IsNullOrWhiteSpace(folder) ? "products" : folder.Trim().ToLowerInvariant();
+                await using var stream = file.OpenReadStream();
+                var publicUrl = await _storageService.UploadFileAsync(stream, file.FileName, file.ContentType, subFolder);
 
-                var uploadsRoot = Path.Combine(_env.WebRootPath ?? Path.Combine(Directory.GetCurrentDirectory(), "wwwroot"), "uploads", subFolder);
-                if (!Directory.Exists(uploadsRoot))
-                {
-                    Directory.CreateDirectory(uploadsRoot);
-                }
-
-                var uniqueFileName = $"{DateTime.UtcNow:yyyyMMdd_HHmmss}_{Guid.NewGuid():N}{extension}";
-                var filePath = Path.Combine(uploadsRoot, uniqueFileName);
-
-                await using (var stream = new FileStream(filePath, FileMode.Create))
-                {
-                    await file.CopyToAsync(stream);
-                }
-
-                var relativeUrl = $"/uploads/{subFolder}/{uniqueFileName}";
                 return Ok(new
                 {
-                    url = relativeUrl,
-                    fileName = uniqueFileName,
+                    url = publicUrl,
+                    fileName = Path.GetFileName(publicUrl),
                     size = file.Length,
                     message = "Tải ảnh lên thành công!"
                 });
@@ -82,7 +67,7 @@ namespace ToyStoreManagement.API.Controllers
         }
 
         /// <summary>
-        /// Tải ảnh trực tiếp từ Base64 Data URL (hỗ trợ preview & fallback)
+        /// Tải ảnh trực tiếp từ Base64 Data URL
         /// </summary>
         [HttpPost("base64")]
         [AllowAnonymous]
@@ -95,42 +80,13 @@ namespace ToyStoreManagement.API.Controllers
 
             try
             {
-                var data = dto.Base64Data;
-                var extension = ".jpg";
+                var subFolder = string.IsNullOrWhiteSpace(dto.Folder) ? "products" : dto.Folder.Trim().ToLowerInvariant();
+                var publicUrl = await _storageService.UploadBase64Async(dto.Base64Data, subFolder);
 
-                if (data.Contains(","))
-                {
-                    var header = data.Substring(0, data.IndexOf(","));
-                    if (header.Contains("image/png")) extension = ".png";
-                    else if (header.Contains("image/webp")) extension = ".webp";
-                    else if (header.Contains("image/gif")) extension = ".gif";
-                    data = data.Substring(data.IndexOf(",") + 1);
-                }
-
-                var bytes = Convert.FromBase64String(data);
-                if (bytes.Length > MaxFileSize)
-                {
-                    return BadRequest(new { message = "Kích thước ảnh vượt quá 10MB." });
-                }
-
-                var subFolder = string.IsNullOrWhiteSpace(dto.Folder) ? "general" : dto.Folder.Trim().ToLowerInvariant();
-                var uploadsRoot = Path.Combine(_env.WebRootPath ?? Path.Combine(Directory.GetCurrentDirectory(), "wwwroot"), "uploads", subFolder);
-                if (!Directory.Exists(uploadsRoot))
-                {
-                    Directory.CreateDirectory(uploadsRoot);
-                }
-
-                var uniqueFileName = $"{DateTime.UtcNow:yyyyMMdd_HHmmss}_{Guid.NewGuid():N}{extension}";
-                var filePath = Path.Combine(uploadsRoot, uniqueFileName);
-
-                await System.IO.File.WriteAllBytesAsync(filePath, bytes);
-
-                var relativeUrl = $"/uploads/{subFolder}/{uniqueFileName}";
                 return Ok(new
                 {
-                    url = relativeUrl,
-                    fileName = uniqueFileName,
-                    size = bytes.Length,
+                    url = publicUrl,
+                    fileName = Path.GetFileName(publicUrl),
                     message = "Lưu ảnh thành công!"
                 });
             }
@@ -138,6 +94,17 @@ namespace ToyStoreManagement.API.Controllers
             {
                 return StatusCode(500, new { message = $"Lỗi xử lý Base64: {ex.Message}" });
             }
+        }
+
+        /// <summary>
+        /// Kiểm tra trạng thái kết nối MinIO Object Storage
+        /// </summary>
+        [HttpGet("storage-status")]
+        [AllowAnonymous]
+        public async Task<IActionResult> GetStorageStatus()
+        {
+            var status = await _storageService.GetStorageStatusAsync();
+            return Ok(status);
         }
     }
 
