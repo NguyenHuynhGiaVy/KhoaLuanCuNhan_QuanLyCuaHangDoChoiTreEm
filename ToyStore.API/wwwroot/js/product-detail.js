@@ -345,6 +345,95 @@ let selectedReviewRating = 5;
         : 'Vui lòng chọn sản phẩm khác hoặc quay lại sau.'));
   }
 
+  // Tìm ảnh phù hợp nhất cho biến thể được chọn
+  function resolveVariantImage(variant) {
+    if (variant?.imageUrl && variant.imageUrl.trim()) {
+      return variant.imageUrl.trim();
+    }
+
+    if (variant) {
+      const attrs = variantAttributes(variant);
+      // Tìm thuộc tính màu sắc hoặc thuộc tính nhận diện ngoại quan chính
+      const colorAttr = attrs.find(a => {
+        const key = normalizedVariantAttribute(a.attributeName);
+        return key.includes('màu') || key.includes('color');
+      }) || attrs[0];
+
+      if (colorAttr) {
+        const targetAttrKey = normalizedVariantAttribute(colorAttr.attributeName);
+        const targetAttrVal = normalizedVariantAttribute(colorAttr.attributeValue);
+
+        const siblingWithImage = detailVariants.find(v => {
+          if (!v.imageUrl || !v.imageUrl.trim()) return false;
+          return variantAttributes(v).some(a =>
+            normalizedVariantAttribute(a.attributeName) === targetAttrKey &&
+            normalizedVariantAttribute(a.attributeValue) === targetAttrVal
+          );
+        });
+
+        if (siblingWithImage) {
+          return siblingWithImage.imageUrl.trim();
+        }
+      }
+    }
+
+    return imageOf(detailProduct);
+  }
+
+  // Tự động chuyển đổi ảnh bên trái và highlight thumbnail tương ứng
+  function syncGalleryForVariant(targetImgUrl) {
+    const mainImg = document.getElementById('mainProductImage');
+    if (!mainImg || !targetImgUrl) return;
+
+    const normalizedTarget = targetImgUrl.trim();
+    const currentSrc = (mainImg.getAttribute('src') || '').trim();
+
+    if (currentSrc !== normalizedTarget) {
+      mainImg.style.transition = 'opacity 0.22s cubic-bezier(0.4, 0, 0.2, 1)';
+      mainImg.style.opacity = '0.35';
+
+      const temp = new Image();
+      temp.onload = () => {
+        mainImg.src = normalizedTarget;
+        mainImg.style.opacity = '1';
+      };
+      temp.onerror = () => {
+        mainImg.src = normalizedTarget;
+        mainImg.style.opacity = '1';
+      };
+      temp.src = normalizedTarget;
+    }
+
+    // Đồng bộ highlight thumbnail bên dưới ảnh chính
+    const thumbs = document.querySelectorAll('.gallery-thumb');
+    let matchedThumb = null;
+    thumbs.forEach(thumb => {
+      const thumbSrc = (thumb.dataset.image || '').trim();
+      const isMatch = thumbSrc === normalizedTarget ||
+                      (thumbSrc && normalizedTarget && (normalizedTarget.endsWith(thumbSrc) || thumbSrc.endsWith(normalizedTarget)));
+      if (isMatch && !matchedThumb) {
+        matchedThumb = thumb;
+      }
+      thumb.classList.remove('active');
+    });
+
+    if (matchedThumb) {
+      matchedThumb.classList.add('active');
+      matchedThumb.scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'center' });
+    } else {
+      const thumbsContainer = document.querySelector('.gallery-thumbs');
+      if (thumbsContainer) {
+        const newThumbBtn = document.createElement('button');
+        newThumbBtn.type = 'button';
+        newThumbBtn.className = 'gallery-thumb active';
+        newThumbBtn.dataset.image = normalizedTarget;
+        newThumbBtn.innerHTML = `<img src="${escapeHtml(normalizedTarget)}" alt="">`;
+        thumbsContainer.appendChild(newThumbBtn);
+        newThumbBtn.scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'center' });
+      }
+    }
+  }
+
   function renderDetail() {
     const product = detailProduct;
     detailVariants = product.productVariants || [];
@@ -358,12 +447,16 @@ let selectedReviewRating = 5;
     document.getElementById('detailCategory').textContent = product.categoryName || 'Đồ chơi';
     document.getElementById('detailBreadcrumbName').textContent = product.name;
 
+    const initialImage = resolveVariantImage(selectedVariant);
     const images = [imageOf(product), ...detailVariants.map(variant => variant.imageUrl).filter(Boolean)].filter((image, index, all) => all.indexOf(image) === index);
+    if (!images.includes(initialImage)) {
+      images.unshift(initialImage);
+    }
     const stock = stockState(selectedVariant);
     detailRoot.innerHTML = `
       <div class="detail-gallery">
-        <div class="gallery-main"><span class="detail-badge">${product.isNew ? 'MỚI VỀ' : 'ĐỒ CHƠI ĐƯỢC YÊU THÍCH'}</span><img id="mainProductImage" src="${escapeHtml(images[0])}" alt="${escapeHtml(product.name)}"></div>
-        <div class="gallery-thumbs">${images.map((image, index) => `<button class="gallery-thumb ${index === 0 ? 'active' : ''}" data-image="${escapeHtml(image)}"><img src="${escapeHtml(image)}" alt=""></button>`).join('')}</div>
+        <div class="gallery-main"><span class="detail-badge">${product.isNew ? 'MỚI VỀ' : 'ĐỒ CHƠI ĐƯỢC YÊU THÍCH'}</span><img id="mainProductImage" src="${escapeHtml(initialImage)}" alt="${escapeHtml(product.name)}"></div>
+        <div class="gallery-thumbs">${images.map((image) => `<button class="gallery-thumb ${image === initialImage ? 'active' : ''}" data-image="${escapeHtml(image)}"><img src="${escapeHtml(image)}" alt=""></button>`).join('')}</div>
         <div class="gallery-commitments" aria-label="Cam kết ToyStore">
           <p><span>✓</span>Sản phẩm đúng mô tả, an toàn cho bé</p>
           <p><span>✓</span>Đổi trả miễn phí nếu phát hiện lỗi</p>
@@ -411,7 +504,9 @@ let selectedReviewRating = 5;
   }
 
   function updateVariantView() {
-    const image = document.getElementById('mainProductImage');
+    const targetImage = resolveVariantImage(selectedVariant);
+    syncGalleryForVariant(targetImage);
+
     const price = document.querySelector('.detail-price');
     const sku = document.querySelector('.detail-rating i');
     if (price) price.innerHTML = selectedVariant
@@ -420,7 +515,7 @@ let selectedReviewRating = 5;
           ? `<span class="detail-price-main">${money(detailProduct.basePrice)}</span> <span style="color:#ef4444;font-size:13.5px;font-weight:700;margin-left:8px;background:#fef2f2;padding:3px 8px;border-radius:6px;border:1px solid #fecaca;vertical-align:middle;">Tạm hết hàng</span>`
           : '<span style="color:#ef4444;font-size:16px;font-weight:700;">Tạm hết hàng</span>');
     if (sku) sku.textContent = `SKU: ${selectedVariant?.sku || (detailVariants[0]?.sku || 'Tạm hết hàng')}`;
-    if (image) image.src = selectedVariant?.imageUrl || imageOf(detailProduct);
+
     const choices = document.getElementById('variantChoices');
     if (choices) choices.outerHTML = renderVariantChoices();
     updateStockAndPurchaseControls();
@@ -519,9 +614,29 @@ let selectedReviewRating = 5;
     }
     const thumb = event.target.closest('.gallery-thumb');
     if (thumb) {
-      document.getElementById('mainProductImage').src = thumb.dataset.image;
-      document.querySelectorAll('.gallery-thumb').forEach(node => node.classList.remove('active'));
-      thumb.classList.add('active');
+      const clickedImage = (thumb.dataset.image || '').trim();
+      syncGalleryForVariant(clickedImage);
+
+      // Tự động tìm biến thể có ảnh này để chọn nhóm tương ứng bên phải
+      if (clickedImage && detailVariants.length > 0) {
+        const matchingVariant = detailVariants.find(v => v.imageUrl && v.imageUrl.trim() === clickedImage);
+        if (matchingVariant && matchingVariant !== selectedVariant) {
+          selectedVariant = matchingVariant;
+          selectedVariantAttributes = new Map(variantAttributes(matchingVariant).map(attribute => [
+            normalizedVariantAttribute(attribute.attributeName),
+            normalizedVariantAttribute(attribute.attributeValue)
+          ]));
+
+          const choices = document.getElementById('variantChoices');
+          if (choices) choices.outerHTML = renderVariantChoices();
+          updateStockAndPurchaseControls();
+
+          const price = document.querySelector('.detail-price');
+          if (price) price.innerHTML = priceMarkup(selectedVariant, detailProduct?.basePrice);
+          const sku = document.querySelector('.detail-rating i');
+          if (sku) sku.textContent = `SKU: ${selectedVariant?.sku || 'Tạm hết hàng'}`;
+        }
+      }
     }
     const choice = event.target.closest('.variant-choice');
     if (choice) selectVariantByChoice(choice);

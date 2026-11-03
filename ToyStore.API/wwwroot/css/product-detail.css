@@ -87,15 +87,20 @@
   background: #fafaf9;
   cursor: pointer;
   overflow: hidden;
-  transition: all 0.2s;
+  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
 }
 .gallery-thumb img {
   width: 100%;
   height: 100%;
   object-fit: cover;
 }
-.gallery-thumb.active, .gallery-thumb:hover {
+.gallery-thumb:hover {
   border-color: var(--primary);
+}
+.gallery-thumb.active {
+  border-color: var(--primary);
+  box-shadow: 0 0 0 2px rgba(244, 63, 94, 0.25);
+  transform: scale(1.05);
 }
 
 /* DETAILS COPY */
