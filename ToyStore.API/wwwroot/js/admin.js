@@ -338,15 +338,35 @@ function toast(msg, type = 'success') {
   setTimeout(() => el.classList.remove('show'), 3500);
 }
 
-async function api(path, opt = {}) {
-  const res = await fetch(`/api/${path}`, {
-    ...opt,
-    cache: 'no-store',
-    headers: {
-      'Content-Type': 'application/json',
-      Authorization: `Bearer ${token}`,
-      ...(opt.headers || {})
+async function api(path, opt = {}, payload = null) {
+  let options = {};
+  if (typeof opt === 'string') {
+    options = {
+      method: opt.toUpperCase(),
+      body: payload !== null && payload !== undefined
+        ? (typeof payload === 'string' ? payload : JSON.stringify(payload))
+        : undefined
+    };
+  } else if (opt && typeof opt === 'object') {
+    options = { ...opt };
+    if (options.body && typeof options.body !== 'string' && !(options.body instanceof FormData)) {
+      options.body = JSON.stringify(options.body);
     }
+  }
+
+  const isFormData = options.body instanceof FormData;
+  const headers = {
+    Authorization: `Bearer ${token}`,
+    ...(options.headers || {})
+  };
+  if (!isFormData && !headers['Content-Type']) {
+    headers['Content-Type'] = 'application/json';
+  }
+
+  const res = await fetch(`/api/${path}`, {
+    ...options,
+    cache: 'no-store',
+    headers
   });
   if (res.status === 401) {
     localStorage.removeItem('toyStoreToken');
