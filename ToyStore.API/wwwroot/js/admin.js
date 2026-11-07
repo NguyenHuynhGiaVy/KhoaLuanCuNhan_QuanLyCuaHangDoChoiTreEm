@@ -8655,9 +8655,9 @@ window.submitQuickInventoryBalance = async function(variantId, currentQty) {
   }
 
   try {
-    await api(`Inventory/${variantId}`, 'PUT', {
-      quantity: actualQty,
-      adjustmentQuantity: diff,
+    await api('Inventory/audit', 'POST', {
+      variantId: variantId,
+      actualQuantity: actualQty,
       reason: `${reason}. ${note}`.trim()
     });
 
@@ -9474,7 +9474,7 @@ window.openCreateAuditTicketModal = async function() {
         <tr class="audit-input-row" data-variant-id="${v.variantId}" data-sys-qty="${sysQty}" data-cost="${cost}">
           <td style="padding:9px 12px;">
             <strong style="color:var(--slate-800);">${esc(v.sku || `SKU-${v.variantId}`)}</strong>
-            <div style="font-size:12px;color:var(--slate-600);">${esc(prod.name || 'Sản phẩm')} ${v.color ? `(${esc(v.color)})` : ''}</div>
+            <div style="font-size:12px;color:var(--slate-600);">${esc(prodName)} ${v.color ? `(${esc(v.color)})` : ''}</div>
           </td>
           <td style="text-align:right;padding:9px 10px;font-weight:700;color:var(--slate-700);">${sysQty}</td>
           

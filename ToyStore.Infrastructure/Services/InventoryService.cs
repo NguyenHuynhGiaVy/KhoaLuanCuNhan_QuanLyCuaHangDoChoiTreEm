@@ -118,7 +118,8 @@ namespace ToyStoreManagement.Infrastructure.Services
                     "Số lượng đã giữ không được lớn hơn số lượng tồn kho.");
 
             var inventory =
-                await _inventoryRepository.GetByIdAsync(inventoryId);
+                await _inventoryRepository.GetByIdAsync(inventoryId)
+                ?? await _inventoryRepository.GetByVariantIdAsync(inventoryId);
 
             if (inventory == null)
                 return null;
