@@ -1835,3 +1835,187 @@ body.manager-portal-theme .primary-btn:hover {
   display: block;
 }
 
+
+/* ========================================================
+   TOYSTORE SYSTEM ENHANCEMENTS: UI/UX MODERNIZATION
+   ======================================================== */
+
+/* 1. Inventory & Safety Badges */
+.badge-low-stock {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  background: #fef2f2;
+  color: #dc2626;
+  border: 1px solid #fecaca;
+  padding: 3px 8px;
+  border-radius: 9999px;
+  font-size: 11px;
+  font-weight: 700;
+}
+.badge-slow-moving {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  background: #fffbeb;
+  color: #d97706;
+  border: 1px solid #fde68a;
+  padding: 3px 8px;
+  border-radius: 9999px;
+  font-size: 11px;
+  font-weight: 700;
+}
+.badge-in-stock {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  background: #ecfdf5;
+  color: #059669;
+  border: 1px solid #a7f3d0;
+  padding: 3px 8px;
+  border-radius: 9999px;
+  font-size: 11px;
+  font-weight: 700;
+}
+.badge-tier-diamond {
+  background: linear-gradient(135deg, #7c3aed, #4f46e5);
+  color: #ffffff;
+  padding: 3px 10px;
+  border-radius: 9999px;
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.5px;
+  box-shadow: 0 2px 4px rgba(124, 58, 237, 0.25);
+}
+.badge-tier-gold {
+  background: linear-gradient(135deg, #f59e0b, #d97706);
+  color: #ffffff;
+  padding: 3px 10px;
+  border-radius: 9999px;
+  font-size: 11px;
+  font-weight: 800;
+  box-shadow: 0 2px 4px rgba(245, 158, 11, 0.25);
+}
+.badge-tier-silver {
+  background: linear-gradient(135deg, #64748b, #475569);
+  color: #ffffff;
+  padding: 3px 10px;
+  border-radius: 9999px;
+  font-size: 11px;
+  font-weight: 800;
+}
+.badge-tier-new {
+  background: #e0f2fe;
+  color: #0284c7;
+  border: 1px solid #bae6fd;
+  padding: 3px 8px;
+  border-radius: 9999px;
+  font-size: 11px;
+  font-weight: 700;
+}
+
+/* 2. Promotion Product Cards & Multi-tier items */
+.promo-product-card {
+  background: #ffffff;
+  border: 1px solid var(--slate-200);
+  border-radius: 12px;
+  padding: 16px;
+  margin-bottom: 12px;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.04);
+  transition: border-color 0.2s, box-shadow 0.2s;
+}
+.promo-product-card:hover {
+  border-color: var(--primary);
+  box-shadow: 0 4px 12px rgba(99, 102, 241, 0.08);
+}
+.promo-product-card-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 12px;
+}
+.promo-custom-toggle-wrap {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background: var(--slate-50);
+  padding: 10px 14px;
+  border-radius: 8px;
+  border: 1px dashed var(--slate-300);
+  margin-top: 10px;
+}
+
+/* 3. Voucher Ticket / Coupon UI */
+.coupon-ticket-preview {
+  background: linear-gradient(135deg, #4f46e5 0%, #7c3aed 100%);
+  color: #ffffff;
+  border-radius: 16px;
+  padding: 24px;
+  position: relative;
+  overflow: hidden;
+  box-shadow: 0 10px 25px -5px rgba(79, 70, 229, 0.4);
+  margin-bottom: 24px;
+}
+.coupon-progress-track {
+  width: 100%;
+  height: 8px;
+  background: rgba(255, 255, 255, 0.2);
+  border-radius: 9999px;
+  overflow: hidden;
+  margin-top: 12px;
+}
+.coupon-progress-fill {
+  height: 100%;
+  background: #fbbf24;
+  border-radius: 9999px;
+  transition: width 0.3s ease;
+}
+
+/* 4. Batch Delivery Selection Bar */
+.batch-delivery-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  background: #1e1b4b;
+  color: #ffffff;
+  padding: 12px 24px;
+  border-radius: 12px;
+  margin-bottom: 16px;
+  box-shadow: 0 8px 20px rgba(30, 27, 75, 0.25);
+}
+
+/* 5. Print Styles */
+@media print {
+  .sidebar, .topbar, .panel-header button, .filter-bar, .order-filter-bar,
+  .btn, .primary-btn, .secondary-btn, .icon-action-btn, #logoutButton,
+  .top-actions, .breadcrumb-root, .menu-toggle, #invFilterBtnGroup {
+    display: none !important;
+  }
+  body, .admin-shell, .main-content, .panel, .table-wrap {
+    background: #ffffff !important;
+    padding: 0 !important;
+    margin: 0 !important;
+    border: none !important;
+    box-shadow: none !important;
+    width: 100% !important;
+  }
+  .data-table {
+    border-collapse: collapse !important;
+    width: 100% !important;
+  }
+  .data-table th, .data-table td {
+    border: 1px solid #cbd5e1 !important;
+    padding: 6px 10px !important;
+    font-size: 11pt !important;
+  }
+  .print-header {
+    display: block !important;
+    text-align: center;
+    margin-bottom: 20px;
+  }
+}
+@media screen {
+  .print-header {
+    display: none !important;
+  }
+}

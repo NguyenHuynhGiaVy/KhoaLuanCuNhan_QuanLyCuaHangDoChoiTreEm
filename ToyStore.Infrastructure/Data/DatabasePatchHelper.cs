@@ -294,6 +294,157 @@ namespace ToyStoreManagement.Infrastructure.Data
                     INNER JOIN [dbo].[Orders] o ON s.[OrderId] = o.[OrderId]
                     WHERE o.[Status] = 4 AND s.[Status] <> 4;
                 ");
+
+                // 11. Bổ sung trường hạng thành viên CustomerTier cho bảng Customers
+                try
+                {
+                    await context.Database.ExecuteSqlRawAsync(@"
+                        IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID(N'[dbo].[Customers]') AND name = 'CustomerTier')
+                        BEGIN
+                            ALTER TABLE [dbo].[Customers] ADD [CustomerTier] nvarchar(50) NOT NULL DEFAULT N'Mới';
+                        END
+                    ");
+                    await context.Database.ExecuteSqlRawAsync(@"
+                        EXEC(N'UPDATE [dbo].[Customers]
+                        SET [CustomerTier] = CASE 
+                            WHEN [LoyaltyPoint] >= 1000 THEN N''Kim Cương''
+                            WHEN [LoyaltyPoint] >= 300 THEN N''Vàng''
+                            WHEN [LoyaltyPoint] >= 100 THEN N''Bạc''
+                            ELSE N''Mới''
+                        END
+                        WHERE [CustomerTier] IS NULL OR [CustomerTier] = N''Mới'';');
+                    ");
+                }
+                catch (Exception ex11)
+                {
+                    Console.WriteLine($"[Patch 11 Warning] {ex11.Message}");
+                }
+
+                // 12. Bổ sung kiểm đếm chênh lệch cho ImportReceipts và ImportReceiptDetails
+                try
+                {
+                    await context.Database.ExecuteSqlRawAsync(@"
+                        IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID(N'[dbo].[ImportReceipts]') AND name = 'InspectionReport')
+                        BEGIN
+                            ALTER TABLE [dbo].[ImportReceipts] ADD [InspectionReport] nvarchar(max) NULL;
+                        END
+
+                        IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID(N'[dbo].[ImportReceipts]') AND name = 'ReceivedAt')
+                        BEGIN
+                            ALTER TABLE [dbo].[ImportReceipts] ADD [ReceivedAt] datetime2 NULL;
+                        END
+
+                        IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID(N'[dbo].[ImportReceiptDetails]') AND name = 'ActualQuantity')
+                        BEGIN
+                            ALTER TABLE [dbo].[ImportReceiptDetails] ADD [ActualQuantity] int NULL;
+                        END
+
+                        IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID(N'[dbo].[ImportReceiptDetails]') AND name = 'DefectQuantity')
+                        BEGIN
+                            ALTER TABLE [dbo].[ImportReceiptDetails] ADD [DefectQuantity] int NULL;
+                        END
+
+                        IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID(N'[dbo].[ImportReceiptDetails]') AND name = 'DiscrepancyReason')
+                        BEGIN
+                            ALTER TABLE [dbo].[ImportReceiptDetails] ADD [DiscrepancyReason] nvarchar(500) NULL;
+                        END
+                    ");
+                }
+                catch (Exception ex12)
+                {
+                    Console.WriteLine($"[Patch 12 Warning] {ex12.Message}");
+                }
+
+                // 13. Bổ sung trường công nợ DebtAmount cho Shipper (đối soát lệch tiền COD)
+                try
+                {
+                    await context.Database.ExecuteSqlRawAsync(@"
+                        IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID(N'[dbo].[Shippers]') AND name = 'DebtAmount')
+                        BEGIN
+                            ALTER TABLE [dbo].[Shippers] ADD [DebtAmount] decimal(18,2) NOT NULL DEFAULT 0;
+                        END
+                    ");
+                }
+                catch (Exception ex13)
+                {
+                    Console.WriteLine($"[Patch 13 Warning] {ex13.Message}");
+                }
+
+                // 14. Bổ sung đổi hàng & khấu trừ điểm thưởng cho ReturnRequests & Details
+                try
+                {
+                    await context.Database.ExecuteSqlRawAsync(@"
+                        IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID(N'[dbo].[ReturnRequests]') AND name = 'ExchangeDifference')
+                        BEGIN
+                            ALTER TABLE [dbo].[ReturnRequests] ADD [ExchangeDifference] decimal(18,2) NULL;
+                        END
+
+                        IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID(N'[dbo].[ReturnRequests]') AND name = 'CustomerPaidDiff')
+                        BEGIN
+                            ALTER TABLE [dbo].[ReturnRequests] ADD [CustomerPaidDiff] decimal(18,2) NULL;
+                        END
+
+                        IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID(N'[dbo].[ReturnRequests]') AND name = 'PointsDeducted')
+                        BEGIN
+                            ALTER TABLE [dbo].[ReturnRequests] ADD [PointsDeducted] int NULL;
+                        END
+
+                        IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID(N'[dbo].[ReturnRequestDetails]') AND name = 'ExchangeVariantId')
+                        BEGIN
+                            ALTER TABLE [dbo].[ReturnRequestDetails] ADD [ExchangeVariantId] int NULL;
+                        END
+
+                        IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID(N'[dbo].[ReturnRequestDetails]') AND name = 'ExchangeQuantity')
+                        BEGIN
+                            ALTER TABLE [dbo].[ReturnRequestDetails] ADD [ExchangeQuantity] int NULL;
+                        END
+
+                        IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID(N'[dbo].[ReturnRequestDetails]') AND name = 'IsDefective')
+                        BEGIN
+                            ALTER TABLE [dbo].[ReturnRequestDetails] ADD [IsDefective] bit NULL;
+                        END
+                    ");
+                }
+                catch (Exception ex14)
+                {
+                    Console.WriteLine($"[Patch 14 Warning] {ex14.Message}");
+                }
+
+                // 15. Bổ sung khuyến mãi theo cấp Product & đa mức giảm cho PromotionProducts
+                try
+                {
+                    await context.Database.ExecuteSqlRawAsync(@"
+                        IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID(N'[dbo].[PromotionProducts]') AND name = 'ProductId')
+                        BEGIN
+                            ALTER TABLE [dbo].[PromotionProducts] ADD [ProductId] int NULL;
+                        END
+
+                        IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID(N'[dbo].[PromotionProducts]') AND name = 'DiscountType')
+                        BEGIN
+                            ALTER TABLE [dbo].[PromotionProducts] ADD [DiscountType] int NULL;
+                        END
+
+                        IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID(N'[dbo].[PromotionProducts]') AND name = 'DiscountValue')
+                        BEGIN
+                            ALTER TABLE [dbo].[PromotionProducts] ADD [DiscountValue] decimal(18,2) NULL;
+                        END
+
+                        IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID(N'[dbo].[PromotionProducts]') AND name = 'MaximumDiscount')
+                        BEGIN
+                            ALTER TABLE [dbo].[PromotionProducts] ADD [MaximumDiscount] decimal(18,2) NULL;
+                        END
+
+                        -- Cho phép VariantId có thể NULL nếu áp dụng cấp Product
+                        IF EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID(N'[dbo].[PromotionProducts]') AND name = 'VariantId' AND is_nullable = 0)
+                        BEGIN
+                            ALTER TABLE [dbo].[PromotionProducts] ALTER COLUMN [VariantId] int NULL;
+                        END
+                    ");
+                }
+                catch (Exception ex15)
+                {
+                    Console.WriteLine($"[Patch 15 Warning] {ex15.Message}");
+                }
             }
             catch (Exception ex)
             {

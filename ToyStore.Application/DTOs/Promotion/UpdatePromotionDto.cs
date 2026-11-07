@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Text;
@@ -30,6 +30,9 @@ namespace ToyStoreManagement.Application.DTOs.Promotion
 
         // Danh sách này thay thế toàn bộ sản phẩm áp dụng hiện có.
         public List<int> VariantIds { get; set; } = new();
+
+        public List<int>? ProductIds { get; set; }
+        public List<PromotionProductItemDto>? ProductItems { get; set; }
 
         public int Status { get; set; }
     }

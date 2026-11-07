@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Text;
@@ -25,5 +25,12 @@ namespace ToyStoreManagement.Application.DTOs.CustomerCare
         public decimal RefundAmount { get; set; }
 
         public string Reason { get; set; }
+
+        public int? ExchangeVariantId { get; set; }
+        public string? ExchangeSKU { get; set; }
+        public string? ExchangeProductName { get; set; }
+        public decimal? ExchangeUnitPrice { get; set; }
+        public int? ExchangeQuantity { get; set; }
+        public bool? IsDefective { get; set; }
     }
 }

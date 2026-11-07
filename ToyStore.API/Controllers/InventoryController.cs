@@ -1,4 +1,4 @@
-﻿using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using System;
 using System.Threading.Tasks;
@@ -129,6 +129,39 @@ namespace ToyStoreManagement.API.Controllers
             {
                 message = "Xóa tồn kho thành công."
             });
+        }
+
+        // POST: api/Inventory/audit
+        [HttpPost("audit")]
+        [Authorize(Policy = "AdminOrManager")]
+        public async Task<IActionResult> AuditStock([FromBody] InventoryAuditDto dto)
+        {
+            try
+            {
+                var result = await _inventoryService.AuditStockAsync(dto);
+                return Ok(result);
+            }
+            catch (Exception ex)
+            {
+                return BadRequest(new { message = ex.Message });
+            }
+        }
+
+        // GET: api/Inventory/stock-movement
+        [HttpGet("stock-movement")]
+        [Authorize(Policy = "AdminOrManager")]
+        public async Task<IActionResult> GetStockMovementReport([FromQuery] DateTime? fromDate, [FromQuery] DateTime? toDate, [FromQuery] int? variantId, [FromQuery] int? productId, [FromQuery] string? transactionType)
+        {
+            var filter = new StockMovementFilterDto
+            {
+                FromDate = fromDate,
+                ToDate = toDate,
+                VariantId = variantId,
+                ProductId = productId,
+                TransactionType = transactionType
+            };
+            var report = await _inventoryService.GetStockMovementReportAsync(filter);
+            return Ok(report);
         }
     }
 }

@@ -24,6 +24,8 @@ namespace ToyStoreManagement.Domain.Entities
 
         public bool IsActive { get; set; } = true;
 
+        public decimal DebtAmount { get; set; } = 0; // Công nợ đối soát COD (nộp thiếu/thừa)
+
         public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
 
         // Navigation

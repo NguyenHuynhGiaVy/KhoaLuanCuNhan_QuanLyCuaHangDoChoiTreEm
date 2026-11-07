@@ -27,5 +27,13 @@ namespace ToyStoreManagement.Application.DTOs.Import
         public decimal TotalAmount { get; set; }
         public decimal? CurrentPrice { get; set; }
         public decimal? NewPrice { get; set; }
+
+        public int? ActualQuantity { get; set; }
+        public int? DefectQuantity { get; set; }
+        public string? DiscrepancyReason { get; set; }
+
+        public decimal? OldCostPrice { get; set; }
+        public int? CurrentStock { get; set; }
+        public decimal? CalculatedWeightedCost { get; set; }
     }
 }

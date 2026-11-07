@@ -42,6 +42,8 @@ venv/
 env/
 ENV/
 
+screenshot/
+
 # Node / Frontend
 node_modules/
 

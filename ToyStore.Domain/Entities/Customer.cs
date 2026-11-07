@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using ToyStore.Domain.Identity;
 using ToyStoreManagement.Domain.Identity;
@@ -38,6 +38,8 @@ namespace ToyStoreManagement.Domain.Entities
         public string Address { get; set; }
 
         public int LoyaltyPoint { get; set; }
+
+        public string CustomerTier { get; set; } = "Mới";
 
         public int Status { get; set; }
 

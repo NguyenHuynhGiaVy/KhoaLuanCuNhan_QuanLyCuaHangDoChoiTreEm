@@ -22,6 +22,12 @@ namespace ToyStoreManagement.Domain.Entities
 
         public decimal? NewPrice { get; set; }
 
+        public int? ActualQuantity { get; set; }
+
+        public int? DefectQuantity { get; set; }
+
+        public string? DiscrepancyReason { get; set; }
+
         // Navigation
         public virtual ImportReceipt ImportReceipt { get; set; }
 

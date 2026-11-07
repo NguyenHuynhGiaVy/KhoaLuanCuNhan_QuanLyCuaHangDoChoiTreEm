@@ -1,4 +1,4 @@
-﻿namespace ToyStoreManagement.Domain.Entities
+namespace ToyStoreManagement.Domain.Entities
 {
     public class ReturnRequestDetail
     {
@@ -15,6 +15,14 @@
         public decimal RefundAmount { get; set; }
 
         public string Reason { get; set; }
+
+        public int? ExchangeVariantId { get; set; }
+
+        public int? ExchangeQuantity { get; set; }
+
+        public bool? IsDefective { get; set; }
+
+        public virtual ProductVariant? ExchangeVariant { get; set; }
 
         // Navigation
         public virtual ReturnRequest ReturnRequest { get; set; }

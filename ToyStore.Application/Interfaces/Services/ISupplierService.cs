@@ -25,5 +25,7 @@ namespace ToyStoreManagement.Application.Interfaces.Services
         Task<bool> DeleteAsync(int id);
 
         Task<IEnumerable<CungUngDto>> GetSuppliedProductsAsync(int id);
+
+        Task<IEnumerable<SupplierPriceComparisonDto>> ComparePricesAsync(int productId);
     }
 }

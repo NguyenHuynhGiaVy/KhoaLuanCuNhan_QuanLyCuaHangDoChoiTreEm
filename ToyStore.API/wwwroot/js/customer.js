@@ -915,13 +915,46 @@ function voucherDiscountFor(voucher, merchandiseTotal) {
     return Math.min(merchandiseTotal, Math.max(0, discount));
 }
 
+let currentCustomerData = null;
+
 function updateCheckoutTotal() {
     const pricing = getCartPricing();
     const voucherDiscount = voucherDiscountFor(appliedVoucher, pricing.saleSubtotal);
-    const total = Math.max(0, pricing.saleSubtotal + pricing.shippingFee - voucherDiscount);
+
+    // Chiết khấu đặc quyền theo hạng thành viên (CustomerTier)
+    let tierDiscount = 0;
+    const points = Number(currentCustomerData?.loyaltyPoint ?? currentCustomerData?.loyaltyPoints ?? 0);
+    const tier = currentCustomerData?.customerTier || (points >= 1000 ? 'Kim Cương' : (points >= 300 ? 'Vàng' : (points >= 100 ? 'Bạc' : 'Mới')));
+    const remaining = Math.max(0, pricing.saleSubtotal - voucherDiscount);
+
+    if (tier === 'Kim Cương') {
+        tierDiscount = Math.min(remaining * 0.10, 200000);
+    } else if (tier === 'Vàng') {
+        tierDiscount = Math.min(remaining * 0.05, 100000);
+    } else if (tier === 'Bạc') {
+        tierDiscount = Math.min(remaining * 0.03, 50000);
+    }
+    tierDiscount = Math.round(tierDiscount);
+
+    const total = Math.max(0, pricing.saleSubtotal + pricing.shippingFee - voucherDiscount - tierDiscount);
     const totalEl = document.getElementById('checkoutFinalTotal');
     if (totalEl) totalEl.textContent = money(total);
-    return { ...pricing, voucherDiscount, total };
+
+    const tierRow = document.getElementById('checkoutTierDiscountRow');
+    if (tierRow) {
+        if (tierDiscount > 0) {
+            tierRow.style.display = 'flex';
+            tierRow.style.justifyContent = 'space-between';
+            const tierNameEl = document.getElementById('checkoutTierName');
+            const tierValEl = document.getElementById('checkoutTierDiscountVal');
+            if (tierNameEl) tierNameEl.textContent = tier;
+            if (tierValEl) tierValEl.textContent = `-${money(tierDiscount)}`;
+        } else {
+            tierRow.style.display = 'none';
+        }
+    }
+
+    return { ...pricing, voucherDiscount, tierDiscount, total };
 }
 
 async function applyVoucher() {
@@ -2700,6 +2733,7 @@ async function syncAccountDrawerView() {
     // Fetch customer loyalty points & profile from API
     try {
         const customerData = await loadCustomerProfile();
+        currentCustomerData = customerData;
         if (token !== getAuthToken()) return;
         renderCustomerProfileForm(customerData);
 

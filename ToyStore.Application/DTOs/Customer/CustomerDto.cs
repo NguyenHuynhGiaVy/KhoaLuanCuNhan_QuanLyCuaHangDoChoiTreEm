@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Text;
@@ -25,6 +25,10 @@ namespace ToyStoreManagement.Application.DTOs.Customer
         public string Address { get; set; }
 
         public int LoyaltyPoint { get; set; }
+
+        public string CustomerTier { get; set; } = "Mới";
+
+        public decimal TierDiscountPercent { get; set; } = 0;
 
         // Chỉ tính các đơn đã hoàn tất để phản ánh đúng giá trị mua sắm thực tế.
         public decimal TotalSpent { get; set; }

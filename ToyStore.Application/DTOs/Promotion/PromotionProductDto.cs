@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Text;
@@ -12,7 +12,15 @@ namespace ToyStoreManagement.Application.DTOs.Promotion
 
         public int PromotionId { get; set; }
 
-        public int VariantId { get; set; }
+        public int? VariantId { get; set; }
+
+        public int? ProductId { get; set; }
+
+        public int? DiscountType { get; set; }
+
+        public decimal? DiscountValue { get; set; }
+
+        public decimal? MaximumDiscount { get; set; }
 
         public string SKU { get; set; }
 

@@ -963,7 +963,7 @@ namespace ToyStoreManagement.Infrastructure.Services
 
                     foreach (var promotion in promotions)
                     {
-                        if (!AppliesToVariant(promotion, variant.VariantId))
+                        if (!AppliesToVariant(promotion, variant.VariantId, product.ProductId))
                             continue;
 
                         if (promotion.PromotionConditions.Any(condition =>
@@ -988,7 +988,9 @@ namespace ToyStoreManagement.Infrastructure.Services
 
                         var discountAmount = CalculatePromotionDiscount(
                             variant.Price,
-                            promotion);
+                            promotion,
+                            variant.VariantId,
+                            product.ProductId);
 
                         if (discountAmount <= 0)
                             continue;
@@ -1018,24 +1020,36 @@ namespace ToyStoreManagement.Infrastructure.Services
 
         private static bool AppliesToVariant(
             Promotion promotion,
-            int variantId)
+            int variantId,
+            int productId)
         {
-            // Khuyến mãi mặt hàng chỉ có hiệu lực khi biến thể đã được chọn.
+            // Khuyến mãi mặt hàng hỗ trợ áp dụng theo cấp Product hoặc cấp Variant
             return promotion.PromotionProducts.Any(product =>
-                    product.VariantId == variantId);
+                    (product.ProductId.HasValue && product.ProductId.Value == productId)
+                    || (product.VariantId.HasValue && product.VariantId.Value == variantId));
         }
 
         private static decimal CalculatePromotionDiscount(
             decimal price,
-            Promotion promotion)
+            Promotion promotion,
+            int variantId,
+            int productId)
         {
-            var discount = promotion.PromotionType == 0
-                ? price * promotion.DiscountValue / 100m
-                : promotion.DiscountValue;
+            // Ưu tiên cấu hình chiết khấu riêng của từng sản phẩm nếu có
+            var matchedProduct = promotion.PromotionProducts.FirstOrDefault(product =>
+                (product.ProductId.HasValue && product.ProductId.Value == productId)
+                || (product.VariantId.HasValue && product.VariantId.Value == variantId));
 
-            if (promotion.MaximumDiscount.HasValue)
-                discount = Math.Min(discount,
-                    promotion.MaximumDiscount.Value);
+            var type = matchedProduct?.DiscountType ?? promotion.PromotionType;
+            var value = matchedProduct?.DiscountValue ?? promotion.DiscountValue;
+            var maxDiscount = matchedProduct?.MaximumDiscount ?? promotion.MaximumDiscount;
+
+            var discount = type == 0
+                ? price * value / 100m
+                : value;
+
+            if (maxDiscount.HasValue)
+                discount = Math.Min(discount, maxDiscount.Value);
 
             return Math.Min(price, Math.Max(0, discount));
         }

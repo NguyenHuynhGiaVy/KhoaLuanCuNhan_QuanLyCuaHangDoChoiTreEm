@@ -139,6 +139,92 @@ namespace ToyStoreManagement.Infrastructure.Services
             return true;
         }
 
+        public async Task<IEnumerable<SupplierPriceComparisonDto>> ComparePricesAsync(int productId)
+        {
+            var product = await _context.Products
+                .AsNoTracking()
+                .Include(p => p.ProductVariants)
+                .FirstOrDefaultAsync(p => p.ProductId == productId);
+
+            if (product == null)
+                return Enumerable.Empty<SupplierPriceComparisonDto>();
+
+            var variantIds = product.ProductVariants.Select(v => v.VariantId).ToList();
+
+            var cungUngs = await _context.CungUngs
+                .AsNoTracking()
+                .Include(c => c.Supplier)
+                .Where(c => c.ProductId == productId && c.Supplier.IsActive)
+                .ToListAsync();
+
+            var supplierIds = cungUngs.Select(c => c.SupplierId).Distinct().ToList();
+
+            // Lấy giá nhập gần nhất từ các phiếu nhập đã duyệt
+            var lastImports = await _context.ImportReceiptDetails
+                .AsNoTracking()
+                .Where(d => variantIds.Contains(d.VariantId) && supplierIds.Contains(d.ImportReceipt.SupplierId))
+                .OrderByDescending(d => d.ImportReceipt.ImportDate)
+                .Select(d => new
+                {
+                    d.ImportReceipt.SupplierId,
+                    d.UnitCost,
+                    d.ImportReceipt.ImportDate
+                })
+                .ToListAsync();
+
+            var result = new List<SupplierPriceComparisonDto>();
+
+            foreach (var cu in cungUngs)
+            {
+                var lastImport = lastImports.FirstOrDefault(li => li.SupplierId == cu.SupplierId);
+
+                result.Add(new SupplierPriceComparisonDto
+                {
+                    ProductId = productId,
+                    ProductName = product.Name,
+                    SupplierId = cu.SupplierId,
+                    SupplierName = cu.Supplier?.Name ?? "NCC",
+                    Phone = cu.Supplier?.Phone,
+                    Email = cu.Supplier?.Email,
+                    Address = cu.Supplier?.Address,
+                    GiaNhapThamKhao = cu.GiaNhapThamKhao,
+                    LastImportPrice = lastImport?.UnitCost,
+                    LastImportDate = lastImport?.ImportDate,
+                    MaHangNCC = cu.MaHangNCC,
+                    IsDefault = cu.IsDefault
+                });
+            }
+
+            // Nếu sản phẩm chưa có NCC nào trong CungUng, lấy danh sách active suppliers làm gợi ý
+            if (!result.Any())
+            {
+                var allActiveSuppliers = await _context.Suppliers
+                    .AsNoTracking()
+                    .Where(s => s.IsActive)
+                    .Take(10)
+                    .ToListAsync();
+
+                foreach (var s in allActiveSuppliers)
+                {
+                    result.Add(new SupplierPriceComparisonDto
+                    {
+                        ProductId = productId,
+                        ProductName = product.Name,
+                        SupplierId = s.SupplierId,
+                        SupplierName = s.Name,
+                        Phone = s.Phone,
+                        Email = s.Email,
+                        Address = s.Address,
+                        GiaNhapThamKhao = product.ProductVariants.FirstOrDefault(v => v.CostPrice > 0)?.CostPrice,
+                        IsDefault = s.SupplierId == product.SupplierId
+                    });
+                }
+            }
+
+            return result.OrderByDescending(x => x.IsDefault)
+                         .ThenBy(x => x.GiaNhapThamKhao ?? decimal.MaxValue);
+        }
+
         public async Task<IEnumerable<CungUngDto>> GetSuppliedProductsAsync(int id)
         {
             return await _context.CungUngs

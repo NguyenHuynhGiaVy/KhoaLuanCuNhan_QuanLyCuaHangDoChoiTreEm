@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Text;
@@ -29,6 +29,9 @@ namespace ToyStoreManagement.Application.DTOs.Import
         public int Status { get; set; }
 
         public string Note { get; set; }
+
+        public string? InspectionReport { get; set; }
+        public DateTime? ReceivedAt { get; set; }
 
         public DateTime CreatedAt { get; set; }
 

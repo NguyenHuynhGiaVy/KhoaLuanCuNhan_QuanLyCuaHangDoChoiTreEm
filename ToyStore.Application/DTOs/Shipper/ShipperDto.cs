@@ -17,6 +17,7 @@ namespace ToyStoreManagement.Application.DTOs.Shipper
         public int ActiveOrdersCount { get; set; }
         public int CompletedOrdersCount { get; set; }
         public decimal PendingCodAmount { get; set; }
+        public decimal DebtAmount { get; set; }
     }
 
     public class CreateShipperDto
@@ -42,6 +43,7 @@ namespace ToyStoreManagement.Application.DTOs.Shipper
     {
         public int ShipperId { get; set; }
         public int? OrderId { get; set; }
+        public System.Collections.Generic.List<int>? OrderIds { get; set; }
         public string? DeliveryBatchCode { get; set; }
     }
 

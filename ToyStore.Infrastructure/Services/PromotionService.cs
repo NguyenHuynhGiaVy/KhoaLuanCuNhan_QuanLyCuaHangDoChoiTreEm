@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Text;
@@ -98,7 +98,7 @@ namespace ToyStoreManagement.Infrastructure.Services
             ValidateDiscount(dto.PromotionType, dto.DiscountValue,
                 dto.MaximumDiscount);
 
-            var variantIds = await ValidateVariantIdsAsync(dto.VariantIds);
+            // variantIds check moved to ApplyProductsToPromotionAsync
 
             var promotion = new Promotion
             {
@@ -115,13 +115,7 @@ namespace ToyStoreManagement.Infrastructure.Services
                 CreatedAt = DateTime.UtcNow
             };
 
-            foreach (var variantId in variantIds)
-            {
-                promotion.PromotionProducts.Add(new PromotionProduct
-                {
-                    VariantId = variantId
-                });
-            }
+            await ApplyProductsToPromotionAsync(promotion, dto.ProductIds, dto.ProductItems, dto.VariantIds);
 
             await _promotionRepository.AddAsync(promotion);
             await _unitOfWork.SaveChangesAsync();
@@ -154,7 +148,7 @@ namespace ToyStoreManagement.Infrastructure.Services
             ValidateDiscount(dto.PromotionType, dto.DiscountValue,
                 dto.MaximumDiscount);
 
-            var variantIds = await ValidateVariantIdsAsync(dto.VariantIds);
+            // variantIds check moved to ApplyProductsToPromotionAsync
 
             promotion.Name = dto.Name.Trim();
             promotion.Description = dto.Description?.Trim() ?? string.Empty;
@@ -171,14 +165,8 @@ namespace ToyStoreManagement.Infrastructure.Services
             foreach (var product in promotion.PromotionProducts.ToList())
                 _productRepository.Delete(product);
 
-            foreach (var variantId in variantIds)
-            {
-                await _productRepository.AddAsync(new PromotionProduct
-                {
-                    PromotionId = promotion.PromotionId,
-                    VariantId = variantId
-                });
-            }
+            promotion.PromotionProducts.Clear();
+            await ApplyProductsToPromotionAsync(promotion, dto.ProductIds, dto.ProductItems, dto.VariantIds);
 
             _promotionRepository.Update(promotion);
             await _unitOfWork.SaveChangesAsync();
@@ -186,6 +174,78 @@ namespace ToyStoreManagement.Infrastructure.Services
             var result = await _promotionRepository
                 .GetByIdWithDetailsAsync(promotionId);
             return MapToDto(result!);
+        }
+
+        private async Task ApplyProductsToPromotionAsync(
+            Promotion promotion,
+            IEnumerable<int>? productIds,
+            IEnumerable<PromotionProductItemDto>? productItems,
+            IEnumerable<int>? variantIds)
+        {
+            var itemsToAdd = new List<PromotionProduct>();
+
+            if (productItems != null && productItems.Any())
+            {
+                foreach (var item in productItems)
+                {
+                    var product = await _context.Products
+                        .Include(p => p.ProductVariants)
+                        .FirstOrDefaultAsync(p => p.ProductId == item.ProductId);
+                    if (product != null)
+                    {
+                        var repVariantId = product.ProductVariants.FirstOrDefault()?.VariantId;
+                        itemsToAdd.Add(new PromotionProduct
+                        {
+                            PromotionId = promotion.PromotionId,
+                            ProductId = item.ProductId,
+                            VariantId = repVariantId,
+                            DiscountType = item.DiscountType,
+                            DiscountValue = item.DiscountValue,
+                            MaximumDiscount = item.MaximumDiscount
+                        });
+                    }
+                }
+            }
+            else if (productIds != null && productIds.Any())
+            {
+                var distinctProductIds = productIds.Distinct().ToList();
+                var products = await _context.Products
+                    .Include(p => p.ProductVariants)
+                    .Where(p => distinctProductIds.Contains(p.ProductId))
+                    .ToListAsync();
+
+                foreach (var prod in products)
+                {
+                    var repVariantId = prod.ProductVariants.FirstOrDefault()?.VariantId;
+                    itemsToAdd.Add(new PromotionProduct
+                    {
+                        PromotionId = promotion.PromotionId,
+                        ProductId = prod.ProductId,
+                        VariantId = repVariantId
+                    });
+                }
+            }
+            else if (variantIds != null && variantIds.Any())
+            {
+                var validVariantIds = await ValidateVariantIdsAsync(variantIds);
+                foreach (var vid in validVariantIds)
+                {
+                    itemsToAdd.Add(new PromotionProduct
+                    {
+                        PromotionId = promotion.PromotionId,
+                        VariantId = vid
+                    });
+                }
+            }
+            else
+            {
+                throw new Exception("Vui lòng chọn ít nhất một sản phẩm để áp dụng khuyến mãi.");
+            }
+
+            foreach (var item in itemsToAdd)
+            {
+                promotion.PromotionProducts.Add(item);
+            }
         }
 
         private async Task<List<int>> ValidateVariantIdsAsync(
@@ -504,7 +564,11 @@ namespace ToyStoreManagement.Infrastructure.Services
                     product.ProductVariant?.SKU,
 
                 ProductName =
-                    product.ProductVariant?.Product?.Name
+                    product.Product?.Name ?? product.ProductVariant?.Product?.Name,
+                ProductId = product.ProductId ?? product.ProductVariant?.ProductId,
+                DiscountType = product.DiscountType,
+                DiscountValue = product.DiscountValue,
+                MaximumDiscount = product.MaximumDiscount
             };
         }
     }

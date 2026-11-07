@@ -206,6 +206,31 @@ namespace ToyStoreManagement.Infrastructure.Services
                 }
             }
 
+            // Áp dụng chiết khấu đặc quyền theo hạng thành viên (CustomerTier)
+            if (dto.CustomerId.HasValue)
+            {
+                var customer = await _context.Customers.FindAsync(dto.CustomerId.Value);
+                if (customer != null)
+                {
+                    UpdateCustomerTierInternal(customer);
+                    var remainingSubtotal = Math.Max(0, subtotal - order.DiscountAmount);
+                    decimal tierDiscount = 0;
+                    if (customer.CustomerTier == "Kim Cương")
+                    {
+                        tierDiscount = Math.Min(remainingSubtotal * 0.10m, 200000m);
+                    }
+                    else if (customer.CustomerTier == "Vàng")
+                    {
+                        tierDiscount = Math.Min(remainingSubtotal * 0.05m, 100000m);
+                    }
+                    else if (customer.CustomerTier == "Bạc")
+                    {
+                        tierDiscount = Math.Min(remainingSubtotal * 0.03m, 50000m);
+                    }
+                    order.DiscountAmount += Math.Round(tierDiscount, 0);
+                }
+            }
+
             order.Subtotal = subtotal;
             order.ShippingFee = subtotal >= 500000 ? 0 : 30000;
 
@@ -420,6 +445,7 @@ namespace ToyStoreManagement.Infrastructure.Services
                         if (customer != null && earnedPoints > 0)
                         {
                             customer.LoyaltyPoint += earnedPoints;
+                            UpdateCustomerTierInternal(customer);
                             customer.UpdatedAt = DateTime.UtcNow;
                             _context.Entry(customer).State = Microsoft.EntityFrameworkCore.EntityState.Modified;
 
@@ -440,6 +466,7 @@ namespace ToyStoreManagement.Infrastructure.Services
             // Hoàn tồn kho nếu đơn bị Hủy (5) và trước đó chưa hủy
             if (dto.Status == 5 && oldStatus != 5)
             {
+                await RestoreVoucherAndLoyaltyPointsOnCancelAsync(order);
                 foreach (var detail in order.OrderDetails)
                 {
                     var inventory = await _context.Inventories
@@ -518,6 +545,7 @@ namespace ToyStoreManagement.Infrastructure.Services
             var previousStatus = order.Status;
             order.Status = 5;
             order.UpdatedAt = now;
+            await RestoreVoucherAndLoyaltyPointsOnCancelAsync(order);
 
             var affectedProductIds = new HashSet<int>();
             foreach (var detail in order.OrderDetails)
@@ -948,6 +976,7 @@ namespace ToyStoreManagement.Infrastructure.Services
         private static Promotion? FindBestPromotion(
             IEnumerable<Promotion> promotions,
             int variantId,
+            int? productId,
             decimal unitPrice,
             decimal orderSubtotal,
             int totalItemQuantity,
@@ -957,7 +986,8 @@ namespace ToyStoreManagement.Infrastructure.Services
             return promotions
                 .Where(promotion =>
                     (promotion.PromotionProducts.Any(product =>
-                            product.VariantId == variantId))
+                            (product.ProductId.HasValue && productId.HasValue && product.ProductId.Value == productId.Value)
+                            || (product.VariantId.HasValue && product.VariantId.Value == variantId)))
                     && promotion.PromotionConditions.All(condition =>
                         (!condition.MinimumOrderValue.HasValue
                             || orderSubtotal >= condition.MinimumOrderValue.Value)
@@ -969,7 +999,7 @@ namespace ToyStoreManagement.Infrastructure.Services
                             || condition.BrandId.Value == brandId)
                         && !condition.CustomerLevel.HasValue))
                 .OrderByDescending(promotion =>
-                    CalculatePromotionDiscount(unitPrice, promotion))
+                    CalculatePromotionDiscount(unitPrice, promotion, variantId, productId))
                 .ThenByDescending(promotion => promotion.Priority)
                 .ThenBy(promotion => promotion.PromotionId)
                 .FirstOrDefault();
@@ -977,15 +1007,24 @@ namespace ToyStoreManagement.Infrastructure.Services
 
         private static decimal CalculatePromotionDiscount(
             decimal price,
-            Promotion promotion)
+            Promotion promotion,
+            int variantId = 0,
+            int? productId = null)
         {
-            var discount = promotion.PromotionType == 0
-                ? price * promotion.DiscountValue / 100m
-                : promotion.DiscountValue;
+            var matchedProduct = promotion.PromotionProducts.FirstOrDefault(product =>
+                (product.ProductId.HasValue && productId.HasValue && product.ProductId.Value == productId.Value)
+                || (product.VariantId.HasValue && variantId > 0 && product.VariantId.Value == variantId));
 
-            if (promotion.MaximumDiscount.HasValue)
-                discount = Math.Min(discount,
-                    promotion.MaximumDiscount.Value);
+            var type = matchedProduct?.DiscountType ?? promotion.PromotionType;
+            var value = matchedProduct?.DiscountValue ?? promotion.DiscountValue;
+            var maxDiscount = matchedProduct?.MaximumDiscount ?? promotion.MaximumDiscount;
+
+            var discount = type == 0
+                ? price * value / 100m
+                : value;
+
+            if (maxDiscount.HasValue)
+                discount = Math.Min(discount, maxDiscount.Value);
 
             return Math.Min(price, Math.Max(0, discount));
         }
@@ -1486,6 +1525,95 @@ namespace ToyStoreManagement.Infrastructure.Services
             shipping.DeliveryBatchCode = null;
             await _unitOfWork.SaveChangesAsync();
             return true;
+        }
+
+        private static void UpdateCustomerTierInternal(Customer customer)
+        {
+            if (customer == null) return;
+            if (customer.LoyaltyPoint >= 1000)
+            {
+                customer.CustomerTier = "Kim Cương";
+            }
+            else if (customer.LoyaltyPoint >= 300)
+            {
+                customer.CustomerTier = "Vàng";
+            }
+            else if (customer.LoyaltyPoint >= 100)
+            {
+                customer.CustomerTier = "Bạc";
+            }
+            else
+            {
+                customer.CustomerTier = "Mới";
+            }
+        }
+
+        private async Task RestoreVoucherAndLoyaltyPointsOnCancelAsync(Order order)
+        {
+            try
+            {
+                var voucherUsage = await _context.VoucherUsages
+                    .Include(vu => vu.Voucher)
+                    .FirstOrDefaultAsync(vu => vu.OrderId == order.OrderId);
+                if (voucherUsage != null)
+                {
+                    if (voucherUsage.Voucher != null && voucherUsage.Voucher.UsedCount > 0)
+                    {
+                        voucherUsage.Voucher.UsedCount -= 1;
+                        voucherUsage.Voucher.UpdatedAt = DateTime.UtcNow;
+                    }
+                    _context.VoucherUsages.Remove(voucherUsage);
+                }
+
+                var custId = order.CustomerId ?? order.Customer?.CustomerId;
+                if (custId.HasValue && custId.Value > 0)
+                {
+                    var customer = await _context.Customers.FindAsync(custId.Value);
+                    if (customer != null)
+                    {
+                        var earnedTx = await _context.LoyaltyTransactions
+                            .FirstOrDefaultAsync(x => x.OrderId == order.OrderId && x.TransactionType == 1);
+                        if (earnedTx != null && earnedTx.Points > 0)
+                        {
+                            var pointsToRevoke = earnedTx.Points;
+                            customer.LoyaltyPoint = Math.Max(0, customer.LoyaltyPoint - pointsToRevoke);
+                            _context.LoyaltyTransactions.Add(new LoyaltyTransaction
+                            {
+                                CustomerId = customer.CustomerId,
+                                OrderId = order.OrderId,
+                                Points = -pointsToRevoke,
+                                TransactionType = 3,
+                                Description = $"Thu hồi {pointsToRevoke} điểm tích lũy do hủy đơn hàng #{order.OrderCode}",
+                                CreatedAt = DateTime.UtcNow
+                            });
+                        }
+
+                        var spentTx = await _context.LoyaltyTransactions
+                            .FirstOrDefaultAsync(x => x.OrderId == order.OrderId && x.TransactionType == 2 && x.Points < 0);
+                        if (spentTx != null)
+                        {
+                            var pointsToRefund = Math.Abs(spentTx.Points);
+                            customer.LoyaltyPoint += pointsToRefund;
+                            _context.LoyaltyTransactions.Add(new LoyaltyTransaction
+                            {
+                                CustomerId = customer.CustomerId,
+                                OrderId = order.OrderId,
+                                Points = pointsToRefund,
+                                TransactionType = 4,
+                                Description = $"Hoàn trả {pointsToRefund} điểm đã dùng do hủy đơn hàng #{order.OrderCode}",
+                                CreatedAt = DateTime.UtcNow
+                            });
+                        }
+
+                        UpdateCustomerTierInternal(customer);
+                        customer.UpdatedAt = DateTime.UtcNow;
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"[Loyalty/Voucher restore error] {ex.Message}");
+            }
         }
 
         private sealed record DeliveryPlan(

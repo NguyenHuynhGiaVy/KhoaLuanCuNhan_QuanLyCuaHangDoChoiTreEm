@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Text;
@@ -28,6 +28,9 @@ namespace ToyStoreManagement.Application.DTOs.CustomerCare
         public int Status { get; set; }
 
         public decimal RefundAmount { get; set; }
+        public decimal? ExchangeDifference { get; set; }
+        public decimal? CustomerPaidDiff { get; set; }
+        public int? PointsDeducted { get; set; }
 
         public DateTime RequestedAt { get; set; }
         public DateTime? ProcessedAt { get; set; }

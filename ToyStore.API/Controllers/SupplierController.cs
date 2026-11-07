@@ -99,6 +99,17 @@ namespace ToyStoreManagement.API.Controllers
             });
         }
 
+        // GET: api/Supplier/compare-prices?productId=1
+        [HttpGet("compare-prices")]
+        public async Task<IActionResult> ComparePrices([FromQuery] int productId)
+        {
+            if (productId <= 0)
+                return BadRequest(new { message = "Mã sản phẩm không hợp lệ." });
+
+            var result = await _service.ComparePricesAsync(productId);
+            return Ok(result);
+        }
+
         // GET: api/Supplier/1/products
         [HttpGet("{id}/products")]
         public async Task<IActionResult> GetProductsBySupplier(int id)

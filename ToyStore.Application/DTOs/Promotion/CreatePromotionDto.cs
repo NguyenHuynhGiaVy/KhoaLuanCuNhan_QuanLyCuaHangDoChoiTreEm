@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Text;
@@ -29,7 +29,20 @@ namespace ToyStoreManagement.Application.DTOs.Promotion
         // Khuyến mãi chỉ tự áp dụng cho các biến thể được chọn.
         public List<int> VariantIds { get; set; } = new();
 
+        public List<int>? ProductIds { get; set; }
+
+        public List<PromotionProductItemDto>? ProductItems { get; set; }
+
         // Mặc định chương trình mới được kích hoạt.
         public int Status { get; set; } = 1;
+    }
+
+    public class PromotionProductItemDto
+    {
+        public int ProductId { get; set; }
+        public int? VariantId { get; set; }
+        public int? DiscountType { get; set; }
+        public decimal? DiscountValue { get; set; }
+        public decimal? MaximumDiscount { get; set; }
     }
 }

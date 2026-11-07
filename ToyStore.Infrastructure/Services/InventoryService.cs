@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Text;
@@ -140,6 +140,141 @@ namespace ToyStoreManagement.Infrastructure.Services
             return MapToDto(result!);
         }
 
+        public async Task<InventoryDto> AuditStockAsync(InventoryAuditDto dto)
+        {
+            if (dto.ActualQuantity < 0)
+                throw new Exception("Số lượng thực tế kiểm kê không được âm.");
+
+            var inventory = await _inventoryRepository.GetByVariantIdAsync(dto.VariantId);
+            if (inventory == null)
+            {
+                var variant = await _context.ProductVariants.FindAsync(dto.VariantId);
+                if (variant == null)
+                    throw new Exception("Không tìm thấy biến thể sản phẩm.");
+
+                inventory = new Inventory
+                {
+                    VariantId = dto.VariantId,
+                    Quantity = 0,
+                    ReservedQuantity = 0,
+                    UpdatedAt = DateTime.UtcNow
+                };
+                await _inventoryRepository.AddAsync(inventory);
+                await _unitOfWork.SaveChangesAsync();
+            }
+
+            int oldQuantity = inventory.Quantity;
+            int diff = dto.ActualQuantity - oldQuantity;
+
+            inventory.Quantity = dto.ActualQuantity;
+            inventory.UpdatedAt = DateTime.UtcNow;
+
+            _inventoryRepository.Update(inventory);
+
+            // Ghi nhật ký thẻ kho biến động kiểm kê
+            _context.InventoryTransactions.Add(new InventoryTransaction
+            {
+                VariantId = dto.VariantId,
+                TransactionType = 3, // 3: Điều chỉnh kiểm kê
+                Quantity = diff,
+                ReferenceType = "InventoryAudit",
+                ReferenceId = inventory.InventoryId,
+                Note = $"Kiểm kê kho: Thực tế {dto.ActualQuantity}, Hệ thống cũ {oldQuantity}, Chênh lệch {(diff > 0 ? "+" : "")}{diff}. Lý do: {dto.Reason ?? "Kiểm kê cân bằng kho định kỳ"}",
+                CreatedAt = DateTime.UtcNow
+            });
+
+            await _unitOfWork.SaveChangesAsync();
+            await SyncProductStatusAsync(dto.VariantId);
+
+            var updated = await _inventoryRepository.GetByIdWithDetailsAsync(inventory.InventoryId);
+            return MapToDto(updated!);
+        }
+
+        public async Task<IEnumerable<StockMovementSummaryDto>> GetStockMovementReportAsync(StockMovementFilterDto filter)
+        {
+            var fromDate = filter?.FromDate ?? DateTime.UtcNow.AddMonths(-1);
+            var toDate = filter?.ToDate ?? DateTime.UtcNow;
+
+            var variantQuery = _context.ProductVariants
+                .AsNoTracking()
+                .Include(v => v.Product)
+                .Include(v => v.VariantAttributes)
+                .AsQueryable();
+
+            if (filter?.VariantId.HasValue == true)
+            {
+                variantQuery = variantQuery.Where(v => v.VariantId == filter.VariantId.Value);
+            }
+            else if (filter?.ProductId.HasValue == true)
+            {
+                variantQuery = variantQuery.Where(v => v.ProductId == filter.ProductId.Value);
+            }
+
+            var variants = await variantQuery.ToListAsync();
+            var variantIds = variants.Select(v => v.VariantId).ToList();
+
+            var inventories = await _context.Inventories
+                .AsNoTracking()
+                .Where(i => variantIds.Contains(i.VariantId))
+                .ToDictionaryAsync(i => i.VariantId, i => i.Quantity);
+
+            var transactions = await _context.InventoryTransactions
+                .AsNoTracking()
+                .Where(t => variantIds.Contains(t.VariantId))
+                .ToListAsync();
+
+            var result = new List<StockMovementSummaryDto>();
+
+            foreach (var variant in variants)
+            {
+                int currentStock = inventories.TryGetValue(variant.VariantId, out var qty) ? qty : 0;
+                var varTxns = transactions.Where(t => t.VariantId == variant.VariantId).ToList();
+
+                // Giao dịch sau khoảng ToDate
+                int afterToDateNet = varTxns.Where(t => t.CreatedAt > toDate).Sum(t => t.Quantity);
+                int closingStockAtToDate = currentStock - afterToDateNet;
+
+                // Giao dịch trong kỳ [FromDate, ToDate]
+                var inPeriodTxns = varTxns.Where(t => t.CreatedAt >= fromDate && t.CreatedAt <= toDate).ToList();
+                int inStock = inPeriodTxns.Where(t => t.Quantity > 0).Sum(t => t.Quantity);
+                int outStock = inPeriodTxns.Where(t => t.Quantity < 0).Sum(t => Math.Abs(t.Quantity));
+
+                // Tồn đầu kỳ = Tồn cuối kỳ - Nhập trong kỳ + Xuất trong kỳ
+                int openingStock = closingStockAtToDate - inStock + outStock;
+                if (openingStock < 0)
+                {
+                    openingStock = 0;
+                    closingStockAtToDate = openingStock + inStock - outStock;
+                }
+
+                // Attributes string
+                var attrTexts = variant.VariantAttributes?
+                    .OrderBy(a => a.DisplayOrder)
+                    .Select(a => $"{a.AttributeName}: {a.AttributeValue}")
+                    .ToList();
+                string attributesStr = attrTexts != null && attrTexts.Any() ? string.Join(", ", attrTexts) : (variant.Color ?? "Tiêu chuẩn");
+
+                decimal unitCost = variant.CostPrice > 0 ? variant.CostPrice : (variant.Price > 0 ? Math.Round(variant.Price * 0.65m, 0) : 0);
+                decimal totalCost = Math.Max(0, closingStockAtToDate) * unitCost;
+
+                result.Add(new StockMovementSummaryDto
+                {
+                    VariantId = variant.VariantId,
+                    SKU = variant.SKU,
+                    ProductName = variant.Product?.Name ?? "N/A",
+                    Attributes = attributesStr,
+                    OpeningStock = openingStock,
+                    InStock = inStock,
+                    OutStock = outStock,
+                    ClosingStock = closingStockAtToDate,
+                    UnitCost = unitCost,
+                    TotalCostValue = totalCost
+                });
+            }
+
+            return result;
+        }
+
         private async Task SyncProductStatusAsync(int variantId)
         {
             var variant = await _context.ProductVariants
@@ -165,16 +300,37 @@ namespace ToyStoreManagement.Infrastructure.Services
 
         private static InventoryDto MapToDto(Inventory inventory)
         {
+            var variant = inventory.ProductVariant;
+            var available = inventory.Quantity - inventory.ReservedQuantity;
+
+            string? color = variant?.VariantAttributes?
+                .FirstOrDefault(x => x.AttributeName.Equals("Màu sắc", StringComparison.OrdinalIgnoreCase) || x.AttributeName.Equals("Color", StringComparison.OrdinalIgnoreCase))?.AttributeValue
+                ?? variant?.Color;
+
+            string? size = variant?.VariantAttributes?
+                .FirstOrDefault(x => x.AttributeName.Equals("Kích thước", StringComparison.OrdinalIgnoreCase) || x.AttributeName.Equals("Size", StringComparison.OrdinalIgnoreCase))?.AttributeValue
+                ?? variant?.Size;
+
+            string? ageRange = variant?.Product != null
+                ? $"{variant.Product.AgeFrom} - {variant.Product.AgeTo} tuổi"
+                : null;
+
             return new InventoryDto
             {
                 InventoryId = inventory.InventoryId,
                 VariantId = inventory.VariantId,
-                SKU = inventory.ProductVariant?.SKU,
-                ProductName = inventory.ProductVariant?.Product?.Name,
+                SKU = variant?.SKU ?? string.Empty,
+                ProductName = variant?.Product?.Name ?? string.Empty,
                 Quantity = inventory.Quantity,
                 ReservedQuantity = inventory.ReservedQuantity,
-                AvailableQuantity =
-                    inventory.Quantity - inventory.ReservedQuantity,
+                AvailableQuantity = available,
+                Color = color,
+                Size = size,
+                AgeRange = ageRange,
+                Price = variant?.Price ?? 0,
+                CostPrice = variant?.CostPrice ?? 0,
+                IsLowStock = available <= 5,
+                IsSlowMoving = inventory.UpdatedAt < DateTime.UtcNow.AddMonths(-2) && available > 10,
                 UpdatedAt = inventory.UpdatedAt
             };
         }

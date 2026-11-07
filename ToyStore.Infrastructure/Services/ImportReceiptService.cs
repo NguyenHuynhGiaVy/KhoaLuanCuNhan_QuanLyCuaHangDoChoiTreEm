@@ -71,6 +71,8 @@ namespace ToyStoreManagement.Infrastructure.Services
                 TotalAmount = receipt.TotalAmount,
                 Status = receipt.Status,
                 Note = receipt.Note,
+                InspectionReport = receipt.InspectionReport,
+                ReceivedAt = receipt.ReceivedAt,
                 CreatedAt = receipt.CreatedAt,
                 ImportReceiptDetails = receipt.ImportReceiptDetails.Select(x => new ImportReceiptDetailDto
                 {
@@ -346,7 +348,34 @@ namespace ToyStoreManagement.Infrastructure.Services
                     inventory.Quantity += received.Quantity;
                     inventory.UpdatedAt = DateTime.UtcNow;
 
-                    detail.ProductVariant.CostPrice = detail.UnitCost;
+                    var oldQty = inventory.Quantity - qtyToProcess;
+                    var oldCost = detail.ProductVariant.CostPrice;
+
+                    var actualQty = received.ActualQuantity ?? qtyToProcess;
+                    var defectQty = received.DefectQuantity ?? 0;
+                    detail.ActualQuantity = actualQty;
+                    detail.DefectQuantity = defectQty;
+                    if (!string.IsNullOrWhiteSpace(received.DiscrepancyReason))
+                    {
+                        detail.DiscrepancyReason = received.DiscrepancyReason;
+                    }
+
+                    // Công thức giá vốn bình quân gia quyền chuẩn kế toán:
+                    // Giá vốn mới = [(Số lượng tồn cũ × Giá vốn cũ) + (Số lượng thực nhập × Đơn giá nhập)] / (Số lượng tồn cũ + Số lượng thực nhập)
+                    decimal weightedCost;
+                    if (oldQty > 0 && oldCost > 0)
+                    {
+                        var totalStock = oldQty + actualQty;
+                        weightedCost = totalStock > 0 
+                            ? Math.Round(((oldQty * oldCost) + (actualQty * detail.UnitCost)) / totalStock, 2)
+                            : detail.UnitCost;
+                    }
+                    else
+                    {
+                        weightedCost = detail.UnitCost;
+                    }
+
+                    detail.ProductVariant.CostPrice = weightedCost;
 
                     // Cập nhật Giá bán mới: Nếu NewPrice > 0, cập nhật trực tiếp vào trường giá bán của biến thể
                     var effectiveNewPrice = received.NewPrice ?? detail.NewPrice;
@@ -379,7 +408,13 @@ namespace ToyStoreManagement.Infrastructure.Services
 
                 await _unitOfWork.SaveChangesAsync();
 
-                var receivedByVariant = await _context.InventoryTransactions
+                var variantIds = receipt.ImportReceiptDetails.Select(x => x.VariantId).Distinct().ToList();
+            var inventories = await _context.Inventories
+                .AsNoTracking()
+                .Where(inv => variantIds.Contains(inv.VariantId))
+                .ToDictionaryAsync(inv => inv.VariantId, inv => inv.Quantity);
+
+            var receivedByVariant = await _context.InventoryTransactions
                     .Where(x => x.ReferenceType == "ImportReceipt"
                         && x.ReferenceId == receipt.ImportReceiptId)
                     .GroupBy(x => x.VariantId)
@@ -388,6 +423,12 @@ namespace ToyStoreManagement.Infrastructure.Services
 
                 receipt.Status = receipt.ImportReceiptDetails.All(x =>
                     receivedByVariant.GetValueOrDefault(x.VariantId) == x.Quantity) ? 3 : 2;
+
+                if (!string.IsNullOrWhiteSpace(dto.InspectionReport))
+                {
+                    receipt.InspectionReport = dto.InspectionReport;
+                }
+                receipt.ReceivedAt = DateTime.UtcNow;
 
                 await _unitOfWork.SaveChangesAsync();
 
@@ -496,6 +537,12 @@ namespace ToyStoreManagement.Infrastructure.Services
             if (receipt.Status == 4)
                 throw new Exception("Không thể duyệt phiếu đặt hàng đã bị hủy.");
 
+            var variantIds = receipt.ImportReceiptDetails.Select(x => x.VariantId).Distinct().ToList();
+            var inventories = await _context.Inventories
+                .AsNoTracking()
+                .Where(inv => variantIds.Contains(inv.VariantId))
+                .ToDictionaryAsync(inv => inv.VariantId, inv => inv.Quantity);
+
             var receivedByVariant = await _context.InventoryTransactions
                 .Where(x => x.ReferenceType == "ImportReceipt" && x.ReferenceId == receipt.ImportReceiptId)
                 .GroupBy(x => x.VariantId)
@@ -573,6 +620,12 @@ namespace ToyStoreManagement.Infrastructure.Services
         private async Task<ImportReceiptDto> MapToDtoAsync(
             ImportReceipt receipt)
         {
+            var variantIds = receipt.ImportReceiptDetails.Select(x => x.VariantId).Distinct().ToList();
+            var inventories = await _context.Inventories
+                .AsNoTracking()
+                .Where(inv => variantIds.Contains(inv.VariantId))
+                .ToDictionaryAsync(inv => inv.VariantId, inv => inv.Quantity);
+
             var receivedByVariant = await _context.InventoryTransactions
                 .Where(x => x.ReferenceType == "ImportReceipt"
                     && x.ReferenceId == receipt.ImportReceiptId)
@@ -593,6 +646,8 @@ namespace ToyStoreManagement.Infrastructure.Services
                 TotalAmount = receipt.TotalAmount,
                 Status = receipt.Status,
                 Note = receipt.Note,
+                InspectionReport = receipt.InspectionReport,
+                ReceivedAt = receipt.ReceivedAt,
                 CreatedAt = receipt.CreatedAt,
 
                 ImportReceiptDetails =
@@ -630,7 +685,15 @@ namespace ToyStoreManagement.Infrastructure.Services
                                 x.ProductVariant?.Price,
 
                             NewPrice =
-                                x.NewPrice ?? x.ProductVariant?.Price
+                                x.NewPrice ?? x.ProductVariant?.Price,
+                            ActualQuantity = x.ActualQuantity ?? x.Quantity,
+                            DefectQuantity = x.DefectQuantity ?? 0,
+                            DiscrepancyReason = x.DiscrepancyReason,
+                            OldCostPrice = x.ProductVariant?.CostPrice,
+                            CurrentStock = inventories.GetValueOrDefault(x.VariantId, 0),
+                            CalculatedWeightedCost = (inventories.GetValueOrDefault(x.VariantId, 0) > 0 && (x.ProductVariant?.CostPrice ?? 0) > 0)
+                                ? Math.Round(((inventories.GetValueOrDefault(x.VariantId, 0) * (x.ProductVariant?.CostPrice ?? 0)) + (x.Quantity * x.UnitCost)) / (inventories.GetValueOrDefault(x.VariantId, 0) + x.Quantity), 2)
+                                : x.UnitCost
                         })
                         .ToList()
             };

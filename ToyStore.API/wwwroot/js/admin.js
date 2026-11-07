@@ -51,15 +51,21 @@ const MODULES = {
     canAdd: true, canEdit: true, canDelete: true
   },
   inventory: {
-    title: 'Tồn kho', kicker: 'HÀNG HÓA & KHO',
+    title: 'Quản lý Tồn kho khả dụng & Cảnh báo an toàn', kicker: 'HÀNG HÓA & KHO',
     endpoint: 'Inventory',
-    columns: ['SKU', 'Sản phẩm', 'Tồn kho', 'Đã giữ', 'Có thể bán', 'Cập nhật'],
-    canAdd: false, canEdit: true, canDelete: false
+    columns: ['Mã SKU', 'Sản phẩm & Biến thể', 'Độ tuổi', 'Giá niêm yết', 'Tồn thực tế', 'Tạm giữ', 'Khả dụng bán', 'Cảnh báo tồn kho', 'Cập nhật lúc'],
+    canAdd: false, canEdit: false, canDelete: false
+  },
+  'stock-movement': {
+    title: 'Báo cáo Biến động Xuất - Nhập - Tồn & Thẻ kho', kicker: 'HÀNG HÓA & KHO',
+    endpoint: 'Inventory/stock-movement',
+    columns: ['Mã SKU', 'Sản phẩm & Biến thể', 'Tồn đầu kỳ', 'Tổng nhập trong kỳ', 'Tổng xuất trong kỳ', 'Tồn cuối kỳ', 'Đơn giá vốn', 'Giá trị vốn tồn', 'Đánh giá'],
+    canAdd: false, canEdit: false, canDelete: false
   },
   orders: {
     title: 'Đơn hàng', kicker: 'VẬN HÀNH & GIAO NHẬN',
     endpoint: 'Order',
-    columns: ['Mã đơn', 'Khách hàng', 'SĐT', 'Ngày đặt', 'Lô giao', 'Shipper', 'Dự kiến giao', 'Giá trị', 'Thanh toán', 'Trạng thái đơn', 'Tình trạng giao', 'Lấy hàng tại kho', 'Bắt đầu giao', 'Ngày nhận', 'Thời gian giao'],
+    columns: ['<input type="checkbox" id="chkSelectAllOrders" onchange="toggleAllOrdersSelection(this)" title="Chọn tất cả"> Mã đơn', 'Khách hàng', 'SĐT', 'Ngày đặt', 'Lô giao', 'Shipper', 'Dự kiến giao', 'Giá trị', 'Thanh toán', 'Trạng thái đơn', 'Tình trạng giao', 'Lấy hàng tại kho', 'Bắt đầu giao', 'Ngày nhận', 'Thời gian giao'],
     canAdd: false, canEdit: true, canDelete: false
   },
   collections: {
@@ -409,6 +415,8 @@ function navigate() {
     renderLiquidation();
   } else if (hash === 'customer-care') {
     renderCustomerCare();
+  } else if (hash === 'stock-movement') {
+    renderStockMovementReport();
   } else {
     renderList(hash);
   }
@@ -2405,6 +2413,10 @@ async function renderCollectionsReport() {
           <h2>Thu tiền & Doanh thu theo từng đơn</h2>
           <p>Chỉ ghi nhận tiền đã thực sự vào quỹ: thanh toán online đã xác nhận và COD admin đã xác nhận nhận tiền.</p>
         </div>
+        <div style="display:flex;gap:8px;">
+          <button type="button" class="secondary-btn" onclick="exportCollectionsToExcel()">📥 Xuất Excel (BOM)</button>
+          <button type="button" class="secondary-btn" onclick="window.print()">🖨️ In báo cáo</button>
+        </div>
       </div>
       <div style="display:flex;align-items:end;gap:12px;flex-wrap:wrap;padding:16px 24px;border-bottom:1px solid var(--slate-200);background:var(--slate-50);">
         <div><label class="filter-label">Từ ngày nhận tiền</label><input id="collectionFromDate" type="date" class="input-control" value="${dateInputValue(defaultFrom)}"></div>
@@ -2857,20 +2869,39 @@ function getRowCells(key, r) {
         pill(r.isActive !== false ? 'Hoạt động' : 'Tạm khóa', r.isActive !== false ? 'success' : 'danger')
       ];
 
-    case 'inventory':
+    case 'inventory': {
       const available = (r.quantity || 0) - (r.reservedQuantity || 0);
+      const isLow = available <= 5;
+      const isSlow = r.isSlowMoving;
+      let badgeHtml = '';
+      if (isLow) {
+        badgeHtml = `<span class="badge-low-stock">⚠️ Sắp hết (${available})</span>`;
+      } else if (isSlow) {
+        badgeHtml = `<span class="badge-slow-moving">⏳ Tồn lâu (>2th)</span>`;
+      } else {
+        badgeHtml = `<span class="badge-in-stock">✓ Khả dụng tốt</span>`;
+      }
+
+      const attrText = [r.color, r.size].filter(Boolean).join(' - ');
       return [
-        `<code style="background:var(--slate-100);padding:3px 6px;border-radius:4px;font-weight:700;">${esc(r.sku || r.productVariant?.sku || 'SKU')}</code>`,
-        `<strong>${esc(r.productName || r.productVariant?.product?.name || 'Sản phẩm')}</strong>`,
+        `<code style="background:var(--slate-100);padding:3px 6px;border-radius:4px;font-weight:700;">${esc(r.sku || 'SKU')}</code>`,
+        `<div><strong>${esc(r.productName || 'Sản phẩm')}</strong>${attrText ? `<br><small style="color:var(--slate-500);">${esc(attrText)}</small>` : ''}</div>`,
+        esc(r.ageRange || '—'),
+        `<strong style="color:var(--primary);">${money(r.price)}</strong>`,
         `<strong>${r.quantity || 0}</strong>`,
         `<span style="color:var(--slate-500);">${r.reservedQuantity || 0}</span>`,
-        `<strong style="color:${available > 0 ? 'var(--success)' : 'var(--danger)'};">${available}</strong>`,
+        `<strong style="color:${available > 0 ? 'var(--success)' : 'var(--danger)'};font-size:14px;">${available}</strong>`,
+        badgeHtml,
         fmtDateTime(r.updatedAt || r.createdAt)
       ];
+    }
 
     case 'orders':
       return [
-        `<strong>#${esc(r.orderCode || r.orderId)}</strong>`,
+        `<div style="display:flex;align-items:center;gap:8px;">
+          <input type="checkbox" class="order-batch-chk" data-order-id="${r.orderId}" onchange="toggleOrderSelection(${r.orderId}, this)" ${selectedOrderIdsForBatch.has(r.orderId) ? 'checked' : ''}>
+          <strong>#${esc(r.orderCode || r.orderId)}</strong>
+        </div>`,
         esc(r.customerName || r.shipping?.receiverName || 'Khách vãng lai'),
         esc(r.phoneNumber || r.shipping?.receiverPhone || '—'),
         fmtDate(r.orderDate || r.createdAt),
@@ -2995,15 +3026,23 @@ function getRowCells(key, r) {
         voucherPill
       ];
 
-    case 'customers':
+    case 'customers': {
+      const tier = r.customerTier || r.tier || 'Mới';
+      let tierBadge = '';
+      if (tier === 'Kim Cương') tierBadge = '<span class="badge-tier-diamond">💎 Kim Cương</span>';
+      else if (tier === 'Vàng') tierBadge = '<span class="badge-tier-gold">🥇 Vàng</span>';
+      else if (tier === 'Bạc') tierBadge = '<span class="badge-tier-silver">🥈 Bạc</span>';
+      else tierBadge = '<span class="badge-tier-new">🌱 Mới</span>';
+
       return [
         `<strong>${esc(r.fullName || r.name)}</strong>`,
         esc(r.email || '—'),
         esc(r.phoneNumber || r.phone || '—'),
-        pill(r.tier || 'Thành viên', 'info'),
+        tierBadge,
         `<strong style="color:var(--primary);">${money(r.totalSpent || 0)}</strong>`,
-        `<span>${r.totalOrders || 0} đơn</span>`
+        `<span>${r.totalOrders || 0} đơn (${Number(r.loyaltyPoints || r.loyaltyPoint || 0).toLocaleString('vi-VN')} điểm)</span>`
       ];
+    }
 
     case 'users':
       return [
@@ -3022,6 +3061,13 @@ function getRowCells(key, r) {
 function getRowActions(key, r, index) {
   const m = MODULES[key];
   let btns = '';
+
+  if (key === 'inventory') {
+    return `
+      <button class="primary-btn" style="padding:4px 10px;font-size:12px;white-space:nowrap;" onclick="openInventoryAuditModal(${r.variantId}, '${esc(r.sku)}', '${esc(r.productName)}', ${r.quantity || 0})">⚖️ Cân bằng</button>
+      <button class="secondary-btn" style="padding:4px 10px;font-size:12px;white-space:nowrap;margin-left:4px;" onclick="location.hash='#liquidation'">🏷️ Thanh lý</button>
+    `;
+  }
 
   if (key === 'imports') {
     btns += `<button class="icon-action-btn view" title="Xem chi tiết & Duyệt nhập kho" onclick="showImportDetail(${r.importReceiptId})">${iconSvg('view')}</button> `;
@@ -5230,33 +5276,42 @@ function renderFormFields(key, r) {
 
     case 'suppliers':
       return `
-        <div class="form-grid-2">
-          <div class="form-group">
-            <label>Tên nhà cung cấp *</label>
-            <input name="name" class="input-control" value="${esc(v.name)}" required placeholder="Ví dụ: Công ty Cổ phần Đồ Chơi Việt Nam">
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:20px;margin-bottom:16px;">
+          <!-- Cột 1: Thông tin doanh nghiệp & Pháp lý -->
+          <div class="form-section-card" style="margin:0;">
+            <h4 style="margin:0 0 14px;color:var(--primary);display:flex;align-items:center;gap:6px;">🏢 Thông tin Doanh Nghiệp &amp; Pháp Lý</h4>
+            <div class="form-group" style="margin-bottom:12px;">
+              <label>Tên nhà cung cấp *</label>
+              <input name="name" class="input-control" value="${esc(v.name)}" required placeholder="Ví dụ: Công ty TNHH Đồ Chơi Thông Minh Việt Nam">
+            </div>
+            <div class="form-group" style="margin-bottom:12px;">
+              <label>Mã số thuế doanh nghiệp</label>
+              <input name="taxCode" class="input-control" value="${esc(v.taxCode)}" placeholder="0312345678">
+            </div>
+            <div class="form-group">
+              <label>Trạng thái hợp tác</label>
+              <select name="isActive" class="input-control">
+                <option value="true" ${v.isActive !== false ? 'selected' : ''}>Đang hoạt động (Ưu tiên nhập hàng)</option>
+                <option value="false" ${v.isActive === false ? 'selected' : ''}>Tạm ngưng giao dịch</option>
+              </select>
+            </div>
           </div>
-          <div class="form-group">
-            <label>Số điện thoại *</label>
-            <input name="phone" class="input-control" value="${esc(v.phone)}" required placeholder="0901234567">
-          </div>
-          <div class="form-group">
-            <label>Email liên hệ</label>
-            <input name="email" type="email" class="input-control" value="${esc(v.email)}" placeholder="ncc@domain.com">
-          </div>
-          <div class="form-group">
-            <label>Mã số thuế</label>
-            <input name="taxCode" class="input-control" value="${esc(v.taxCode)}" placeholder="0312345678">
-          </div>
-          <div class="form-group full">
-            <label>Địa chỉ trụ sở / Kho xuất hàng</label>
-            <input name="address" class="input-control" value="${esc(v.address)}" placeholder="Số 123 Đường XYZ, Quận 1, TP.HCM">
-          </div>
-          <div class="form-group">
-            <label>Trạng thái hợp tác</label>
-            <select name="isActive" class="input-control">
-              <option value="true" ${v.isActive !== false ? 'selected' : ''}>Đang hoạt động</option>
-              <option value="false" ${v.isActive === false ? 'selected' : ''}>Tạm ngưng</option>
-            </select>
+
+          <!-- Cột 2: Thông tin liên hệ kho & Đại diện -->
+          <div class="form-section-card" style="margin:0;">
+            <h4 style="margin:0 0 14px;color:var(--primary);display:flex;align-items:center;gap:6px;">📞 Liên Hệ Kho &amp; Đặt Hàng</h4>
+            <div class="form-group" style="margin-bottom:12px;">
+              <label>Số điện thoại liên hệ *</label>
+              <input name="phone" class="input-control" value="${esc(v.phone)}" required placeholder="0901234567">
+            </div>
+            <div class="form-group" style="margin-bottom:12px;">
+              <label>Email tiếp nhận đơn đặt</label>
+              <input name="email" type="email" class="input-control" value="${esc(v.email)}" placeholder="kinhdoanh@nccdochoi.vn">
+            </div>
+            <div class="form-group">
+              <label>Địa chỉ tổng kho / Xuất hàng</label>
+              <input name="address" class="input-control" value="${esc(v.address)}" placeholder="Kho số 5, KCN Tân Bình, TP.HCM">
+            </div>
           </div>
         </div>
       `;
@@ -5266,56 +5321,106 @@ function renderFormFields(key, r) {
 
     case 'promotions':
       return `
-        <div class="form-grid-2">
-          <div class="form-group full">
-            <label>Tên chương trình khuyến mãi *</label>
-            <input name="name" class="input-control" value="${esc(v.name)}" required placeholder="Ví dụ: Siêu Sale Trung Thu 2026">
+        <div class="form-section-card" style="margin-bottom:20px;background:#f8fafc;border-color:#e2e8f0;">
+          <div class="form-grid-2">
+            <div class="form-group full">
+              <label>Tên chương trình khuyến mãi *</label>
+              <input name="name" class="input-control" value="${esc(v.name)}" required placeholder="Ví dụ: Đại lễ 11/11 - Siêu Sale Đồ Chơi">
+            </div>
+            <div class="form-group">
+              <label>Mức giảm chung mặc định *</label>
+              <div style="display:flex;gap:8px;">
+                <select name="promotionType" class="input-control" style="width:130px;">
+                  <option value="0" ${v.promotionType === 0 ? 'selected' : ''}>Phần trăm (%)</option>
+                  <option value="1" ${v.promotionType === 1 ? 'selected' : ''}>Số tiền (đ)</option>
+                </select>
+                <input name="discountValue" type="number" min="0" step="any" class="input-control" value="${v.discountValue || ''}" required placeholder="VD: 10 hoặc 50000" style="flex:1;">
+              </div>
+            </div>
+            <div class="form-group">
+              <label>Mức giảm tối đa của mức chung (đ)</label>
+              <input name="maximumDiscount" type="number" min="0" step="1000" class="input-control" value="${v.maximumDiscount ?? ''}" placeholder="Chỉ áp dụng khi giảm theo %">
+            </div>
+            <div class="form-group">
+              <label>Thời gian bắt đầu *</label>
+              <input name="startDate" type="date" class="input-control" value="${v.startDate ? v.startDate.split('T')[0] : new Date().toISOString().split('T')[0]}" required>
+            </div>
+            <div class="form-group">
+              <label>Thời gian kết thúc *</label>
+              <input name="endDate" type="date" class="input-control" value="${v.endDate ? v.endDate.split('T')[0] : new Date(Date.now() + 7*86400000).toISOString().split('T')[0]}" required>
+            </div>
+            <div class="form-group">
+              <label>Trạng thái chương trình</label>
+              <select name="status" class="input-control">
+                <option value="1" ${v.status === undefined || v.status === 1 ? 'selected' : ''}>Đang kích hoạt</option>
+                <option value="0" ${v.status === 0 ? 'selected' : ''}>Tạm ngưng</option>
+              </select>
+            </div>
+            <div class="form-group full">
+              <label>Mô tả tóm tắt chương trình</label>
+              <input name="description" class="input-control" value="${esc(v.description)}" placeholder="Khuyến mãi áp dụng cho các nhóm đồ chơi chọn lọc...">
+            </div>
           </div>
-          <div class="form-group">
-            <label>Loại giảm giá *</label>
-            <select name="promotionType" class="input-control">
-              <option value="0" ${v.promotionType === 0 ? 'selected' : ''}>Phần trăm (%)</option>
-              <option value="1" ${v.promotionType === 1 ? 'selected' : ''}>Số tiền cố định (đ)</option>
-            </select>
+        </div>
+
+        <!-- PRODUCT-LEVEL & MULTI-TIER PROMOTION ITEMS (CARD-BASED UI) -->
+        <div class="form-section-card">
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px;flex-wrap:wrap;gap:8px;">
+            <div>
+              <h4 style="margin:0;color:var(--primary);display:flex;align-items:center;gap:6px;">🧸 Danh Sách Sản Phẩm Áp Dụng (Product-Level) &amp; Đa Mức Giảm</h4>
+              <p style="margin:4px 0 0;font-size:12.5px;color:var(--slate-500);">
+                Hệ thống tự động áp dụng ưu đãi cho <b>toàn bộ biến thể</b> (màu, size) của sản phẩm. Bạn có thể thiết lập mức giảm riêng cho từng sản phẩm trong cùng 1 chương trình.
+              </p>
+            </div>
+            <div style="display:flex;gap:8px;align-items:center;">
+              <select id="promoAddProductSelect" class="input-control" style="max-width:260px;font-size:13px;">
+                <option value="">-- Chọn sản phẩm thêm vào --</option>
+                ${(ref.products || []).map(p => `<option value="${p.id || p.productId}">${esc(p.name)}</option>`).join('')}
+              </select>
+              <button type="button" class="primary-btn" style="padding:7px 14px;font-size:12.5px;white-space:nowrap;" onclick="addPromoProductCard()">+ Thêm sản phẩm</button>
+            </div>
           </div>
-          <div class="form-group">
-            <label>Giá trị giảm *</label>
-            <input name="discountValue" type="number" min="0" step="any" class="input-control" value="${v.discountValue || ''}" required placeholder="10 (nếu là %) hoặc 50000 (nếu là VNĐ)">
-          </div>
-          <div class="form-group">
-            <label>Mức giảm tối đa (đ)</label>
-            <input name="maximumDiscount" type="number" min="0" step="1000" class="input-control" value="${v.maximumDiscount ?? ''}" placeholder="Chỉ dùng khi giảm theo %">
-          </div>
-          <div class="form-group">
-            <label>Ngày bắt đầu *</label>
-            <input name="startDate" type="date" class="input-control" value="${v.startDate ? v.startDate.split('T')[0] : new Date().toISOString().split('T')[0]}" required>
-          </div>
-          <div class="form-group">
-            <label>Ngày kết thúc *</label>
-            <input name="endDate" type="date" class="input-control" value="${v.endDate ? v.endDate.split('T')[0] : new Date(Date.now() + 7*86400000).toISOString().split('T')[0]}" required>
-          </div>
-          <div class="form-group">
-            <label>Trạng thái</label>
-            <select name="status" class="input-control">
-              <option value="1" ${v.status === undefined || v.status === 1 ? 'selected' : ''}>Đang kích hoạt</option>
-              <option value="0" ${v.status === 0 ? 'selected' : ''}>Tạm ngưng</option>
-            </select>
-          </div>
-          <div class="form-group full">
-            <label>Sản phẩm áp dụng *</label>
-            <small style="display:block;margin:-3px 0 8px;color:var(--slate-500);">Chương trình tự động giảm giá cho toàn bộ biến thể được chọn; khách hàng không cần nhập mã.</small>
-            ${renderPromotionVariantChoices(v)}
-          </div>
-          <div class="form-group full">
-            <label>Mô tả chương trình</label>
-            <textarea name="description" class="input-control" rows="3">${esc(v.description)}</textarea>
+
+          <div id="promoProductsContainer">
+            ${renderPromoProductCards(v)}
           </div>
         </div>
       `;
 
-    case 'vouchers':
+    case 'vouchers': {
+      const used = Number(v.usedCount || 0);
+      const limit = Number(v.usageLimit ?? v.maxUsage ?? 0);
+      const pct = limit > 0 ? Math.min(100, Math.round((used / limit) * 100)) : (used > 0 ? 100 : 0);
+      const discountText = v.discountType === 0 ? `${v.discountValue || 0}%` : money(v.discountValue || 0);
+
       return `
         <div class="form-grid-2">
+          <!-- TICKET / COUPON PREVIEW CARD -->
+          <div class="coupon-ticket-preview" style="grid-column:1/-1;">
+            <div style="display:flex;justify-content:space-between;align-items:flex-start;position:relative;z-index:2;flex-wrap:wrap;gap:12px;">
+              <div>
+                <span style="font-size:11px;font-weight:800;letter-spacing:1.5px;text-transform:uppercase;color:#fbbf24;">TOYSTORE REWARDS &amp; COUPON</span>
+                <h3 style="margin:6px 0 4px;font-size:22px;font-weight:800;" id="couponPreviewName">${esc(v.name || 'Mã Giảm Giá Mới')}</h3>
+                <div style="font-size:12.5px;color:#e0e7ff;" id="couponPreviewCondition">Đơn tối thiểu: ${money(v.minimumOrderValue ?? v.minOrderAmount ?? 0)}</div>
+              </div>
+              <div style="text-align:right;">
+                <span style="background:#ffffff;color:#4f46e5;font-weight:800;font-size:16px;padding:6px 14px;border-radius:8px;display:inline-block;letter-spacing:1px;" id="couponPreviewCode">${esc(v.code || 'CODE')}</span>
+                <div style="font-size:18px;font-weight:800;color:#fbbf24;margin-top:6px;" id="couponPreviewDiscount">Giảm ${discountText}</div>
+              </div>
+            </div>
+
+            <!-- PROGRESS BAR OF USAGE -->
+            <div style="margin-top:16px;position:relative;z-index:2;">
+              <div style="display:flex;justify-content:space-between;font-size:12px;color:#c7d2fe;margin-bottom:4px;">
+                <span>Tỷ lệ đã sử dụng:</span>
+                <span id="couponPreviewUsageText"><strong>${used}</strong> / ${limit > 0 ? `${limit} lượt` : 'Không giới hạn'} (${pct}%)</span>
+              </div>
+              <div class="coupon-progress-track">
+                <div class="coupon-progress-fill" style="width:${pct}%;"></div>
+              </div>
+            </div>
+          </div>
+
           <div class="form-group full" style="padding:11px 12px;border-radius:8px;background:var(--primary-light);color:var(--slate-700);font-size:13px;">
             Nhập <b>0 điểm</b> cho voucher thông thường. Nhập số điểm lớn hơn 0 để khách đổi điểm lấy mã; mã đó chỉ dùng được bởi đúng khách đã đổi, một lần.
           </div>
@@ -5377,6 +5482,7 @@ function renderFormFields(key, r) {
           </div>
         </div>
       `;
+    }
 
     case 'shippers':
       return `
@@ -5618,7 +5724,10 @@ function renderPurchaseOrderForm(v = {}) {
     <div class="form-section-card">
       <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;flex-wrap:wrap;gap:8px;">
         <h4 style="margin:0;">Danh sách mặt hàng &amp; thiết lập giá bán nhập kho</h4>
-        <button type="button" class="primary-btn" style="padding:6px 14px;font-size:12px;" onclick="addPurchaseOrderItemRow()">+ Thêm mặt hàng</button>
+        <div style="display:flex;gap:8px;">
+          <button type="button" class="secondary-btn" style="padding:6px 14px;font-size:12px;" onclick="openSupplierPriceComparisonModal()">📊 So sánh giá các NCC</button>
+          <button type="button" class="primary-btn" style="padding:6px 14px;font-size:12px;" onclick="addPurchaseOrderItemRow()">+ Thêm mặt hàng</button>
+        </div>
       </div>
       <div class="order-items-builder">
         <table class="order-items-table">
@@ -6053,10 +6162,30 @@ async function handleFormSubmit(e, key, index) {
     payload.status = Number(payload.status);
     payload.startDate = new Date(`${payload.startDate}T00:00:00`).toISOString();
     payload.endDate = new Date(`${payload.endDate}T23:59:59.999`).toISOString();
-    payload.variantIds = Array.from(form.querySelectorAll('[name="promotionVariantIds"]:checked'))
-      .map(input => Number(input.value));
-    if (!payload.variantIds.length) {
-      toast('Vui lòng chọn ít nhất một biến thể sản phẩm cho chương trình khuyến mãi.', 'error');
+
+    const promoRows = form.querySelectorAll('.promo-product-row');
+    if (promoRows.length > 0) {
+      payload.productItems = Array.from(promoRows).map(row => {
+        const prodId = Number(row.dataset.productId);
+        const hasCustom = row.querySelector('.promo-custom-toggle')?.checked;
+        const cType = Number(row.querySelector('.promo-custom-type')?.value ?? payload.promotionType);
+        const cVal = Number(row.querySelector('.promo-custom-value')?.value || payload.discountValue);
+        const cMax = row.querySelector('.promo-custom-max')?.value ? Number(row.querySelector('.promo-custom-max').value) : null;
+        return {
+          productId: prodId,
+          discountType: hasCustom ? cType : null,
+          discountValue: hasCustom ? cVal : null,
+          maximumDiscount: hasCustom ? cMax : null
+        };
+      });
+      payload.productIds = payload.productItems.map(p => p.productId);
+    } else {
+      payload.productIds = Array.from(form.querySelectorAll('[name="promotionVariantIds"]:checked'))
+        .map(input => Number(input.value));
+    }
+
+    if ((!payload.productIds || !payload.productIds.length) && (!payload.variantIds || !payload.variantIds.length)) {
+      toast('Vui lòng chọn ít nhất một sản phẩm đồ chơi cho chương trình khuyến mãi.', 'error');
       return;
     }
     delete payload.promotionVariantIds;
@@ -6116,7 +6245,7 @@ async function handleFormSubmit(e, key, index) {
   }
 }
 
-// ── 6. PURCHASE ORDER DETAIL & APPROVAL (DUYỆT NHẬP KHO) ─────
+// ── 6. PURCHASE ORDER DETAIL & APPROVAL (DUYỆT NHẬP KHO & ĐỊNH GIÁ MỚI) ─────
 async function showImportDetail(id) {
   try {
     const receipt = await api(`ImportReceipt/${id}`);
@@ -6135,14 +6264,14 @@ async function showImportDetail(id) {
           <div class="form-header-title">
             <button class="back-link-btn" onclick="renderList('imports')">← Quay lại danh sách phiếu</button>
             <div>
-              <h2>Chi tiết Phiếu Đặt Hàng #${esc(receipt.receiptCode || receipt.importReceiptId)}</h2>
-              <p>Người đặt: ${esc(receipt.orderedByName || 'Chưa xác định')} &bull; Ngày tạo: ${fmtDate(receipt.importDate || receipt.createdAt)} &bull; Trạng thái: ${pill(st.label, st.pill)}</p>
+              <h2>Phiếu Đặt Hàng &amp; Nhập Kho #${esc(receipt.receiptCode || receipt.importReceiptId)}</h2>
+              <p>Người lập: <strong>${esc(receipt.orderedByName || 'Chưa xác định')}</strong> &bull; Ngày đặt: ${fmtDate(receipt.importDate || receipt.createdAt)} &bull; Trạng thái: ${pill(st.label, st.pill)}</p>
             </div>
           </div>
           <div class="form-actions" style="margin:0;padding:0;border:none;">
             ${canApprove ? `
               <button class="success-btn" onclick="approvePurchaseOrder(${receipt.importReceiptId})">
-                Duyệt phiếu & Nhập kho
+                ✓ Phê duyệt &amp; Hoàn tất nhập kho
               </button>
             ` : ''}
             ${canCancel ? `
@@ -6166,63 +6295,91 @@ async function showImportDetail(id) {
               <div class="stat-value" style="font-size:22px;color:var(--primary);margin:8px 0 0;">${money(receipt.totalAmount)}</div>
             </div>
             <div class="stat-card" style="margin:0;">
-              <div class="stat-label">Ghi chú</div>
+              <div class="stat-label">Ghi chú phiếu đặt</div>
               <p style="font-size:13.5px;color:var(--slate-700);margin-top:8px;">${esc(receipt.note || 'Không có ghi chú.')}</p>
             </div>
           </div>
 
+          <!-- GIAI ĐOẠN 2: KIỂM ĐẾM THỰC TẾ, TÍNH GIÁ VỐN BÌNH QUÂN VÀ THIẾT LẬP GIÁ BÁN LẺ MỚI -->
           <div class="form-section-card">
-            <h4>Danh sách mặt hàng trong phiếu đặt</h4>
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;flex-wrap:wrap;gap:8px;">
+              <div>
+                <h4 style="margin:0;">Kiểm đếm thực tế, Giá vốn bình quân gia quyền &amp; Định giá bán lẻ mới</h4>
+                <p style="margin:4px 0 0;font-size:12.5px;color:var(--slate-500);">
+                  Công thức giá vốn BQ mới: <code>[(Tồn cũ × Vốn cũ) + (Thực nhập × Giá nhập)] / (Tồn cũ + Thực nhập)</code>
+                </p>
+              </div>
+            </div>
+
             <div class="table-wrap">
               <table class="data-table">
                 <thead>
                   <tr>
-                    <th style="width:120px;">STT / Mã SKU</th>
+                    <th style="width:100px;">Mã SKU</th>
                     <th>Sản phẩm / Biến thể</th>
-                    <th style="width:110px;">Số lượng đặt</th>
-                    <th style="width:120px;">Đã nhận vào kho</th>
-                    <th style="width:130px;">Đơn giá nhập</th>
-                    <th style="width:135px;">Thành tiền</th>
-                    <th style="width:130px;">Giá bán hiện tại</th>
-                    <th style="width:160px;">Giá bán mới (Bán lẻ)</th>
+                    <th style="width:85px;text-align:right;">SL Đặt</th>
+                    <th style="width:95px;text-align:right;">SL Thực nhận *</th>
+                    <th style="width:85px;text-align:right;">Lỗi/Thiếu</th>
+                    <th style="width:115px;text-align:right;">Đơn giá nhập</th>
+                    <th style="width:115px;text-align:right;">Giá vốn cũ</th>
+                    <th style="width:130px;text-align:right;background:#f0fdf4;">Giá vốn BQ mới</th>
+                    <th style="width:115px;text-align:right;">Giá web hiện tại</th>
+                    <th style="width:145px;">Giá bán lẻ mới *</th>
+                    <th style="width:105px;text-align:center;">Biên độ lãi</th>
                   </tr>
                 </thead>
                 <tbody>
                   ${(receipt.importReceiptDetails || []).map((d, dIdx) => {
                     const currentPrice = d.currentPrice != null && Number(d.currentPrice) > 0 ? Number(d.currentPrice) : 0;
-                    const currentPriceHtml = currentPrice > 0 
-                      ? money(currentPrice) 
-                      : '<span style="color:var(--slate-400);font-style:italic;">Chưa thiết lập</span>';
-                    const newPriceVal = (d.newPrice != null && Number(d.newPrice) > 0)
-                      ? Number(d.newPrice)
-                      : (currentPrice > 0 ? currentPrice : '');
+                    const oldCost = Number(d.oldCostPrice || 0);
+                    const oldStock = Number(d.currentStock || 0);
+                    const unitCost = Number(d.unitCost || 0);
+                    const defaultActual = d.actualQuantity != null ? Number(d.actualQuantity) : Number(d.quantity);
+                    const defaultDefect = Number(d.defectQuantity || 0);
+                    const initialNewPrice = Number(d.newPrice || currentPrice || Math.round(unitCost * 1.4));
 
                     return `
-                      <tr>
+                      <tr class="receipt-audit-row" data-detail-id="${d.importReceiptDetailId}" data-variant-id="${d.variantId}" data-old-stock="${oldStock}" data-old-cost="${oldCost}" data-unit-cost="${unitCost}">
+                        <td><code class="po-sku-badge">${esc(d.sku || 'SKU')}</code></td>
                         <td>
-                          <div style="font-weight:700;color:var(--slate-500);font-size:11.5px;margin-bottom:2px;">#${dIdx + 1}</div>
-                          <code class="po-sku-badge">${esc(d.sku || 'SKU')}</code>
+                          <strong>${esc(d.productName || 'Sản phẩm')}</strong>
+                          <div style="font-size:11.5px;color:var(--slate-500);margin-top:2px;">Tồn cũ: <b>${oldStock}</b> sp</div>
                         </td>
-                        <td><strong>${esc(d.productName || 'Sản phẩm')}</strong></td>
-                        <td><strong>${d.quantity}</strong></td>
-                        <td><span style="color:${d.receivedQuantity >= d.quantity ? 'var(--success)' : 'var(--warning)'};font-weight:700;">${d.receivedQuantity || 0}</span> / ${d.quantity}</td>
-                        <td>${money(d.unitCost)}</td>
-                        <td><strong style="color:var(--primary);">${money(d.totalAmount)}</strong></td>
-                        <td><span class="po-current-price-badge">${currentPriceHtml}</span></td>
+                        <td style="text-align:right;font-weight:700;">${d.quantity}</td>
                         <td>
                           ${canApprove ? `
-                            <input type="number" min="0" step="1000" 
-                              class="input-control po-detail-new-price" 
+                            <input type="number" min="0" class="input-control po-actual-qty" 
+                              value="${defaultActual}" 
+                              oninput="recalcRowPricing(this.closest('tr'))" 
+                              style="width:85px;text-align:right;font-weight:700;color:var(--primary);padding:4px 8px;">
+                          ` : `<strong style="color:var(--primary);">${d.actualQuantity ?? d.quantity}</strong>`}
+                        </td>
+                        <td>
+                          ${canApprove ? `
+                            <input type="number" min="0" class="input-control po-defect-qty" 
+                              value="${defaultDefect}" 
+                              style="width:75px;text-align:right;color:#dc2626;padding:4px 8px;">
+                          ` : `<span style="color:#dc2626;">${d.defectQuantity || 0}</span>`}
+                        </td>
+                        <td style="text-align:right;font-weight:600;">${money(unitCost)}</td>
+                        <td style="text-align:right;color:var(--slate-600);">${oldCost > 0 ? money(oldCost) : '—'}</td>
+                        <td style="text-align:right;background:#f0fdf4;">
+                          <strong class="po-weighted-cost-val" style="color:#047857;font-size:13.5px;">${money(unitCost)}</strong>
+                        </td>
+                        <td style="text-align:right;color:var(--slate-500);">${currentPrice > 0 ? money(currentPrice) : 'Chưa có'}</td>
+                        <td>
+                          ${canApprove ? `
+                            <input type="number" min="0" step="1000" class="input-control po-detail-new-price" 
                               data-detail-id="${d.importReceiptDetailId}" 
                               data-variant-id="${d.variantId}" 
                               data-sku="${esc(d.sku || '')}" 
-                              value="${newPriceVal}" 
-                              placeholder="Nhập giá bán mới..." 
-                              oninput="this.classList.remove('po-input-error')"
-                              style="width:145px;padding:6px 10px;font-size:13px;">
-                          ` : `
-                            <strong style="color:var(--slate-800);">${d.newPrice > 0 ? money(d.newPrice) : (currentPrice > 0 ? money(currentPrice) : '—')}</strong>
-                          `}
+                              value="${initialNewPrice}" 
+                              oninput="recalcRowPricing(this.closest('tr'))" 
+                              style="width:135px;font-weight:700;padding:4px 8px;font-size:13px;">
+                          ` : `<strong>${money(d.newPrice || currentPrice)}</strong>`}
+                        </td>
+                        <td style="text-align:center;">
+                          <span class="po-margin-badge" style="font-weight:800;font-size:12px;padding:3px 8px;border-radius:6px;background:#ecfdf5;color:#047857;">+35%</span>
                         </td>
                       </tr>
                     `;
@@ -6230,14 +6387,65 @@ async function showImportDetail(id) {
                 </tbody>
               </table>
             </div>
+
+            ${canApprove ? `
+              <div style="margin-top:20px;padding:16px;background:var(--slate-50);border:1px solid var(--slate-200);border-radius:10px;">
+                <label style="display:block;font-size:12.5px;font-weight:700;color:var(--slate-700);margin-bottom:6px;">Biên bản kiểm đếm chênh lệch &amp; Hiện trạng hàng vật lý</label>
+                <textarea id="poInspectionReportInput" class="input-control" rows="2" placeholder="Ghi nhận hiện trạng bao bì, kiện hàng nếu có rách vỡ hoặc thiếu hụt so với đơn đặt hàng...">${esc(receipt.inspectionReport || '')}</textarea>
+              </div>
+            ` : (receipt.inspectionReport ? `
+              <div style="margin-top:16px;padding:14px;background:#f8fafc;border:1px solid #e2e8f0;border-radius:10px;">
+                <strong>Biên bản kiểm đếm:</strong> <span style="color:var(--slate-700);">${esc(receipt.inspectionReport)}</span>
+              </div>
+            ` : '')}
           </div>
         </div>
       </div>
     `;
+
+    document.querySelectorAll('.receipt-audit-row').forEach(row => recalcRowPricing(row));
+
   } catch (err) {
     toast(`Lỗi: ${err.message}`, 'error');
   }
 }
+
+window.recalcRowPricing = function(row) {
+  if (!row) return;
+  const oldStock = Number(row.dataset.oldStock || 0);
+  const oldCost = Number(row.dataset.oldCost || 0);
+  const unitCost = Number(row.dataset.unitCost || 0);
+  const actualQty = Number(row.querySelector('.po-actual-qty')?.value || 0);
+  const newPriceInput = row.querySelector('.po-detail-new-price');
+  const newPrice = Number(newPriceInput?.value || 0);
+  const costEl = row.querySelector('.po-weighted-cost-val');
+  const marginEl = row.querySelector('.po-margin-badge');
+
+  let weightedCost = unitCost;
+  if (oldStock > 0 && oldCost > 0 && (oldStock + actualQty) > 0) {
+    weightedCost = Math.round(((oldStock * oldCost) + (actualQty * unitCost)) / (oldStock + actualQty));
+  }
+  if (costEl) costEl.textContent = money(weightedCost);
+
+  if (marginEl) {
+    if (newPrice > 0) {
+      const margin = Math.round(((newPrice - weightedCost) / newPrice) * 100);
+      marginEl.textContent = (margin > 0 ? '+' : '') + margin + '%';
+      if (margin >= 25) {
+        marginEl.style.background = '#ecfdf5';
+        marginEl.style.color = '#047857';
+      } else if (margin >= 10) {
+        marginEl.style.background = '#fffbeb';
+        marginEl.style.color = '#b45309';
+      } else {
+        marginEl.style.background = '#fef2f2';
+        marginEl.style.color = '#b91c1c';
+      }
+    } else {
+      marginEl.textContent = '—';
+    }
+  }
+};
 
 window.approvePurchaseOrder = async function(id) {
   const notice = document.getElementById('inlineApprovalNotice');
@@ -6247,7 +6455,7 @@ window.approvePurchaseOrder = async function(id) {
     <div class="inline-confirm-box success">
       <div class="confirm-text">
         <b>Xác nhận duyệt phiếu &amp; Hoàn tất nhập kho?</b>
-        <p>Hệ thống sẽ cập nhật số lượng tồn kho, áp dụng <b>Giá bán mới</b> cho các biến thể và tự động chuyển trạng thái sản phẩm sang <b>Đang bán</b>.</p>
+        <p>Hệ thống sẽ cập nhật số lượng tồn kho theo số lượng thực nhận, tự động tính giá vốn bình quân gia quyền, áp dụng <b>Giá bán lẻ mới</b> cho các biến thể và chuyển trạng thái sản phẩm sang <b>Đang bán</b>.</p>
       </div>
       <div class="confirm-actions">
         <button class="ghost-btn" onclick="document.getElementById('inlineApprovalNotice').innerHTML=''">Hủy</button>
@@ -6258,18 +6466,21 @@ window.approvePurchaseOrder = async function(id) {
 };
 
 window.executeApprovePurchaseOrder = async function(id) {
-  const detailInputs = document.querySelectorAll('.po-detail-new-price');
+  const rows = document.querySelectorAll('.receipt-audit-row');
   const detailsPayload = [];
 
-  for (const input of detailInputs) {
-    const val = Number(input.value || 0);
-    const sku = input.getAttribute('data-sku') || 'Sản phẩm';
-    const detailId = Number(input.getAttribute('data-detail-id'));
-    const variantId = Number(input.getAttribute('data-variant-id'));
+  for (const row of rows) {
+    const detailId = Number(row.dataset.detailId);
+    const variantId = Number(row.dataset.variantId);
+    const actualQty = Number(row.querySelector('.po-actual-qty')?.value || 0);
+    const defectQty = Number(row.querySelector('.po-defect-qty')?.value || 0);
+    const priceInput = row.querySelector('.po-detail-new-price');
+    const newPrice = Number(priceInput?.value || 0);
+    const sku = priceInput?.getAttribute('data-sku') || 'Sản phẩm';
 
-    if (!val || val <= 0) {
-      input.classList.add('po-input-error');
-      input.focus();
+    if (!newPrice || newPrice <= 0) {
+      priceInput?.classList.add('po-input-error');
+      priceInput?.focus();
       toast(`Vui lòng nhập giá bán cho sản phẩm [${sku}] trước khi nhập kho và mở bán`, 'error');
       return;
     }
@@ -6277,14 +6488,22 @@ window.executeApprovePurchaseOrder = async function(id) {
     detailsPayload.push({
       importReceiptDetailId: detailId,
       variantId: variantId,
-      newPrice: val
+      quantity: actualQty,
+      actualQuantity: actualQty,
+      defectQuantity: defectQty,
+      newPrice: newPrice
     });
   }
+
+  const inspectionReport = document.getElementById('poInspectionReportInput')?.value?.trim();
 
   try {
     await api(`ImportReceipt/${id}/approve`, {
       method: 'POST',
-      body: JSON.stringify({ details: detailsPayload })
+      body: JSON.stringify({
+        details: detailsPayload,
+        inspectionReport: inspectionReport
+      })
     });
     toast('Duyệt phiếu, cập nhật tồn kho & thiết lập giá bán mới thành công!', 'success');
     await loadRef();
@@ -6998,3 +7217,898 @@ document.addEventListener('click', function(e) {
     }
   }
 });
+
+
+// ── GENERIC EXCEL CSV EXPORTER (UTF-8 BOM COMPATIBLE) ────────
+function exportToExcelCsv(filename, headers, rows) {
+  const processCell = (cell) => {
+    let text = cell == null ? '' : String(cell);
+    text = text.replace(/<[^>]*>/g, '').trim();
+    if (text.includes('"') || text.includes(',') || text.includes('\n')) {
+      text = `"${text.replace(/"/g, '""')}"`;
+    }
+    return text;
+  };
+  const csvContent = '\uFEFF' + [
+    headers.map(processCell).join(','),
+    ...rows.map(row => row.map(processCell).join(','))
+  ].join('\r\n');
+  const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement('a');
+  link.setAttribute('href', url);
+  link.setAttribute('download', `${filename}.csv`);
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+  URL.revokeObjectURL(url);
+}
+window.exportToExcelCsv = exportToExcelCsv;
+
+// ── STOCK MOVEMENT & INVENTORY AUDIT REPORT (#stock-movement) ──
+async function renderStockMovementReport() {
+  const today = new Date();
+  const defaultFrom = new Date(Date.now() - 30 * 86400000);
+  
+  app.innerHTML = `
+    <div class="panel">
+      <div class="panel-header">
+        <div class="panel-title-area">
+          <h2>Báo cáo Biến động Xuất - Nhập - Tồn (X-N-T) & Thẻ kho</h2>
+          <p>Báo cáo kế toán tổng hợp biến động kho: Tồn đầu kỳ + Tổng nhập trong kỳ - Tổng xuất trong kỳ = Tồn cuối kỳ.</p>
+        </div>
+        <div style="display:flex;gap:8px;flex-wrap:wrap;">
+          <button type="button" class="secondary-btn" onclick="exportStockMovementToExcel()">
+            📥 Xuất Excel (BOM)
+          </button>
+          <button type="button" class="secondary-btn" onclick="window.print()">
+            🖨️ In báo cáo
+          </button>
+        </div>
+      </div>
+
+      <div style="display:flex;align-items:flex-end;gap:12px;flex-wrap:wrap;padding:16px 24px;border-bottom:1px solid var(--slate-200);background:var(--slate-50);">
+        <div>
+          <label class="filter-label">Từ ngày</label>
+          <input id="smFromDate" type="date" class="input-control" value="${dateInputValue(defaultFrom)}">
+        </div>
+        <div>
+          <label class="filter-label">Đến ngày</label>
+          <input id="smToDate" type="date" class="input-control" value="${dateInputValue(today)}">
+        </div>
+        <div>
+          <label class="filter-label">Lọc theo sản phẩm</label>
+          <select id="smProductFilter" class="input-control" style="max-width:240px;">
+            <option value="">-- Tất cả sản phẩm --</option>
+            ${(ref.products || []).map(p => `<option value="${p.id || p.productId}">${esc(p.name)}</option>`).join('')}
+          </select>
+        </div>
+        <button type="button" class="primary-btn" onclick="loadStockMovementData()">Xem báo cáo</button>
+      </div>
+
+      <div class="print-header">
+        <h2>BÁO CÁO TỔNG HỢP XUẤT - NHẬP - TỒN KHO TOYSTORE</h2>
+        <p id="smPrintPeriodLabel"></p>
+      </div>
+
+      <div id="smSummaryCards" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:12px;padding:20px 24px;">
+        <div class="stat-card"><div class="stat-label">Tồn đầu kỳ</div><div class="stat-value" id="smSumOpening">—</div></div>
+        <div class="stat-card"><div class="stat-label">Tổng nhập trong kỳ</div><div class="stat-value" style="color:#059669;" id="smSumIn">—</div></div>
+        <div class="stat-card"><div class="stat-label">Tổng xuất trong kỳ</div><div class="stat-value" style="color:#dc2626;" id="smSumOut">—</div></div>
+        <div class="stat-card"><div class="stat-label">Tồn cuối kỳ</div><div class="stat-value" style="color:var(--primary);" id="smSumClosing">—</div></div>
+        <div class="stat-card"><div class="stat-label">Tổng giá trị vốn tồn</div><div class="stat-value" style="color:#4f46e5;" id="smSumValue">—</div></div>
+      </div>
+
+      <div class="table-wrap">
+        <table class="data-table" id="stockMovementTable">
+          <thead>
+            <tr>
+              <th>Mã SKU</th>
+              <th>Tên đồ chơi &amp; Biến thể</th>
+              <th style="text-align:right;">Tồn đầu kỳ</th>
+              <th style="text-align:right;color:#059669;">Tổng nhập</th>
+              <th style="text-align:right;color:#dc2626;">Tổng xuất</th>
+              <th style="text-align:right;">Tồn cuối kỳ</th>
+              <th style="text-align:right;">Đơn giá vốn</th>
+              <th style="text-align:right;">Giá trị vốn tồn</th>
+              <th style="text-align:center;">Đánh giá tồn</th>
+            </tr>
+          </thead>
+          <tbody id="stockMovementTableBody">
+            <tr><td colspan="9" style="text-align:center;padding:30px;color:var(--slate-400);">Đang tải dữ liệu Xuất - Nhập - Tồn...</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <!-- DETAILED STOCK MOVEMENT TRANSACTIONS LOG -->
+      <div class="form-section-card" style="margin:24px;background:#ffffff;">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px;flex-wrap:wrap;gap:8px;">
+          <h3 style="margin:0;font-size:16px;">📜 Nhật ký Thẻ kho chi tiết từng lượt giao dịch</h3>
+          <div style="display:flex;gap:8px;">
+            <input id="txnSearchInput" class="input-control" placeholder="Tìm theo SKU, mã đơn..." oninput="filterTransactionsList()" style="width:200px;font-size:12.5px;">
+            <select id="txnTypeFilter" class="input-control" onchange="filterTransactionsList()" style="font-size:12.5px;">
+              <option value="">-- Tất cả loại giao dịch --</option>
+              <option value="1">Nhập hàng (PO / Hoàn hàng)</option>
+              <option value="2">Xuất hàng (Bán lẻ / Xuất hủy)</option>
+              <option value="3">Kiểm kê / Cân bằng kho</option>
+            </select>
+          </div>
+        </div>
+        <div class="table-wrap">
+          <table class="data-table">
+            <thead>
+              <tr>
+                <th>Mã GD</th>
+                <th>Thời gian</th>
+                <th>Mã SKU</th>
+                <th>Loại giao dịch</th>
+                <th style="text-align:right;">Biến động (+ / -)</th>
+                <th>Chứng từ tham chiếu</th>
+                <th>Diễn giải ghi chú</th>
+              </tr>
+            </thead>
+            <tbody id="stockTransactionsBody">
+              <tr><td colspan="7" style="text-align:center;padding:24px;color:var(--slate-400);">Đang tải nhật ký thẻ kho...</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  `;
+
+  let currentReportData = [];
+  let currentTxnData = [];
+
+  window.loadStockMovementData = async function() {
+    const from = document.getElementById('smFromDate')?.value;
+    const to = document.getElementById('smToDate')?.value;
+    const prodId = document.getElementById('smProductFilter')?.value;
+    const tbody = document.getElementById('stockMovementTableBody');
+    if (!tbody) return;
+
+    tbody.innerHTML = `<tr><td colspan="9" style="text-align:center;padding:30px;color:var(--slate-400);">Đang tổng hợp dữ liệu kế toán X-N-T...</td></tr>`;
+
+    let q = `fromDate=${encodeURIComponent(from)}&toDate=${encodeURIComponent(to)}`;
+    if (prodId) q += `&productId=${encodeURIComponent(prodId)}`;
+
+    try {
+      const data = await api(`Inventory/stock-movement?${q}`);
+      currentReportData = Array.isArray(data) ? data : [];
+
+      let totalOpening = 0, totalIn = 0, totalOut = 0, totalClosing = 0, totalValue = 0;
+      currentReportData.forEach(item => {
+        totalOpening += Number(item.openingStock || 0);
+        totalIn += Number(item.inStock || 0);
+        totalOut += Number(item.outStock || 0);
+        totalClosing += Number(item.closingStock || 0);
+        totalValue += Number(item.totalCostValue || 0);
+      });
+
+      document.getElementById('smSumOpening').textContent = totalOpening.toLocaleString('vi-VN');
+      document.getElementById('smSumIn').textContent = `+${totalIn.toLocaleString('vi-VN')}`;
+      document.getElementById('smSumOut').textContent = `-${totalOut.toLocaleString('vi-VN')}`;
+      document.getElementById('smSumClosing').textContent = totalClosing.toLocaleString('vi-VN');
+      document.getElementById('smSumValue').textContent = money(totalValue);
+
+      const periodLabel = `Khoảng thời gian: từ ${fmtDate(from)} đến ${fmtDate(to)}`;
+      const pEl = document.getElementById('smPrintPeriodLabel');
+      if (pEl) pEl.textContent = periodLabel;
+
+      if (!currentReportData.length) {
+        tbody.innerHTML = `<tr><td colspan="9" style="text-align:center;padding:30px;color:var(--slate-400);">Không có dữ liệu phát sinh trong kỳ đã chọn.</td></tr>`;
+      } else {
+        tbody.innerHTML = currentReportData.map(item => {
+          const isNeed = item.closingStock <= 5;
+          const statusBadge = isNeed
+            ? '<span class="badge-low-stock">⚠️ Cần nhập thêm</span>'
+            : '<span class="badge-in-stock">✓ Đủ tồn kho</span>';
+
+          return `
+            <tr>
+              <td><code>${esc(item.sku || 'SKU')}</code></td>
+              <td><strong>${esc(item.productName)}</strong><br><small style="color:var(--slate-500);">${esc(item.attributes || '')}</small></td>
+              <td style="text-align:right;font-weight:600;">${Number(item.openingStock || 0).toLocaleString('vi-VN')}</td>
+              <td style="text-align:right;color:#059669;font-weight:700;">+${Number(item.inStock || 0).toLocaleString('vi-VN')}</td>
+              <td style="text-align:right;color:#dc2626;font-weight:700;">-${Number(item.outStock || 0).toLocaleString('vi-VN')}</td>
+              <td style="text-align:right;font-weight:700;font-size:14px;color:var(--slate-800);">${Number(item.closingStock || 0).toLocaleString('vi-VN')}</td>
+              <td style="text-align:right;">${money(item.unitCost)}</td>
+              <td style="text-align:right;font-weight:700;color:var(--primary);">${money(item.totalCostValue)}</td>
+              <td style="text-align:center;">${statusBadge}</td>
+            </tr>
+          `;
+        }).join('');
+      }
+
+      // Load detailed transaction log
+      const txns = await api('InventoryTransaction');
+      currentTxnData = Array.isArray(txns) ? txns : [];
+      window.filterTransactionsList();
+
+    } catch (err) {
+      toast(`Lỗi nạp báo cáo X-N-T: ${err.message}`, 'error');
+      tbody.innerHTML = `<tr><td colspan="9" style="text-align:center;padding:30px;color:var(--danger);">${esc(err.message)}</td></tr>`;
+    }
+  };
+
+  window.filterTransactionsList = function() {
+    const sTerm = document.getElementById('txnSearchInput')?.value.trim().toLowerCase() || '';
+    const tType = document.getElementById('txnTypeFilter')?.value;
+    const body = document.getElementById('stockTransactionsBody');
+    if (!body) return;
+
+    let filtered = currentTxnData;
+    if (sTerm) {
+      filtered = filtered.filter(t => 
+        (t.productVariant?.sku || '').toLowerCase().includes(sTerm) ||
+        (t.referenceType || '').toLowerCase().includes(sTerm) ||
+        (String(t.referenceId || '')).includes(sTerm) ||
+        (t.note || '').toLowerCase().includes(sTerm)
+      );
+    }
+    if (tType) {
+      filtered = filtered.filter(t => String(t.transactionType) === tType);
+    }
+
+    if (!filtered.length) {
+      body.innerHTML = `<tr><td colspan="7" style="text-align:center;padding:24px;color:var(--slate-400);">Không có giao dịch thẻ kho nào khớp bộ lọc.</td></tr>`;
+      return;
+    }
+
+    body.innerHTML = filtered.slice(0, 50).map(t => {
+      const typeLabel = t.transactionType === 1 ? 'Nhập kho' : (t.transactionType === 2 ? 'Xuất kho' : 'Kiểm kê');
+      const typePill = t.transactionType === 1 ? 'success' : (t.transactionType === 2 ? 'warning' : 'info');
+      const qtyText = t.quantity > 0 ? `+${t.quantity}` : `${t.quantity}`;
+      const qtyColor = t.quantity > 0 ? '#059669' : '#dc2626';
+
+      return `
+        <tr>
+          <td><code>#${t.id || t.transactionId}</code></td>
+          <td>${fmtDateTime(t.createdAt)}</td>
+          <td><code>${esc(t.productVariant?.sku || `Var #${t.variantId}`)}</code></td>
+          <td>${pill(typeLabel, typePill)}</td>
+          <td style="text-align:right;font-weight:700;color:${qtyColor};">${qtyText}</td>
+          <td><strong>${esc(t.referenceType || '—')}</strong> ${t.referenceId ? `(#${t.referenceId})` : ''}</td>
+          <td style="font-size:12.5px;color:var(--slate-700);">${esc(t.note || '—')}</td>
+        </tr>
+      `;
+    }).join('');
+  };
+
+  window.exportStockMovementToExcel = function() {
+    if (!currentReportData.length) {
+      toast('Không có dữ liệu báo cáo để xuất.', 'error');
+      return;
+    }
+    const headers = ['Mã SKU', 'Tên đồ chơi', 'Thuộc tính', 'Tồn đầu kỳ', 'Tổng nhập kỳ', 'Tổng xuất kỳ', 'Tồn cuối kỳ', 'Đơn giá vốn', 'Giá trị vốn tồn kho'];
+    const rows = currentReportData.map(item => [
+      item.sku,
+      item.productName,
+      item.attributes || '',
+      item.openingStock,
+      item.inStock,
+      item.outStock,
+      item.closingStock,
+      item.unitCost,
+      item.totalCostValue
+    ]);
+    exportToExcelCsv(`BaoCao_XNT_${dateInputValue(new Date())}`, headers, rows);
+    toast('Đã xuất báo cáo Xuất-Nhập-Tồn ra file Excel thành công!', 'success');
+  };
+
+  await window.loadStockMovementData();
+}
+
+// ── INVENTORY AUDIT (CÂN BẰNG KHO ĐỘC LẬP) ───────────────────
+window.openInventoryAuditModal = function(variantId, sku, productName, currentQuantity) {
+  let modalEl = document.getElementById('inventoryAuditModal');
+  if (!modalEl) {
+    modalEl = document.createElement('div');
+    modalEl.id = 'inventoryAuditModal';
+    modalEl.className = 'cart-drawer-overlay';
+    document.body.appendChild(modalEl);
+  }
+
+  modalEl.style.display = 'flex';
+  modalEl.style.alignItems = 'center';
+  modalEl.style.justifyContent = 'center';
+
+  modalEl.innerHTML = `
+    <div style="background:#ffffff;border-radius:16px;width:95%;max-width:480px;padding:24px;box-shadow:var(--shadow-xl);position:relative;">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;">
+        <h3 style="margin:0;display:flex;align-items:center;gap:8px;">⚖️ Kiểm kê &amp; Cân bằng kho</h3>
+        <button type="button" onclick="document.getElementById('inventoryAuditModal').style.display='none'" style="border:none;background:none;font-size:22px;cursor:pointer;color:var(--slate-400);">×</button>
+      </div>
+      <div style="background:var(--slate-50);border:1px solid var(--slate-200);border-radius:10px;padding:14px;margin-bottom:16px;">
+        <div style="font-size:12px;color:var(--slate-500);text-transform:uppercase;font-weight:700;">Biến thể đồ chơi</div>
+        <div style="font-size:15px;font-weight:700;color:var(--slate-800);margin-top:2px;">${esc(productName)}</div>
+        <div style="margin-top:4px;"><code style="background:#ffffff;padding:2px 6px;border-radius:4px;border:1px solid #e2e8f0;">SKU: ${esc(sku)}</code></div>
+      </div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:16px;">
+        <div>
+          <label style="display:block;font-size:12px;font-weight:700;color:var(--slate-600);margin-bottom:4px;">Tồn trên hệ thống</label>
+          <input class="input-control" value="${currentQuantity}" readonly style="background:var(--slate-100);font-weight:700;font-size:16px;">
+        </div>
+        <div>
+          <label style="display:block;font-size:12px;font-weight:700;color:var(--slate-600);margin-bottom:4px;">Kiểm đếm thực tế *</label>
+          <input id="auditActualQtyInput" type="number" min="0" step="1" class="input-control" value="${currentQuantity}" style="font-weight:700;font-size:16px;color:var(--primary);" oninput="updateAuditDiffDisplay(${currentQuantity})">
+        </div>
+      </div>
+      <div id="auditDiffDisplay" style="margin-bottom:16px;padding:10px 14px;border-radius:8px;font-size:13px;font-weight:700;background:#f8fafc;color:var(--slate-600);border:1px solid #e2e8f0;">
+        Chênh lệch: 0 (Khớp hệ thống)
+      </div>
+      <div style="margin-bottom:20px;">
+        <label style="display:block;font-size:12px;font-weight:700;color:var(--slate-600);margin-bottom:4px;">Lý do kiểm kê / Ghi chú biên bản *</label>
+        <textarea id="auditReasonInput" class="input-control" rows="2" placeholder="Ví dụ: Kiểm kê định kỳ, phát hiện 1 hộp bị rách bao bì...">Kiểm kê cân bằng kho định kỳ</textarea>
+      </div>
+      <div style="display:flex;justify-content:flex-end;gap:10px;">
+        <button type="button" class="secondary-btn" onclick="document.getElementById('inventoryAuditModal').style.display='none'">Hủy</button>
+        <button type="button" class="primary-btn" onclick="submitInventoryAudit(${variantId})">Xác nhận Cân bằng kho</button>
+      </div>
+    </div>
+  `;
+
+  window.updateAuditDiffDisplay = function(oldQty) {
+    const act = Number(document.getElementById('auditActualQtyInput')?.value || 0);
+    const diff = act - oldQty;
+    const el = document.getElementById('auditDiffDisplay');
+    if (!el) return;
+    if (diff === 0) {
+      el.style.background = '#f0fdf4';
+      el.style.borderColor = '#bbf7d0';
+      el.style.color = '#15803d';
+      el.textContent = 'Chênh lệch: 0 (Số lượng thực tế khớp chính xác với hệ thống)';
+    } else if (diff > 0) {
+      el.style.background = '#eff6ff';
+      el.style.borderColor = '#bfdbfe';
+      el.style.color = '#1d4ed8';
+      el.textContent = `Chênh lệch: +${diff} (Thực tế THỪA ${diff} sản phẩm so với hệ thống)`;
+    } else {
+      el.style.background = '#fef2f2';
+      el.style.borderColor = '#fecaca';
+      el.style.color = '#b91c1c';
+      el.textContent = `Chênh lệch: ${diff} (Thực tế THIẾU ${Math.abs(diff)} sản phẩm so với hệ thống)`;
+    }
+  };
+
+  window.submitInventoryAudit = async function(vId) {
+    const actualQuantity = Number(document.getElementById('auditActualQtyInput')?.value);
+    const reason = document.getElementById('auditReasonInput')?.value.trim();
+    if (actualQuantity < 0 || isNaN(actualQuantity)) {
+      toast('Số lượng kiểm đếm thực tế không hợp lệ.', 'error');
+      return;
+    }
+    try {
+      await api('Inventory/audit', {
+        method: 'POST',
+        body: JSON.stringify({ variantId: vId, actualQuantity, reason })
+      });
+      toast('Đã cân bằng kho và lưu vết nhật ký kiểm kê thành công!', 'success');
+      document.getElementById('inventoryAuditModal').style.display = 'none';
+      renderList('inventory');
+    } catch (err) {
+      toast(`Lỗi kiểm kê: ${err.message}`, 'error');
+    }
+  };
+};
+
+
+// ── SUPPLIER PRICE COMPARISON MODAL (QUY TRÌNH 1) ─────────────
+window.openSupplierPriceComparisonModal = async function() {
+  let modalEl = document.getElementById('supplierPriceCompModal');
+  if (!modalEl) {
+    modalEl = document.createElement('div');
+    modalEl.id = 'supplierPriceCompModal';
+    modalEl.className = 'cart-drawer-overlay';
+    document.body.appendChild(modalEl);
+  }
+
+  modalEl.style.display = 'flex';
+  modalEl.style.alignItems = 'center';
+  modalEl.style.justifyContent = 'center';
+
+  const products = ref.products || [];
+
+  modalEl.innerHTML = `
+    <div style="background:#ffffff;border-radius:16px;width:95%;max-width:760px;max-height:90vh;overflow-y:auto;padding:24px;box-shadow:var(--shadow-xl);position:relative;">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;">
+        <h3 style="margin:0;display:flex;align-items:center;gap:8px;">📊 Bảng Đối Chiếu So Sánh Giá Nhà Cung Cấp</h3>
+        <button type="button" onclick="document.getElementById('supplierPriceCompModal').style.display='none'" style="border:none;background:none;font-size:24px;cursor:pointer;color:var(--slate-400);">×</button>
+      </div>
+
+      <div style="background:var(--slate-50);border:1px solid var(--slate-200);border-radius:10px;padding:16px;margin-bottom:18px;">
+        <label style="display:block;font-size:12.5px;font-weight:700;color:var(--slate-700);margin-bottom:6px;">Chọn món đồ chơi cần so sánh giá nhập giữa các NCC *</label>
+        <select id="compProductSelect" class="input-control" onchange="loadSupplierPriceComparison(this.value)" style="font-size:14px;font-weight:600;">
+          <option value="">-- Chọn sản phẩm đồ chơi --</option>
+          ${products.map(p => `<option value="${p.id || p.productId}">${esc(p.name)}</option>`).join('')}
+        </select>
+      </div>
+
+      <div id="supplierCompTableContainer">
+        <p style="text-align:center;color:var(--slate-400);padding:30px;">Vui lòng chọn sản phẩm ở trên để xem bảng đối chiếu giá giữa các NCC.</p>
+      </div>
+    </div>
+  `;
+
+  window.loadSupplierPriceComparison = async function(prodId) {
+    const container = document.getElementById('supplierCompTableContainer');
+    if (!prodId || !container) {
+      if (container) container.innerHTML = '<p style="text-align:center;color:var(--slate-400);padding:30px;">Vui lòng chọn sản phẩm ở trên.</p>';
+      return;
+    }
+
+    container.innerHTML = '<p style="text-align:center;color:var(--slate-400);padding:30px;">Đang truy vấn bảng giá cung ứng của các NCC...</p>';
+
+    try {
+      const data = await api(`Supplier/compare-prices?productId=${encodeURIComponent(prodId)}`);
+      if (!data || !data.length) {
+        container.innerHTML = `
+          <div style="text-align:center;padding:30px;color:var(--slate-500);">
+            <p>Sản phẩm này chưa được liên kết với nhà cung cấp nào trong danh mục Cung Ứng.</p>
+          </div>
+        `;
+        return;
+      }
+
+      container.innerHTML = `
+        <div class="table-wrap">
+          <table class="data-table">
+            <thead>
+              <tr>
+                <th>Nhà cung cấp</th>
+                <th>Phân loại đối tác</th>
+                <th style="text-align:right;">Giá nhập tham khảo (Cung Ứng)</th>
+                <th style="text-align:right;">Giá nhập gần nhất</th>
+                <th style="text-align:center;">Thao tác</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${data.map(item => {
+                const isDefault = item.isDefault;
+                const refCost = item.referenceCostPrice != null ? money(item.referenceCostPrice) : 'Chưa thiết lập';
+                const lastCost = item.lastImportPrice != null ? money(item.lastImportPrice) : 'Chưa có lịch sử';
+
+                return `
+                  <tr>
+                    <td>
+                      <strong>${esc(item.supplierName)}</strong>
+                      ${isDefault ? '<br><span class="badge" style="background:#ecfdf5;color:#047857;font-size:10.5px;font-weight:700;">NCC Mặc định</span>' : ''}
+                    </td>
+                    <td>
+                      <span class="pill ${isDefault ? 'success' : 'info'}">${item.relationshipType || 'Đang hợp tác'}</span>
+                    </td>
+                    <td style="text-align:right;font-weight:700;color:var(--primary);">${refCost}</td>
+                    <td style="text-align:right;font-weight:600;color:var(--slate-700);">${lastCost}</td>
+                    <td style="text-align:center;">
+                      <button type="button" class="primary-btn" style="padding:5px 12px;font-size:12px;white-space:nowrap;" onclick="selectSupplierForPO(${item.supplierId}, ${prodId}, ${item.referenceCostPrice || item.lastImportPrice || 0})">
+                        ✓ Chọn NCC này
+                      </button>
+                    </td>
+                  </tr>
+                `;
+              }).join('')}
+            </tbody>
+          </table>
+        </div>
+      `;
+    } catch (err) {
+      container.innerHTML = `<div style="text-align:center;color:var(--danger);padding:24px;">Lỗi: ${esc(err.message)}</div>`;
+    }
+  };
+
+  window.selectSupplierForPO = function(supplierId, prodId, suggestedPrice) {
+    const sSelect = document.getElementById('poSupplierSelect');
+    if (sSelect) {
+      sSelect.value = supplierId;
+      handlePOSupplierChange(supplierId);
+      toast('Đã chọn nhà cung cấp tối ưu cho phiếu đặt hàng!', 'success');
+    }
+    document.getElementById('supplierPriceCompModal').style.display = 'none';
+  };
+};
+
+// ── BATCH DELIVERY (GOM LÔ GIAO HÀNG TRÊN #orders) ───────────
+window.selectedOrderIdsForBatch = new Set();
+
+window.toggleOrderSelection = function(orderId, checkbox) {
+  if (checkbox.checked) {
+    selectedOrderIdsForBatch.add(orderId);
+  } else {
+    selectedOrderIdsForBatch.delete(orderId);
+  }
+  updateBatchDeliveryBar();
+};
+
+window.toggleAllOrdersSelection = function(masterCheckbox) {
+  const checkboxes = document.querySelectorAll('.order-batch-chk');
+  checkboxes.forEach(cb => {
+    cb.checked = masterCheckbox.checked;
+    const oId = Number(cb.dataset.orderId);
+    if (masterCheckbox.checked) selectedOrderIdsForBatch.add(oId);
+    else selectedOrderIdsForBatch.delete(oId);
+  });
+  updateBatchDeliveryBar();
+};
+
+function updateBatchDeliveryBar() {
+  let bar = document.getElementById('batchDeliveryFloatingBar');
+  const count = selectedOrderIdsForBatch.size;
+
+  if (count === 0) {
+    if (bar) bar.style.display = 'none';
+    return;
+  }
+
+  if (!bar) {
+    bar = document.createElement('div');
+    bar.id = 'batchDeliveryFloatingBar';
+    bar.className = 'batch-delivery-bar';
+    bar.style.position = 'fixed';
+    bar.style.bottom = '20px';
+    bar.style.left = '50%';
+    bar.style.transform = 'translateX(-50%)';
+    bar.style.zIndex = '9999';
+    bar.style.minWidth = '420px';
+    document.body.appendChild(bar);
+  }
+
+  bar.style.display = 'flex';
+  bar.innerHTML = `
+    <div style="display:flex;align-items:center;gap:12px;">
+      <span style="font-size:20px;">📦</span>
+      <div>
+        <div style="font-weight:700;font-size:14px;">Đã chọn ${count} đơn hàng để gom chuyến</div>
+        <div style="font-size:12px;color:#c7d2fe;">Gộp thành 1 Lô giao hàng (Batch) phân công Shipper</div>
+      </div>
+    </div>
+    <div style="display:flex;gap:8px;">
+      <button type="button" class="secondary-btn" onclick="clearBatchSelection()" style="padding:6px 12px;font-size:12px;background:rgba(255,255,255,0.15);border:none;color:#fff;">Bỏ chọn</button>
+      <button type="button" class="primary-btn" onclick="openBatchDeliveryModal()" style="padding:6px 16px;font-size:13px;background:#fbbf24;color:#1e1b4b;font-weight:700;">Gom lô &amp; Gán Shipper</button>
+    </div>
+  `;
+}
+
+window.clearBatchSelection = function() {
+  selectedOrderIdsForBatch.clear();
+  document.querySelectorAll('.order-batch-chk').forEach(cb => cb.checked = false);
+  const master = document.getElementById('chkSelectAllOrders');
+  if (master) master.checked = false;
+  updateBatchDeliveryBar();
+};
+
+window.openBatchDeliveryModal = function() {
+  const oIds = Array.from(selectedOrderIdsForBatch);
+  if (!oIds.length) return;
+
+  let modal = document.getElementById('batchDeliveryAssignModal');
+  if (!modal) {
+    modal = document.createElement('div');
+    modal.id = 'batchDeliveryAssignModal';
+    modal.className = 'cart-drawer-overlay';
+    document.body.appendChild(modal);
+  }
+
+  const randomBatch = 'BATCH-' + new Date().toISOString().slice(0,10).replace(/-/g,'') + '-' + Math.floor(1000 + Math.random()*9000);
+  const shippers = ref.shippers || [];
+
+  modal.style.display = 'flex';
+  modal.style.alignItems = 'center';
+  modal.style.justifyContent = 'center';
+
+  modal.innerHTML = `
+    <div style="background:#ffffff;border-radius:16px;width:95%;max-width:540px;padding:24px;box-shadow:var(--shadow-xl);position:relative;">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;">
+        <h3 style="margin:0;display:flex;align-items:center;gap:8px;">📦 Gom Lô Giao Hàng &amp; Phân Công Shipper</h3>
+        <button type="button" onclick="document.getElementById('batchDeliveryAssignModal').style.display='none'" style="border:none;background:none;font-size:24px;cursor:pointer;color:var(--slate-400);">×</button>
+      </div>
+
+      <div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:10px;padding:12px 16px;margin-bottom:16px;font-size:13px;">
+        <strong>Danh sách ${oIds.length} đơn hàng được gom lô:</strong>
+        <div style="margin-top:6px;display:flex;gap:6px;flex-wrap:wrap;">
+          ${oIds.map(id => `<span class="badge" style="background:#e0e7ff;color:#3730a3;font-weight:700;">#${id}</span>`).join('')}
+        </div>
+      </div>
+
+      <div class="form-group" style="margin-bottom:14px;">
+        <label style="display:block;font-size:12px;font-weight:700;margin-bottom:4px;">Mã Lô Giao Hàng (Batch Code) *</label>
+        <input id="batchCodeInput" class="input-control" value="${randomBatch}" required style="font-weight:700;color:var(--primary);">
+      </div>
+
+      <div class="form-group" style="margin-bottom:14px;">
+        <label style="display:block;font-size:12px;font-weight:700;margin-bottom:4px;">Shipper phụ trách chuyến đi *</label>
+        <select id="batchShipperSelect" class="input-control" required>
+          <option value="">-- Chọn Shipper phụ trách lô --</option>
+          ${shippers.filter(s => s.isActive !== false).map(s => `<option value="${s.id || s.shipperId}">${esc(s.fullName)} (${esc(s.phoneNumber || '')}) - Tuyến: ${esc(s.assignedArea || 'Tất cả')}</option>`).join('')}
+        </select>
+      </div>
+
+      <div class="form-group" style="margin-bottom:20px;">
+        <label style="display:block;font-size:12px;font-weight:700;margin-bottom:4px;">Ghi chú điều phối tuyến đường</label>
+        <textarea id="batchNoteInput" class="input-control" rows="2" placeholder="Ví dụ: Giao tuyến Quận 1 trước 11h trưa..."></textarea>
+      </div>
+
+      <div style="display:flex;justify-content:flex-end;gap:10px;">
+        <button type="button" class="secondary-btn" onclick="document.getElementById('batchDeliveryAssignModal').style.display='none'">Hủy</button>
+        <button type="button" class="primary-btn" onclick="executeAssignBatchDelivery()">Xác nhận Gom Lô &amp; Phân Công</button>
+      </div>
+    </div>
+  `;
+
+  window.executeAssignBatchDelivery = async function() {
+    const sId = Number(document.getElementById('batchShipperSelect')?.value);
+    const bCode = document.getElementById('batchCodeInput')?.value.trim();
+    if (!sId) {
+      toast('Vui lòng chọn Shipper phụ trách lô.', 'error');
+      return;
+    }
+    if (!bCode) {
+      toast('Vui lòng nhập mã lô giao hàng.', 'error');
+      return;
+    }
+
+    try {
+      await api('Shipper/assign-order', {
+        method: 'POST',
+        body: JSON.stringify({
+          shipperId: sId,
+          deliveryBatchCode: bCode,
+          orderIds: oIds
+        })
+      });
+
+      toast(`Gom lô ${bCode} và phân công ${oIds.length} đơn cho Shipper thành công!`, 'success');
+      document.getElementById('batchDeliveryAssignModal').style.display = 'none';
+      clearBatchSelection();
+      renderList('orders');
+    } catch (err) {
+      toast(`Lỗi gom lô: ${err.message}`, 'error');
+    }
+  };
+};
+
+// ── COD RECONCILIATION MODAL WITH DISCREPANCY AUDIT ──────────
+window.openCodReconciliationModal = function(paymentId, orderId, expectedAmount, shipperName = '') {
+  let modal = document.getElementById('codReconciliationModal');
+  if (!modal) {
+    modal = document.createElement('div');
+    modal.id = 'codReconciliationModal';
+    modal.className = 'cart-drawer-overlay';
+    document.body.appendChild(modal);
+  }
+
+  const expected = Number(expectedAmount || 0);
+
+  modal.style.display = 'flex';
+  modal.style.alignItems = 'center';
+  modal.style.justifyContent = 'center';
+
+  modal.innerHTML = `
+    <div style="background:#ffffff;border-radius:16px;width:95%;max-width:500px;padding:24px;box-shadow:var(--shadow-xl);position:relative;">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;">
+        <h3 style="margin:0;display:flex;align-items:center;gap:8px;">💵 Đối Soát Quỹ COD Shipper Nộp</h3>
+        <button type="button" onclick="document.getElementById('codReconciliationModal').style.display='none'" style="border:none;background:none;font-size:24px;cursor:pointer;color:var(--slate-400);">×</button>
+      </div>
+
+      <div style="background:var(--slate-50);border:1px solid var(--slate-200);border-radius:10px;padding:14px;margin-bottom:16px;">
+        <div style="display:flex;justify-content:space-between;margin-bottom:6px;">
+          <span style="color:var(--slate-500);font-size:13px;">Đơn hàng đối soát:</span>
+          <strong>#${orderId || paymentId}</strong>
+        </div>
+        ${shipperName ? `<div style="display:flex;justify-content:space-between;margin-bottom:6px;"><span style="color:var(--slate-500);font-size:13px;">Shipper nộp:</span><strong>${esc(shipperName)}</strong></div>` : ''}
+        <div style="display:flex;justify-content:space-between;padding-top:6px;border-top:1px dashed #cbd5e1;">
+          <span style="color:var(--slate-700);font-weight:700;font-size:13.5px;">Tiền hàng cần nộp shop:</span>
+          <strong style="color:var(--primary);font-size:16px;">${money(expected)}</strong>
+        </div>
+      </div>
+
+      <div class="form-group" style="margin-bottom:14px;">
+        <label style="display:block;font-size:12px;font-weight:700;margin-bottom:4px;">Số tiền mặt thực thu vào két *</label>
+        <input id="codActualReceivedInput" type="number" min="0" step="1000" class="input-control" value="${expected}" style="font-size:17px;font-weight:800;color:#047857;" oninput="updateCodDiscrepancyDisplay(${expected})">
+      </div>
+
+      <div id="codDiscrepancyDisplay" style="margin-bottom:16px;padding:12px;border-radius:8px;font-size:13px;background:#f0fdf4;color:#15803d;border:1px solid #bbf7d0;">
+        ✓ Tiền thực thu khớp 100% với hệ thống tính toán.
+      </div>
+
+      <div class="form-group" style="margin-bottom:20px;">
+        <label style="display:block;font-size:12px;font-weight:700;margin-bottom:4px;">Ghi chú biên bản đối soát quỹ</label>
+        <textarea id="codAuditNoteInput" class="input-control" rows="2" placeholder="Ghi chú đối soát, lý do thừa/thiếu nếu có..."></textarea>
+      </div>
+
+      <div style="display:flex;justify-content:flex-end;gap:10px;">
+        <button type="button" class="secondary-btn" onclick="document.getElementById('codReconciliationModal').style.display='none'">Hủy</button>
+        <button type="button" class="primary-btn" onclick="submitCodReconciliation(${paymentId}, ${orderId || 0}, ${expected})">Xác nhận Đối soát &amp; Vào quỹ</button>
+      </div>
+    </div>
+  `;
+
+  window.updateCodDiscrepancyDisplay = function(exp) {
+    const act = Number(document.getElementById('codActualReceivedInput')?.value || 0);
+    const diff = act - exp;
+    const el = document.getElementById('codDiscrepancyDisplay');
+    if (!el) return;
+
+    if (diff === 0) {
+      el.style.background = '#f0fdf4';
+      el.style.borderColor = '#bbf7d0';
+      el.style.color = '#15803d';
+      el.innerHTML = '✓ Tiền thực thu khớp 100% với hệ thống tính toán.';
+    } else if (diff > 0) {
+      el.style.background = '#eff6ff';
+      el.style.borderColor = '#bfdbfe';
+      el.style.color = '#1d4ed8';
+      el.innerHTML = `⚠️ <b>Shipper nộp THỪA ${money(diff)}:</b> Hệ thống sẽ ghi nhận giảm công nợ cho Shipper (hoặc cộng tiền thừa) và lưu biên bản đối soát quỹ.`;
+    } else {
+      el.style.background = '#fffbeb';
+      el.style.borderColor = '#fde68a';
+      el.style.color = '#b45309';
+      el.innerHTML = `⚠️ <b>Shipper nộp THIẾU ${money(Math.abs(diff))}:</b> Thay vì chặn lỗi, hệ thống sẽ tự động ghi nhận phần thiếu <b>${money(Math.abs(diff))}</b> vào <b>Công nợ cá nhân của Shipper</b> và lưu vết đối soát.`;
+    }
+  };
+
+  window.submitCodReconciliation = async function(pId, oId, exp) {
+    const receivedAmount = Number(document.getElementById('codActualReceivedInput')?.value);
+    const note = document.getElementById('codAuditNoteInput')?.value.trim();
+
+    if (isNaN(receivedAmount) || receivedAmount < 0) {
+      toast('Số tiền thực nhận không hợp lệ.', 'error');
+      return;
+    }
+
+    try {
+      const res = await api('Shipper/confirm-cod-submission', {
+        method: 'POST',
+        body: JSON.stringify({
+          paymentIds: [pId],
+          receivedAmount,
+          note
+        })
+      });
+
+      toast(res.message || 'Đối soát COD và ghi nhận quỹ thành công!', 'success');
+      document.getElementById('codReconciliationModal').style.display = 'none';
+
+      if (oId && document.querySelector('.form-view-panel')) {
+        showOrderDetail(oId);
+      } else {
+        renderList('cod');
+      }
+    } catch (err) {
+      toast(`Lỗi đối soát COD: ${err.message}`, 'error');
+    }
+  };
+};
+
+// Override confirmSingleCodSubmission to use the new modal
+window.confirmSingleCodSubmission = function(paymentId, orderId, expectedAmount, shipperName = '') {
+  openCodReconciliationModal(paymentId, orderId, expectedAmount, shipperName);
+};
+
+
+window.exportCollectionsToExcel = function() {
+  const records = window.currentCollectionRecords || [];
+  if (!records.length) {
+    toast('Chưa có dữ liệu thu tiền để xuất.', 'error');
+    return;
+  }
+  const headers = ['Thời điểm thu', 'Mã đơn', 'Khách hàng', 'Hình thức', 'Tiền khách trả', 'Phí giao', 'Thực thu quỹ', 'Doanh thu ghi nhận', 'Trạng thái đơn', 'Shipper'];
+  const rows = records.map(r => [
+    fmtDateTime(r.receivedAt),
+    r.orderCode,
+    r.customerName,
+    r.paymentMethod,
+    r.customerPaidAmount,
+    r.shippingFee,
+    r.netCashReceived,
+    r.recognizedRevenue,
+    r.orderStatusText,
+    r.shipperName || ''
+  ]);
+  exportToExcelCsv(`BaoCao_ThuTien_${dateInputValue(new Date())}`, headers, rows);
+  toast('Đã xuất báo cáo Thu tiền & Doanh thu ra file Excel!', 'success');
+};
+
+
+function renderPromoProductCards(promotion = {}) {
+  const existingItems = promotion.promotionProducts || [];
+  if (!existingItems.length) {
+    return `<div id="promoNoProductNotice" style="text-align:center;padding:30px;color:var(--slate-400);border:1px dashed var(--slate-300);border-radius:10px;">Chưa có sản phẩm nào được chọn. Vui lòng chọn sản phẩm ở ô trên và bấm "+ Thêm sản phẩm".</div>`;
+  }
+
+  // Group by ProductId
+  const productMap = new Map();
+  for (const item of existingItems) {
+    const pId = item.productId || (item.variant ? item.variant.productId : null);
+    if (pId && !productMap.has(pId)) {
+      productMap.set(pId, item);
+    }
+  }
+
+  const products = ref.products || [];
+  let html = '';
+  productMap.forEach((item, pId) => {
+    const prod = products.find(p => (p.id || p.productId) === pId) || { name: item.productName || `Sản phẩm #${pId}`, productVariants: [] };
+    const hasCustom = item.discountValue != null && item.discountValue > 0;
+    html += buildPromoProductCardHtml(pId, prod.name, prod.productVariants?.length || 1, hasCustom, item.discountType ?? 0, item.discountValue, item.maximumDiscount);
+  });
+  return html;
+}
+
+function buildPromoProductCardHtml(productId, productName, variantCount, hasCustom, dType, dValue, dMax) {
+  return `
+    <div class="promo-product-card promo-product-row" data-product-id="${productId}">
+      <div class="promo-product-card-header">
+        <div>
+          <strong style="font-size:15px;color:var(--slate-800);">${esc(productName)}</strong>
+          <span class="badge" style="background:#e0e7ff;color:#3730a3;margin-left:8px;font-size:11px;">Tự áp dụng ${variantCount} biến thể</span>
+        </div>
+        <button type="button" class="icon-action-btn del" title="Xóa khỏi chương trình" onclick="this.closest('.promo-product-row').remove();checkPromoEmptyState();">✕</button>
+      </div>
+
+      <div class="promo-custom-toggle-wrap">
+        <label style="display:flex;align-items:center;gap:6px;cursor:pointer;font-weight:600;font-size:13px;">
+          <input type="checkbox" class="promo-custom-toggle" onchange="togglePromoCustomDiscount(this)" ${hasCustom ? 'checked' : ''}>
+          <span>Thiết lập mức giảm riêng cho sản phẩm này (khác mức chung)</span>
+        </label>
+      </div>
+
+      <div class="promo-custom-inputs" style="display:${hasCustom ? 'grid' : 'none'};grid-template-columns:130px 1fr 1fr;gap:10px;margin-top:10px;">
+        <div>
+          <label style="display:block;font-size:11.5px;color:var(--slate-600);margin-bottom:2px;">Loại giảm riêng</label>
+          <select class="input-control promo-custom-type" style="font-size:12.5px;">
+            <option value="0" ${dType === 0 ? 'selected' : ''}>Phần trăm (%)</option>
+            <option value="1" ${dType === 1 ? 'selected' : ''}>Số tiền (đ)</option>
+          </select>
+        </div>
+        <div>
+          <label style="display:block;font-size:11.5px;color:var(--slate-600);margin-bottom:2px;">Giá trị giảm riêng</label>
+          <input type="number" min="0" class="input-control promo-custom-value" value="${dValue || ''}" placeholder="VD: 15 hoặc 70000" style="font-size:12.5px;">
+        </div>
+        <div>
+          <label style="display:block;font-size:11.5px;color:var(--slate-600);margin-bottom:2px;">Mức giảm tối đa (đ)</label>
+          <input type="number" min="0" step="1000" class="input-control promo-custom-max" value="${dMax || ''}" placeholder="Để trống nếu không giới hạn" style="font-size:12.5px;">
+        </div>
+      </div>
+    </div>
+  `;
+}
+
+window.addPromoProductCard = function() {
+  const select = document.getElementById('promoAddProductSelect');
+  const pId = Number(select?.value);
+  if (!pId) {
+    toast('Vui lòng chọn một sản phẩm.', 'error');
+    return;
+  }
+
+  // Check duplicate
+  const existing = document.querySelector(`.promo-product-row[data-product-id="${pId}"]`);
+  if (existing) {
+    toast('Sản phẩm này đã có trong danh sách khuyến mãi.', 'error');
+    return;
+  }
+
+  const prod = (ref.products || []).find(p => (p.id || p.productId) === pId);
+  const container = document.getElementById('promoProductsContainer');
+  const notice = document.getElementById('promoNoProductNotice');
+  if (notice) notice.remove();
+
+  const cardHtml = buildPromoProductCardHtml(pId, prod?.name || `Sản phẩm #${pId}`, prod?.productVariants?.length || 1, false, 0, null, null);
+  container.insertAdjacentHTML('beforeend', cardHtml);
+  select.value = '';
+  toast(`Đã thêm [${prod?.name || 'Sản phẩm'}] vào chương trình khuyến mãi!`, 'success');
+};
+
+window.togglePromoCustomDiscount = function(checkbox) {
+  const row = checkbox.closest('.promo-product-row');
+  const customInputs = row.querySelector('.promo-custom-inputs');
+  if (customInputs) {
+    customInputs.style.display = checkbox.checked ? 'grid' : 'none';
+  }
+};
+
+window.checkPromoEmptyState = function() {
+  const container = document.getElementById('promoProductsContainer');
+  if (container && !container.querySelectorAll('.promo-product-row').length) {
+    container.innerHTML = `<div id="promoNoProductNotice" style="text-align:center;padding:30px;color:var(--slate-400);border:1px dashed var(--slate-300);border-radius:10px;">Chưa có sản phẩm nào được chọn. Vui lòng chọn sản phẩm ở ô trên và bấm "+ Thêm sản phẩm".</div>`;
+  }
+};

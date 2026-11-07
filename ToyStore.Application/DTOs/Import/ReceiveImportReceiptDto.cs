@@ -4,6 +4,7 @@ namespace ToyStoreManagement.Application.DTOs.Import
 {
     public class ReceiveImportReceiptDto
     {
+        public string? InspectionReport { get; set; }
         public List<ReceiveImportReceiptDetailDto> Details { get; set; }
             = new List<ReceiveImportReceiptDetailDto>();
     }
@@ -21,5 +22,8 @@ namespace ToyStoreManagement.Application.DTOs.Import
         }
 
         public decimal? NewPrice { get; set; }
+        public int? ActualQuantity { get; set; }
+        public int? DefectQuantity { get; set; }
+        public string? DiscrepancyReason { get; set; }
     }
 }

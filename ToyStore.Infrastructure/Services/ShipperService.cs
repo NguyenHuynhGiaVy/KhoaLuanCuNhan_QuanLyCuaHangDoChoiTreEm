@@ -66,7 +66,8 @@ namespace ToyStoreManagement.Infrastructure.Services
                     CreatedAt = s.CreatedAt,
                     ActiveOrdersCount = activeOrders,
                     CompletedOrdersCount = completedOrders,
-                    PendingCodAmount = pendingCod
+                    PendingCodAmount = pendingCod,
+                DebtAmount = s.DebtAmount
                 });
             }
 
@@ -106,7 +107,8 @@ namespace ToyStoreManagement.Infrastructure.Services
                 CreatedAt = s.CreatedAt,
                 ActiveOrdersCount = activeOrders,
                 CompletedOrdersCount = completedOrders,
-                PendingCodAmount = pendingCod
+                PendingCodAmount = pendingCod,
+                DebtAmount = s.DebtAmount
             };
         }
 
@@ -215,6 +217,43 @@ namespace ToyStoreManagement.Infrastructure.Services
             if (shipper == null || !shipper.IsActive)
             {
                 throw new InvalidOperationException("Shipper không tồn tại hoặc đã tạm dừng hoạt động.");
+            }
+
+            if (dto.OrderIds != null && dto.OrderIds.Any())
+            {
+                var batchCode = !string.IsNullOrWhiteSpace(dto.DeliveryBatchCode)
+                    ? dto.DeliveryBatchCode.Trim()
+                    : $"BATCH-{DateTime.UtcNow:yyMMddHHmm}";
+
+                var shippings = await _context.Shippings
+                    .Where(s => dto.OrderIds.Contains(s.OrderId))
+                    .ToListAsync();
+
+                if (!shippings.Any())
+                {
+                    throw new KeyNotFoundException("Không tìm thấy đơn hàng nào trong danh sách được chọn.");
+                }
+
+                foreach (var sh in shippings)
+                {
+                    var previousStatus = GetShippingStatusText(sh.Status);
+                    sh.DeliveryBatchCode = batchCode;
+                    sh.ShipperId = dto.ShipperId;
+                    sh.Status = 0;
+                    await AddOrderTrackingLogAsync(
+                        sh.OrderId,
+                        sh.ShippingId,
+                        "Gom lô & Gán Shipper",
+                        previousStatus,
+                        $"Gom vào lô {batchCode} và phân công cho shipper {shipper.FullName}",
+                        performedByUserId,
+                        performedByName ?? "Quản trị viên",
+                        "Admin/Manager",
+                        $"Gán vào lô giao hàng {batchCode}"
+                    );
+                }
+                await _context.SaveChangesAsync();
+                return true;
             }
 
             if (!string.IsNullOrWhiteSpace(dto.DeliveryBatchCode))
@@ -774,8 +813,26 @@ namespace ToyStoreManagement.Infrastructure.Services
             if (payments.Any(p => p.PaymentMethod != 0 || p.CodStatus != 2))
                 throw new InvalidOperationException("Chỉ được xác nhận các khoản COD shipper đã báo nộp và đang chờ kiểm tra.");
             var expectedAmount = payments.Sum(p => Math.Max(0, p.Amount - (p.Order?.Shipping?.ShippingFee ?? 0)));
-            if (dto.ReceivedAmount != expectedAmount)
-                throw new InvalidOperationException($"Số tiền thực nhận ({dto.ReceivedAmount:N0} đ) không khớp số tiền cần nộp ({expectedAmount:N0} đ). Khoản COD vẫn đang chờ xác nhận.");
+            var discrepancy = dto.ReceivedAmount - expectedAmount;
+
+            var targetShipperId = dto.ShipperId ?? payments.FirstOrDefault()?.Order?.Shipping?.ShipperId;
+            Shipper? shipper = null;
+            if (targetShipperId.HasValue && targetShipperId.Value > 0)
+            {
+                shipper = await _context.Shippers.FindAsync(targetShipperId.Value);
+                if (shipper != null && discrepancy != 0)
+                {
+                    shipper.DebtAmount -= discrepancy;
+                }
+            }
+
+            var auditResultText = discrepancy == 0
+                ? "Khớp đúng 100%"
+                : (discrepancy > 0 
+                    ? $"Nộp thừa {discrepancy:N0} đ (Ghi giảm công nợ cho shipper)" 
+                    : $"Nộp thiếu {Math.Abs(discrepancy):N0} đ (Ghi nhận công nợ cá nhân shipper)");
+            // Đã đối soát và phân bổ chênh lệch vào công nợ cá nhân Shipper
+
 
             foreach (var p in payments)
             {
@@ -783,7 +840,7 @@ namespace ToyStoreManagement.Infrastructure.Services
                 p.CodConfirmedAt = DateTime.UtcNow;
                 if (!string.IsNullOrWhiteSpace(dto.Note))
                 {
-                    p.CodNote = dto.Note;
+                p.CodNote = $"Thực thu: {dto.ReceivedAmount:N0} đ ({auditResultText})" + (!string.IsNullOrWhiteSpace(dto.Note) ? $" - {dto.Note}" : "");
                 }
 
                 _context.OrderTrackingLogs.Add(new OrderTrackingLog
@@ -795,7 +852,7 @@ namespace ToyStoreManagement.Infrastructure.Services
                     PerformedByUserId = confirmedByUserId,
                     PerformedByName = confirmedByName ?? "Thủ quỹ cửa hàng",
                     PerformedByRole = "Staff/Admin",
-                    Note = dto.Note ?? $"Xác nhận nhận đủ {Math.Max(0, p.Amount - (p.Order?.Shipping?.ShippingFee ?? 0)):N0} đ tiền hàng. Phí ship {p.Order?.Shipping?.ShippingFee ?? 0:N0} đ thuộc shipper.",
+                    Note = $"Đối soát nộp két quỹ COD: Thực thu {dto.ReceivedAmount:N0} đ. Kết quả: {auditResultText}." + (!string.IsNullOrWhiteSpace(dto.Note) ? $" Ghi chú: {dto.Note}" : ""),
                     CreatedAt = DateTime.UtcNow
                 });
             }

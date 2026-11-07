@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Text;
@@ -209,7 +209,10 @@ namespace ToyStoreManagement.Infrastructure.Services
                     RefundAmount = refundAmount,
                     Reason = string.IsNullOrWhiteSpace(detailDto.Reason)
                         ? "Khách hàng yêu cầu trả hàng"
-                        : detailDto.Reason.Trim()
+                        : detailDto.Reason.Trim(),
+                    ExchangeVariantId = detailDto.ExchangeVariantId,
+                    ExchangeQuantity = detailDto.ExchangeQuantity ?? detailDto.Quantity,
+                    IsDefective = detailDto.IsDefective
                 };
 
                 await _detailRepository.AddAsync(detail);
@@ -288,6 +291,7 @@ namespace ToyStoreManagement.Infrastructure.Services
                 throw new InvalidOperationException("Yêu cầu trả hàng không có sản phẩm.");
 
             var affectedProductIds = new HashSet<int>();
+            decimal totalExchangeDiff = 0;
             foreach (var detail in request.ReturnRequestDetails)
             {
                 var inventory = await _context.Inventories
@@ -327,6 +331,41 @@ namespace ToyStoreManagement.Infrastructure.Services
                     Note = $"Nhận hàng trả theo phiếu {request.ReturnCode}",
                     CreatedAt = DateTime.UtcNow
                 });
+
+                if (detail.ExchangeVariantId.HasValue && detail.ExchangeVariantId.Value > 0)
+                {
+                    var exQty = detail.ExchangeQuantity ?? detail.Quantity;
+                    var exInventory = await _context.Inventories
+                        .FirstOrDefaultAsync(x => x.VariantId == detail.ExchangeVariantId.Value);
+
+                    if (exInventory != null)
+                    {
+                        exInventory.Quantity = Math.Max(0, exInventory.Quantity - exQty);
+                        exInventory.UpdatedAt = DateTime.UtcNow;
+                    }
+
+                    var exVariant = await _context.ProductVariants
+                        .FirstOrDefaultAsync(x => x.VariantId == detail.ExchangeVariantId.Value);
+
+                    if (exVariant != null)
+                    {
+                        affectedProductIds.Add(exVariant.ProductId);
+                        var diff = (exVariant.Price * exQty) - (detail.UnitPrice * detail.Quantity);
+                        totalExchangeDiff += diff;
+                    }
+
+                    _context.InventoryTransactions.Add(new InventoryTransaction
+                    {
+                        TransactionId = 0,
+                        VariantId = detail.ExchangeVariantId.Value,
+                        TransactionType = 2,
+                        Quantity = exQty,
+                        ReferenceType = "ExchangeDispatch",
+                        ReferenceId = request.ReturnRequestId,
+                        Note = $"Xuất đồ chơi đổi mới cho khách theo phiếu {request.ReturnCode}",
+                    CreatedAt = DateTime.UtcNow
+                });
+                }
             }
 
             foreach (var productId in affectedProductIds)
@@ -339,6 +378,39 @@ namespace ToyStoreManagement.Infrastructure.Services
                     .SumAsync(x => (int?)x.Quantity) ?? 0;
                 ProductStockStatus.Synchronize(product, totalStock);
                 product.UpdatedAt = DateTime.UtcNow;
+            }
+
+            request.ExchangeDifference = totalExchangeDiff;
+
+            // Khấu trừ điểm thưởng tích lũy khi trả hàng hoàn tiền (Tránh trục lợi điểm)
+            if (request.RefundAmount > 0 && request.CustomerId > 0)
+            {
+                var customer = await _context.Customers.FindAsync(request.CustomerId);
+                if (customer != null)
+                {
+                    var pointsToDeduct = (int)(request.RefundAmount / 10000m);
+                    if (pointsToDeduct > 0)
+                    {
+                        customer.LoyaltyPoint = Math.Max(0, customer.LoyaltyPoint - pointsToDeduct);
+                        request.PointsDeducted = pointsToDeduct;
+
+                        _context.LoyaltyTransactions.Add(new LoyaltyTransaction
+                        {
+                            CustomerId = customer.CustomerId,
+                            OrderId = request.OrderId,
+                            Points = -pointsToDeduct,
+                            TransactionType = 3,
+                            Description = $"Khấu trừ {pointsToDeduct} điểm thưởng do trả hàng hoàn tiền phiếu #{request.ReturnCode}",
+                            CreatedAt = DateTime.UtcNow
+                        });
+
+                        if (customer.LoyaltyPoint >= 1000) customer.CustomerTier = "Kim Cương";
+                        else if (customer.LoyaltyPoint >= 300) customer.CustomerTier = "Vàng";
+                        else if (customer.LoyaltyPoint >= 100) customer.CustomerTier = "Bạc";
+                        else customer.CustomerTier = "Mới";
+                        customer.UpdatedAt = DateTime.UtcNow;
+                    }
+                }
             }
 
             request.Status = 3;
@@ -517,6 +589,9 @@ namespace ToyStoreManagement.Infrastructure.Services
                 RequestedAt = request.RequestedAt,
                 ProcessedAt = request.ProcessedAt,
                 StaffNote = request.StaffNote,
+                ExchangeDifference = request.ExchangeDifference,
+                CustomerPaidDiff = request.CustomerPaidDiff,
+                PointsDeducted = request.PointsDeducted,
 
                 Details = request.ReturnRequestDetails?
                     .Select(x => new ReturnRequestDetailDto
@@ -546,7 +621,13 @@ namespace ToyStoreManagement.Infrastructure.Services
                             x.RefundAmount,
 
                         Reason =
-                            x.Reason
+                            x.Reason,
+                        ExchangeVariantId = x.ExchangeVariantId,
+                        ExchangeSKU = x.ExchangeVariant?.SKU,
+                        ExchangeProductName = x.ExchangeVariant?.Product?.Name,
+                        ExchangeUnitPrice = x.ExchangeVariant?.Price,
+                        ExchangeQuantity = x.ExchangeQuantity,
+                        IsDefective = x.IsDefective
                     })
                     .ToList()
                     ?? new List<ReturnRequestDetailDto>()

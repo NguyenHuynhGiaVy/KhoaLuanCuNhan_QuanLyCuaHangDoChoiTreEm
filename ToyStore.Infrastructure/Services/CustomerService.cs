@@ -134,8 +134,28 @@ namespace ToyStoreManagement.Infrastructure.Services
             return true;
         }
 
+        private static string ResolveCustomerTier(Customer customer)
+        {
+            if (!string.IsNullOrWhiteSpace(customer.CustomerTier) && customer.CustomerTier != "Mới")
+                return customer.CustomerTier;
+
+            if (customer.LoyaltyPoint >= 1000) return "Kim Cương";
+            if (customer.LoyaltyPoint >= 300) return "Vàng";
+            if (customer.LoyaltyPoint >= 100) return "Bạc";
+            return "Mới";
+        }
+
         private static CustomerDto MapToDto(Customer customer)
         {
+            var tier = ResolveCustomerTier(customer);
+            decimal tierDiscountPercent = tier switch
+            {
+                "Kim Cương" => 10,
+                "Vàng" => 5,
+                "Bạc" => 3,
+                _ => 0
+            };
+
             return new CustomerDto
             {
                 CustomerId = customer.CustomerId,
@@ -147,6 +167,8 @@ namespace ToyStoreManagement.Infrastructure.Services
                 Gender = customer.Gender,
                 Address = customer.Address,
                 LoyaltyPoint = customer.LoyaltyPoint,
+                CustomerTier = tier,
+                TierDiscountPercent = tierDiscountPercent,
                 TotalSpent = customer.Orders?
                     .Where(order => order.Status == 4)
                     .Sum(order => order.TotalAmount) ?? 0,
