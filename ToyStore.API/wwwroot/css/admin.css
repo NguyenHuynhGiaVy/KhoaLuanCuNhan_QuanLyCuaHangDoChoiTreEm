@@ -2155,3 +2155,102 @@ body.manager-portal-theme .primary-btn:hover {
 .status-dot-success { background: #16a34a; }
 .status-dot-warning { background: #d97706; }
 .status-dot-neutral { background: #94a3b8; }
+
+/* ── UNIVERSAL MODAL SYSTEM (POPUP FLOAT CENTER) ── */
+.modal-backdrop {
+  position: fixed !important;
+  inset: 0 !important;
+  top: 0 !important;
+  left: 0 !important;
+  right: 0 !important;
+  bottom: 0 !important;
+  width: 100vw !important;
+  height: 100vh !important;
+  background: rgba(15, 23, 42, 0.65) !important;
+  backdrop-filter: blur(4px) !important;
+  -webkit-backdrop-filter: blur(4px) !important;
+  z-index: 99999 !important;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  padding: 20px !important;
+  box-sizing: border-box !important;
+}
+
+.modal-backdrop[style*="display: none"] {
+  display: none !important;
+}
+
+.modal-box {
+  background: #ffffff !important;
+  border-radius: 16px !important;
+  box-shadow: 0 25px 50px -12px rgba(15, 23, 42, 0.25), 0 0 0 1px rgba(15, 23, 42, 0.08) !important;
+  width: 100% !important;
+  max-width: 520px;
+  max-height: 90vh !important;
+  display: flex !important;
+  flex-direction: column !important;
+  overflow: hidden !important;
+  box-sizing: border-box !important;
+  animation: modalPopIn 0.2s cubic-bezier(0.16, 1, 0.3, 1) !important;
+}
+
+@keyframes modalPopIn {
+  from {
+    opacity: 0;
+    transform: scale(0.96) translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1) translateY(0);
+  }
+}
+
+.modal-header {
+  padding: 16px 22px !important;
+  border-bottom: 1px solid var(--slate-200, #e2e8f0) !important;
+  display: flex !important;
+  justify-content: space-between !important;
+  align-items: center !important;
+  background: #fafafa !important;
+  flex-shrink: 0 !important;
+}
+
+.modal-header h3 {
+  margin: 0 !important;
+  font-size: 17px !important;
+  font-weight: 700 !important;
+  color: var(--slate-800, #1e293b) !important;
+}
+
+.modal-close {
+  background: transparent !important;
+  border: none !important;
+  font-size: 18px !important;
+  cursor: pointer !important;
+  color: var(--slate-400, #94a3b8) !important;
+  width: 32px !important;
+  height: 32px !important;
+  border-radius: 8px !important;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  line-height: 1 !important;
+  transition: all 0.15s ease !important;
+}
+
+.modal-close:hover {
+  background: var(--slate-200, #e2e8f0) !important;
+  color: var(--slate-700, #334155) !important;
+}
+
+.modal-footer {
+  padding: 14px 22px !important;
+  background: #fafafa !important;
+  border-top: 1px solid var(--slate-200, #e2e8f0) !important;
+  display: flex !important;
+  justify-content: flex-end !important;
+  align-items: center !important;
+  gap: 10px !important;
+  flex-shrink: 0 !important;
+}

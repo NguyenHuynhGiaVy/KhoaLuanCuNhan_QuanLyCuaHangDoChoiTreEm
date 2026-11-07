@@ -8595,11 +8595,14 @@ window.openQuickInventoryBalanceModal = function(variantId, sku, name, currentQt
     document.body.appendChild(modal);
   }
 
+  modal.style.cssText = 'position:fixed;inset:0;background:rgba(15,23,42,0.65);backdrop-filter:blur(4px);-webkit-backdrop-filter:blur(4px);z-index:99999;display:flex;align-items:center;justify-content:center;padding:20px;box-sizing:border-box;';
+  modal.onclick = function(e) { if (e.target === modal) modal.style.display = 'none'; };
+
   modal.innerHTML = `
-    <div class="modal-box" style="max-width:440px;">
-      <div class="modal-header">
-        <h3>Cân Bằng Kho / Kiểm Kê Nhanh</h3>
-        <button type="button" class="modal-close" onclick="document.getElementById('quickInvBalanceModal').style.display='none'">✕</button>
+    <div class="modal-box" style="background:#ffffff;border-radius:16px;box-shadow:0 25px 50px -12px rgba(15,23,42,0.25),0 0 0 1px rgba(15,23,42,0.08);width:100%;max-width:440px;overflow:hidden;box-sizing:border-box;animation:modalPopIn 0.2s cubic-bezier(0.16,1,0.3,1);">
+      <div class="modal-header" style="padding:16px 20px;border-bottom:1px solid var(--slate-200);display:flex;justify-content:space-between;align-items:center;background:#fafafa;">
+        <h3 style="margin:0;font-size:16px;font-weight:700;color:var(--slate-800);">Cân Bằng Kho / Kiểm Kê Nhanh</h3>
+        <button type="button" class="modal-close" onclick="document.getElementById('quickInvBalanceModal').style.display='none'" style="background:transparent;border:none;font-size:18px;cursor:pointer;color:var(--slate-400);width:32px;height:32px;border-radius:8px;display:flex;align-items:center;justify-content:center;line-height:1;">✕</button>
       </div>
       <div style="padding:20px;">
         <div style="margin-bottom:14px;background:var(--slate-50);padding:12px;border-radius:8px;border:1px solid var(--slate-200);">
@@ -8849,8 +8852,11 @@ window.openGoodsReceiptModal = async function(receiptId) {
     document.body.appendChild(modal);
   }
 
+  modal.style.cssText = 'position:fixed;inset:0;background:rgba(15,23,42,0.65);backdrop-filter:blur(4px);-webkit-backdrop-filter:blur(4px);z-index:99999;display:flex;align-items:center;justify-content:center;padding:20px;box-sizing:border-box;';
+  modal.onclick = function(e) { if (e.target === modal) modal.style.display = 'none'; };
+
   modal.innerHTML = `
-    <div class="modal-box" style="max-width:980px;width:95vw;max-height:92vh;display:flex;flex-direction:column;">
+    <div class="modal-box" style="background:#ffffff;border-radius:16px;box-shadow:0 25px 50px -12px rgba(15,23,42,0.25),0 0 0 1px rgba(15,23,42,0.08);max-width:980px;width:95vw;max-height:92vh;display:flex;flex-direction:column;overflow:hidden;box-sizing:border-box;animation:modalPopIn 0.2s cubic-bezier(0.16,1,0.3,1);">
       <div class="modal-header" style="background:#fafafa;padding:16px 24px;border-bottom:1px solid var(--slate-200);">
         <div>
           <h3 style="margin:0;font-size:18px;font-weight:800;color:var(--slate-800);display:flex;align-items:center;gap:8px;">
@@ -9367,8 +9373,11 @@ window.openCreateAuditTicketModal = async function() {
     document.body.appendChild(modal);
   }
 
+  modal.style.cssText = 'position:fixed;inset:0;background:rgba(15,23,42,0.65);backdrop-filter:blur(4px);-webkit-backdrop-filter:blur(4px);z-index:99999;display:flex;align-items:center;justify-content:center;padding:20px;box-sizing:border-box;';
+  modal.onclick = function(e) { if (e.target === modal) modal.style.display = 'none'; };
+
   modal.innerHTML = `
-    <div class="modal-box" style="max-width:1100px;width:96vw;max-height:94vh;display:flex;flex-direction:column;">
+    <div class="modal-box" style="background:#ffffff;border-radius:16px;box-shadow:0 25px 50px -12px rgba(15,23,42,0.25),0 0 0 1px rgba(15,23,42,0.08);max-width:1100px;width:96vw;max-height:94vh;display:flex;flex-direction:column;overflow:hidden;box-sizing:border-box;animation:modalPopIn 0.2s cubic-bezier(0.16,1,0.3,1);">
       <div class="modal-header" style="background:#fafafa;padding:16px 24px;border-bottom:1px solid var(--slate-200);">
         <div>
           <h3 style="margin:0;font-size:18px;font-weight:800;color:var(--slate-800);display:flex;align-items:center;gap:8px;">
@@ -9678,8 +9687,11 @@ window.openAuditTicketDetailModal = async function(ticketId) {
     document.body.appendChild(modal);
   }
 
+  modal.style.cssText = 'position:fixed;inset:0;background:rgba(15,23,42,0.65);backdrop-filter:blur(4px);-webkit-backdrop-filter:blur(4px);z-index:99999;display:flex;align-items:center;justify-content:center;padding:20px;box-sizing:border-box;';
+  modal.onclick = function(e) { if (e.target === modal) modal.style.display = 'none'; };
+
   modal.innerHTML = `
-    <div class="modal-box" style="max-width:980px;width:95vw;max-height:92vh;display:flex;flex-direction:column;">
+    <div class="modal-box" style="background:#ffffff;border-radius:16px;box-shadow:0 25px 50px -12px rgba(15,23,42,0.25),0 0 0 1px rgba(15,23,42,0.08);max-width:980px;width:95vw;max-height:92vh;display:flex;flex-direction:column;overflow:hidden;box-sizing:border-box;animation:modalPopIn 0.2s cubic-bezier(0.16,1,0.3,1);">
       <div class="modal-header" style="background:#fafafa;padding:16px 24px;border-bottom:1px solid var(--slate-200);">
         <div>
           <h3 style="margin:0;font-size:18px;font-weight:800;color:var(--slate-800);display:flex;align-items:center;gap:8px;">
