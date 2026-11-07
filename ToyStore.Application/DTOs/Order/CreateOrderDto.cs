@@ -9,7 +9,7 @@ namespace ToyStoreManagement.Application.DTOs.Order
     public class CreateOrderDto
     {
         public int? CustomerId { get; set; }
-        public string Note { get; set; }
+        public string? Note { get; set; } = string.Empty;
         // 0: COD, 1: Chuyển khoản, 2: ZaloPay. Thanh toán được đánh dấu hoàn tất
         // khi đơn chuyển sang trạng thái Hoàn tất.
         public int PaymentMethod { get; set; }

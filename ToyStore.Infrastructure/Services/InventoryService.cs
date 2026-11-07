@@ -351,5 +351,261 @@ namespace ToyStoreManagement.Infrastructure.Services
 
             return true;
         }
+    
+        // ══════════════════════════════════════════════════════════════════════════
+        // QUY TRÌNH KIỂM KÊ KHO & ĐỐI SOÁT CHÊNH LỆCH 2 BƯỚC
+        // ══════════════════════════════════════════════════════════════════════════
+
+        public async Task<InventoryAuditTicketDto> CreateAuditTicketAsync(
+            CreateInventoryAuditTicketDto dto,
+            string userId,
+            string userName)
+        {
+            if (dto.Details == null || !dto.Details.Any())
+                throw new Exception("Phiếu kiểm kê phải có ít nhất một mặt hàng đồ chơi.");
+
+            var now = DateTime.UtcNow;
+            var ticketCode = $"KK-{now:yyyyMMddHHmmss}-{new Random().Next(100, 999)}";
+
+            var ticket = new InventoryAuditTicket
+            {
+                TicketCode = ticketCode,
+                CreatedByUserId = userId,
+                CreatedByName = string.IsNullOrWhiteSpace(userName) ? "Nhân viên kho" : userName,
+                CreatedAt = now,
+                Status = 1, // 1: Chờ duyệt
+                Note = dto.Note,
+                TotalItems = dto.Details.Count
+            };
+
+            int totalDiscrepancyQty = 0;
+            decimal totalDiscrepancyValue = 0;
+
+            foreach (var item in dto.Details)
+            {
+                if (item.ActualQuantity < 0)
+                    throw new Exception("Số lượng thực tế đếm được không được âm.");
+
+                var inventory = await _context.Inventories
+                    .FirstOrDefaultAsync(i => i.VariantId == item.VariantId);
+
+                var variant = await _context.ProductVariants
+                    .Include(v => v.Product)
+                    .FirstOrDefaultAsync(v => v.VariantId == item.VariantId);
+
+                if (variant == null)
+                    throw new Exception($"Không tìm thấy biến thể đồ chơi #{item.VariantId}.");
+
+                int systemQty = inventory?.Quantity ?? 0;
+                int diffQty = item.ActualQuantity - systemQty;
+                decimal cost = variant.CostPrice;
+                decimal diffVal = diffQty * cost;
+
+                totalDiscrepancyQty += diffQty;
+                totalDiscrepancyValue += diffVal;
+
+                ticket.Details.Add(new InventoryAuditTicketDetail
+                {
+                    VariantId = item.VariantId,
+                    SystemQuantity = systemQty,
+                    ActualQuantity = item.ActualQuantity,
+                    DiscrepancyQuantity = diffQty,
+                    CostPrice = cost,
+                    DiscrepancyValue = diffVal,
+                    DiscrepancyReason = item.DiscrepancyReason,
+                    Note = item.Note
+                });
+            }
+
+            ticket.TotalDiscrepancyQty = totalDiscrepancyQty;
+            ticket.TotalDiscrepancyValue = totalDiscrepancyValue;
+
+            await _context.InventoryAuditTickets.AddAsync(ticket);
+            await _unitOfWork.SaveChangesAsync();
+
+            return await GetAuditTicketByIdAsync(ticket.AuditTicketId)
+                ?? throw new Exception("Không thể tải thông tin phiếu kiểm kê vừa tạo.");
+        }
+
+        public async Task<IEnumerable<InventoryAuditTicketDto>> GetAllAuditTicketsAsync(int? status = null)
+        {
+            var query = _context.InventoryAuditTickets
+                .Include(t => t.Details)
+                    .ThenInclude(d => d.ProductVariant)
+                        .ThenInclude(v => v.Product)
+                .AsQueryable();
+
+            if (status.HasValue && status.Value > 0)
+            {
+                query = query.Where(t => t.Status == status.Value);
+            }
+
+            var list = await query
+                .OrderByDescending(t => t.CreatedAt)
+                .ToListAsync();
+
+            return list.Select(MapAuditTicketToDto).ToList();
+        }
+
+        public async Task<InventoryAuditTicketDto?> GetAuditTicketByIdAsync(int ticketId)
+        {
+            var ticket = await _context.InventoryAuditTickets
+                .Include(t => t.Details)
+                    .ThenInclude(d => d.ProductVariant)
+                        .ThenInclude(v => v.Product)
+                .FirstOrDefaultAsync(t => t.AuditTicketId == ticketId);
+
+            return ticket == null ? null : MapAuditTicketToDto(ticket);
+        }
+
+        public async Task<InventoryAuditTicketDto> ApproveAuditTicketAsync(
+            int ticketId,
+            string approvedByUserId,
+            string approvedByName)
+        {
+            var ticket = await _context.InventoryAuditTickets
+                .Include(t => t.Details)
+                    .ThenInclude(d => d.ProductVariant)
+                        .ThenInclude(v => v.Product)
+                .FirstOrDefaultAsync(t => t.AuditTicketId == ticketId);
+
+            if (ticket == null)
+                throw new Exception("Không tìm thấy phiếu kiểm kê kho.");
+
+            if (ticket.Status != 1)
+                throw new Exception("Chỉ được phê duyệt phiếu kiểm kê đang ở trạng thái Chờ duyệt.");
+
+            using var transaction = await _context.Database.BeginTransactionAsync();
+            try
+            {
+                var now = DateTime.UtcNow;
+
+                foreach (var detail in ticket.Details)
+                {
+                    var inventory = await _context.Inventories
+                        .FirstOrDefaultAsync(i => i.VariantId == detail.VariantId);
+
+                    if (inventory == null)
+                    {
+                        inventory = new Inventory
+                        {
+                            VariantId = detail.VariantId,
+                            Quantity = 0,
+                            ReservedQuantity = 0,
+                            UpdatedAt = now
+                        };
+                        await _context.Inventories.AddAsync(inventory);
+                    }
+
+                    int oldQty = inventory.Quantity;
+                    int diff = detail.ActualQuantity - oldQty;
+
+                    inventory.Quantity = detail.ActualQuantity;
+                    inventory.UpdatedAt = now;
+
+                    if (diff != 0)
+                    {
+                        _context.InventoryTransactions.Add(new InventoryTransaction
+                        {
+                            VariantId = detail.VariantId,
+                            TransactionType = 3, // 3: Điều chỉnh kiểm kê
+                            Quantity = diff,
+                            ReferenceType = "InventoryAuditTicket",
+                            ReferenceId = ticket.AuditTicketId,
+                            Note = $"Phê duyệt phiếu kiểm kê {ticket.TicketCode}: Tồn cũ {oldQty}, Thực tế {detail.ActualQuantity}, Lệch {(diff > 0 ? "+" : "")}{diff}. Lý do: {detail.DiscrepancyReason ?? "Kiểm kê định kỳ"}",
+                            CreatedAt = now
+                        });
+                    }
+
+                    await SyncProductStatusAsync(detail.VariantId);
+                }
+
+                ticket.Status = 2; // 2: Đã phê duyệt cân bằng kho
+                ticket.ApprovedByUserId = approvedByUserId;
+                ticket.ApprovedByName = string.IsNullOrWhiteSpace(approvedByName) ? "Quản lý kho" : approvedByName;
+                ticket.ApprovedAt = now;
+
+                await _unitOfWork.SaveChangesAsync();
+                await transaction.CommitAsync();
+
+                return MapAuditTicketToDto(ticket);
+            }
+            catch
+            {
+                await transaction.RollbackAsync();
+                throw;
+            }
+        }
+
+        public async Task<InventoryAuditTicketDto> RejectAuditTicketAsync(
+            int ticketId,
+            string rejectedByUserId,
+            string rejectedByName,
+            string? reason)
+        {
+            var ticket = await _context.InventoryAuditTickets
+                .Include(t => t.Details)
+                    .ThenInclude(d => d.ProductVariant)
+                        .ThenInclude(v => v.Product)
+                .FirstOrDefaultAsync(t => t.AuditTicketId == ticketId);
+
+            if (ticket == null)
+                throw new Exception("Không tìm thấy phiếu kiểm kê kho.");
+
+            if (ticket.Status != 1)
+                throw new Exception("Chỉ được từ chối phiếu kiểm kê đang ở trạng thái Chờ duyệt.");
+
+            ticket.Status = 3; // 3: Đã từ chối
+            ticket.ApprovedByUserId = rejectedByUserId;
+            ticket.ApprovedByName = string.IsNullOrWhiteSpace(rejectedByName) ? "Quản lý kho" : rejectedByName;
+            ticket.ApprovedAt = DateTime.UtcNow;
+
+            if (!string.IsNullOrWhiteSpace(reason))
+            {
+                ticket.Note = string.IsNullOrWhiteSpace(ticket.Note)
+                    ? $"[Từ chối: {reason}]"
+                    : $"{ticket.Note} | [Từ chối: {reason}]";
+            }
+
+            await _unitOfWork.SaveChangesAsync();
+            return MapAuditTicketToDto(ticket);
+        }
+
+        private static InventoryAuditTicketDto MapAuditTicketToDto(InventoryAuditTicket ticket)
+        {
+            return new InventoryAuditTicketDto
+            {
+                AuditTicketId = ticket.AuditTicketId,
+                TicketCode = ticket.TicketCode,
+                CreatedByUserId = ticket.CreatedByUserId,
+                CreatedByName = ticket.CreatedByName,
+                CreatedAt = ticket.CreatedAt,
+                Status = ticket.Status,
+                ApprovedByUserId = ticket.ApprovedByUserId,
+                ApprovedByName = ticket.ApprovedByName,
+                ApprovedAt = ticket.ApprovedAt,
+                Note = ticket.Note,
+                TotalItems = ticket.TotalItems,
+                TotalDiscrepancyQty = ticket.TotalDiscrepancyQty,
+                TotalDiscrepancyValue = ticket.TotalDiscrepancyValue,
+                Details = ticket.Details.Select(d => new InventoryAuditTicketDetailDto
+                {
+                    DetailId = d.DetailId,
+                    AuditTicketId = d.AuditTicketId,
+                    VariantId = d.VariantId,
+                    SKU = d.ProductVariant?.SKU ?? string.Empty,
+                    ProductName = d.ProductVariant?.Product?.Name ?? string.Empty,
+                    Color = d.ProductVariant?.Color,
+                    SystemQuantity = d.SystemQuantity,
+                    ActualQuantity = d.ActualQuantity,
+                    DiscrepancyQuantity = d.DiscrepancyQuantity,
+                    CostPrice = d.CostPrice,
+                    DiscrepancyValue = d.DiscrepancyValue,
+                    DiscrepancyReason = d.DiscrepancyReason,
+                    Note = d.Note
+                }).ToList()
+            };
+        }
+
     }
 }

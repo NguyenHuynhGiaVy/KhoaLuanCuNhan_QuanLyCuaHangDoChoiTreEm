@@ -570,7 +570,10 @@ namespace ToyStoreManagement.Infrastructure.Services
                         ImportReceiptDetailId = detail.ImportReceiptDetailId,
                         VariantId = detail.VariantId,
                         Quantity = qtyToReceive,
-                        NewPrice = newPriceVal
+                        NewPrice = newPriceVal,
+                        ActualQuantity = matchingDtoDetail?.ActualQuantity ?? qtyToReceive,
+                        DefectQuantity = matchingDtoDetail?.DefectQuantity ?? 0,
+                        DiscrepancyReason = matchingDtoDetail?.DiscrepancyReason
                     });
                 }
             }
@@ -578,11 +581,19 @@ namespace ToyStoreManagement.Infrastructure.Services
             if (detailsToReceive.Count == 0)
             {
                 receipt.Status = 3;
+                if (!string.IsNullOrWhiteSpace(dto?.InspectionReport))
+                {
+                    receipt.InspectionReport = dto.InspectionReport;
+                }
                 await _unitOfWork.SaveChangesAsync();
                 return await GetByIdAsync(id);
             }
 
-            return await ReceiveAsync(id, new ReceiveImportReceiptDto { Details = detailsToReceive });
+            return await ReceiveAsync(id, new ReceiveImportReceiptDto
+            {
+                InspectionReport = dto?.InspectionReport,
+                Details = detailsToReceive
+            });
         }
 
         public async Task<bool> CancelAsync(int id)

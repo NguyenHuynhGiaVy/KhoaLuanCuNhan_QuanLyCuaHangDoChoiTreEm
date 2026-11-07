@@ -181,24 +181,10 @@ namespace ToyStoreManagement.Infrastructure.Services
                 affectedProductIds.Add(variant.ProductId);
             }
 
-            // Áp dụng voucher và kiểm tra ràng buộc số điện thoại đối với khách hàng đăng nhập (Yêu cầu 7)
+            // Áp dụng voucher hợp lệ cho đơn hàng
             Voucher? appliedVoucher = null;
             if (!string.IsNullOrWhiteSpace(dto.VoucherCode))
             {
-                if (dto.CustomerId.HasValue)
-                {
-                    var customer = await _context.Customers.FindAsync(dto.CustomerId.Value);
-                    if (customer != null && !string.IsNullOrWhiteSpace(customer.Phone))
-                    {
-                        var normAccPhone = NormalizePhone(customer.Phone);
-                        var normReceiverPhone = NormalizePhone(dto.Shipping.ReceiverPhone);
-                        if (!string.Equals(normAccPhone, normReceiverPhone, StringComparison.OrdinalIgnoreCase))
-                        {
-                            throw new Exception("Số điện thoại nhận hàng không khớp với số điện thoại trong tài khoản khách hàng để áp dụng mã giảm giá này.");
-                        }
-                    }
-                }
-
                 appliedVoucher = await GetVoucherForCheckoutAsync(dto.VoucherCode, subtotal, dto.CustomerId);
                 if (appliedVoucher != null)
                 {
@@ -1089,14 +1075,17 @@ namespace ToyStoreManagement.Infrastructure.Services
             if (!isRewardVoucher && customerId.HasValue
                 && voucher.UsageLimitPerCustomer.HasValue)
             {
-                var usageCount = await _context.VoucherUsages.CountAsync(usage =>
-                    usage.VoucherId == voucher.VoucherId
-                    && usage.CustomerId == customerId.Value);
+                var usageCount = await _context.VoucherUsages
+                    .Include(u => u.Order)
+                    .CountAsync(usage =>
+                        usage.VoucherId == voucher.VoucherId
+                        && usage.CustomerId == customerId.Value
+                        && (usage.Order == null || usage.Order.Status != 5));
 
                 if (usageCount >= voucher.UsageLimitPerCustomer.Value)
                 {
                     throw new Exception(
-                        "Khách hàng đã đạt giới hạn sử dụng voucher.");
+                        "Bạn đã sử dụng hết số lượt cho phép của voucher này.");
                 }
             }
 

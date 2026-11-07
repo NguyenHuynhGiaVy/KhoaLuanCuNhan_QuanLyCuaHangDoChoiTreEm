@@ -77,6 +77,10 @@ namespace ToyStoreManagement.Infrastructure.Data
 
         public DbSet<LiquidationReceiptDetail> LiquidationReceiptDetails { get; set; }
 
+        public DbSet<InventoryAuditTicket> InventoryAuditTickets { get; set; }
+
+        public DbSet<InventoryAuditTicketDetail> InventoryAuditTicketDetails { get; set; }
+
         public DbSet<SupportConversation> SupportConversations { get; set; }
 
         public DbSet<SupportMessage> SupportMessages { get; set; }
@@ -126,6 +130,25 @@ namespace ToyStoreManagement.Infrastructure.Data
                     .WithMany(x => x.CungUngs)
                     .HasForeignKey(x => x.SupplierId)
                     .OnDelete(DeleteBehavior.Cascade);
+            });
+
+            modelBuilder.Entity<InventoryAuditTicket>(entity =>
+            {
+                entity.ToTable("InventoryAuditTickets");
+                entity.HasKey(x => x.AuditTicketId);
+                entity.HasMany(x => x.Details)
+                    .WithOne(x => x.AuditTicket)
+                    .HasForeignKey(x => x.AuditTicketId)
+                    .OnDelete(DeleteBehavior.Cascade);
+            });
+
+            modelBuilder.Entity<InventoryAuditTicketDetail>(entity =>
+            {
+                entity.ToTable("InventoryAuditTicketDetails");
+                entity.HasKey(x => x.DetailId);
+                entity.HasOne(x => x.ProductVariant)
+                    .WithMany()
+                    .HasForeignKey(x => x.VariantId);
             });
 
             modelBuilder.ApplyConfigurationsFromAssembly(

@@ -96,6 +96,18 @@ const MODULES = {
     columns: ['Mã phiếu', 'Nhà cung cấp', 'Người đặt', 'Ngày đặt', 'Tổng tiền', 'Trạng thái'],
     canAdd: true, canEdit: true, canDelete: true
   },
+  'goods-receipt': {
+    title: 'Phiếu nhập hàng (Kiểm đếm & Duyệt giá mới)', kicker: 'VẬN HÀNH & NHẬP HÀNG',
+    endpoint: 'ImportReceipt',
+    columns: ['Mã phiếu nhập', 'Nhà cung cấp', 'Người lập', 'Ngày tạo', 'Tổng giá trị nhập', 'Biên bản kiểm đếm', 'Tình trạng', 'Thao tác'],
+    canAdd: false, canEdit: false, canDelete: false
+  },
+  'inventory-audit': {
+    title: 'Phiếu kiểm kê kho & Đối soát chênh lệch', kicker: 'HÀNG HÓA & KHO',
+    endpoint: 'Inventory/audit-tickets',
+    columns: ['Mã phiếu kiểm kê', 'Người lập', 'Thời điểm', 'Mặt hàng', 'Chênh lệch SL', 'Giá trị lệch tiền', 'Trạng thái', 'Người duyệt', 'Thao tác'],
+    canAdd: false, canEdit: false, canDelete: false
+  },
   promotions: {
     title: 'Khuyến mãi', kicker: 'MARKETING',
     endpoint: 'Promotion',
@@ -415,8 +427,14 @@ function navigate() {
     renderLiquidation();
   } else if (hash === 'customer-care') {
     renderCustomerCare();
+  } else if (hash === 'inventory') {
+    renderInventorySplitView('split');
   } else if (hash === 'stock-movement') {
     renderStockMovementReport();
+  } else if (hash === 'goods-receipt') {
+    renderGoodsReceiptView();
+  } else if (hash === 'inventory-audit') {
+    renderInventoryAuditView();
   } else {
     renderList(hash);
   }
@@ -2178,36 +2196,7 @@ async function renderList(key) {
           </tbody>
         </table>
       </div>
-      ${key === 'inventory' ? `
-        <div class="panel" style="margin:24px;border:1px solid var(--slate-200);box-shadow:none;">
-          <div class="panel-header">
-            <div class="panel-title-area">
-              <h2 id="invReportTableTitle">Báo cáo Xuất - Nhập - Tồn kho</h2>
-              <p id="invReportTableSub">Thống kê chi tiết tồn đầu kỳ, nhập, xuất bán, tồn cuối kỳ và đánh giá mặt hàng cần nhập / không cần nhập.</p>
-            </div>
-          </div>
-          <div class="table-wrap">
-            <table class="data-table">
-              <thead>
-                <tr>
-                  <th>SKU</th>
-                  <th>Mặt hàng đồ chơi</th>
-                  <th style="text-align:right;">Tồn đầu kỳ</th>
-                  <th style="text-align:right;">Nhập trong kỳ</th>
-                  <th style="text-align:right;">Xuất bán</th>
-                  <th style="text-align:right;">Tồn cuối kỳ</th>
-                  <th style="text-align:right;">Đơn giá vốn</th>
-                  <th style="text-align:right;">Giá trị tồn</th>
-                  <th style="text-align:center;">Phân loại nhu cầu</th>
-                </tr>
-              </thead>
-              <tbody id="inventorySnapshotBody">
-                <tr><td colspan="9" style="text-align:center;padding:30px;color:var(--slate-400)">Chọn tháng/năm hoặc ngày để xem báo cáo tồn kho.</td></tr>
-              </tbody>
-            </table>
-          </div>
-        </div>
-      ` : ''}
+
     </div>
   `;
 
@@ -2414,8 +2403,8 @@ async function renderCollectionsReport() {
           <p>Chỉ ghi nhận tiền đã thực sự vào quỹ: thanh toán online đã xác nhận và COD admin đã xác nhận nhận tiền.</p>
         </div>
         <div style="display:flex;gap:8px;">
-          <button type="button" class="secondary-btn" onclick="exportCollectionsToExcel()">📥 Xuất Excel (BOM)</button>
-          <button type="button" class="secondary-btn" onclick="window.print()">🖨️ In báo cáo</button>
+          <button type="button" class="secondary-btn" onclick="exportCollectionsToExcel()">Xuất Excel (BOM)</button>
+          <button type="button" class="secondary-btn" onclick="window.print()">In báo cáo báo cáo</button>
         </div>
       </div>
       <div style="display:flex;align-items:end;gap:12px;flex-wrap:wrap;padding:16px 24px;border-bottom:1px solid var(--slate-200);background:var(--slate-50);">
@@ -2875,7 +2864,7 @@ function getRowCells(key, r) {
       const isSlow = r.isSlowMoving;
       let badgeHtml = '';
       if (isLow) {
-        badgeHtml = `<span class="badge-low-stock">⚠️ Sắp hết (${available})</span>`;
+        badgeHtml = `<span class="badge-low-stock">Sắp hết (${available})</span>`;
       } else if (isSlow) {
         badgeHtml = `<span class="badge-slow-moving">⏳ Tồn lâu (>2th)</span>`;
       } else {
@@ -3029,10 +3018,10 @@ function getRowCells(key, r) {
     case 'customers': {
       const tier = r.customerTier || r.tier || 'Mới';
       let tierBadge = '';
-      if (tier === 'Kim Cương') tierBadge = '<span class="badge-tier-diamond">💎 Kim Cương</span>';
-      else if (tier === 'Vàng') tierBadge = '<span class="badge-tier-gold">🥇 Vàng</span>';
-      else if (tier === 'Bạc') tierBadge = '<span class="badge-tier-silver">🥈 Bạc</span>';
-      else tierBadge = '<span class="badge-tier-new">🌱 Mới</span>';
+      if (tier === 'Kim Cương') tierBadge = '<span class="badge-tier-diamond">Kim Cương</span>';
+      else if (tier === 'Vàng') tierBadge = '<span class="badge-tier-gold">Vàng</span>';
+      else if (tier === 'Bạc') tierBadge = '<span class="badge-tier-silver">Bạc</span>';
+      else tierBadge = '<span class="badge-tier-new">Mới</span>';
 
       return [
         `<strong>${esc(r.fullName || r.name)}</strong>`,
@@ -3064,8 +3053,8 @@ function getRowActions(key, r, index) {
 
   if (key === 'inventory') {
     return `
-      <button class="primary-btn" style="padding:4px 10px;font-size:12px;white-space:nowrap;" onclick="openInventoryAuditModal(${r.variantId}, '${esc(r.sku)}', '${esc(r.productName)}', ${r.quantity || 0})">⚖️ Cân bằng</button>
-      <button class="secondary-btn" style="padding:4px 10px;font-size:12px;white-space:nowrap;margin-left:4px;" onclick="location.hash='#liquidation'">🏷️ Thanh lý</button>
+      <button class="primary-btn" style="padding:4px 10px;font-size:12px;white-space:nowrap;" onclick="openInventoryAuditModal(${r.variantId}, '${esc(r.sku)}', '${esc(r.productName)}', ${r.quantity || 0})">️ Cân bằng</button>
+      <button class="secondary-btn" style="padding:4px 10px;font-size:12px;white-space:nowrap;margin-left:4px;" onclick="location.hash='#liquidation'">Đề xuất thanh lý</button>
     `;
   }
 
@@ -5279,7 +5268,7 @@ function renderFormFields(key, r) {
         <div style="display:grid;grid-template-columns:1fr 1fr;gap:20px;margin-bottom:16px;">
           <!-- Cột 1: Thông tin doanh nghiệp & Pháp lý -->
           <div class="form-section-card" style="margin:0;">
-            <h4 style="margin:0 0 14px;color:var(--primary);display:flex;align-items:center;gap:6px;">🏢 Thông tin Doanh Nghiệp &amp; Pháp Lý</h4>
+            <h4 style="margin:0 0 14px;color:var(--primary);display:flex;align-items:center;gap:6px;">Thông Tin Doanh Nghiệp &amp; Pháp Lý</h4>
             <div class="form-group" style="margin-bottom:12px;">
               <label>Tên nhà cung cấp *</label>
               <input name="name" class="input-control" value="${esc(v.name)}" required placeholder="Ví dụ: Công ty TNHH Đồ Chơi Thông Minh Việt Nam">
@@ -5299,7 +5288,7 @@ function renderFormFields(key, r) {
 
           <!-- Cột 2: Thông tin liên hệ kho & Đại diện -->
           <div class="form-section-card" style="margin:0;">
-            <h4 style="margin:0 0 14px;color:var(--primary);display:flex;align-items:center;gap:6px;">📞 Liên Hệ Kho &amp; Đặt Hàng</h4>
+            <h4 style="margin:0 0 14px;color:var(--primary);display:flex;align-items:center;gap:6px;"> Liên Hệ Kho &amp; Đặt Hàng</h4>
             <div class="form-group" style="margin-bottom:12px;">
               <label>Số điện thoại liên hệ *</label>
               <input name="phone" class="input-control" value="${esc(v.phone)}" required placeholder="0901234567">
@@ -5367,7 +5356,7 @@ function renderFormFields(key, r) {
         <div class="form-section-card">
           <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px;flex-wrap:wrap;gap:8px;">
             <div>
-              <h4 style="margin:0;color:var(--primary);display:flex;align-items:center;gap:6px;">🧸 Danh Sách Sản Phẩm Áp Dụng (Product-Level) &amp; Đa Mức Giảm</h4>
+              <h4 style="margin:0;color:var(--primary);display:flex;align-items:center;gap:6px;">Danh Sách Sản Phẩm Áp Dụng (Product-Level) &amp; Đa Mức Giảm</h4>
               <p style="margin:4px 0 0;font-size:12.5px;color:var(--slate-500);">
                 Hệ thống tự động áp dụng ưu đãi cho <b>toàn bộ biến thể</b> (màu, size) của sản phẩm. Bạn có thể thiết lập mức giảm riêng cho từng sản phẩm trong cùng 1 chương trình.
               </p>
@@ -5725,7 +5714,7 @@ function renderPurchaseOrderForm(v = {}) {
       <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;flex-wrap:wrap;gap:8px;">
         <h4 style="margin:0;">Danh sách mặt hàng &amp; thiết lập giá bán nhập kho</h4>
         <div style="display:flex;gap:8px;">
-          <button type="button" class="secondary-btn" style="padding:6px 14px;font-size:12px;" onclick="openSupplierPriceComparisonModal()">📊 So sánh giá các NCC</button>
+          <button type="button" class="secondary-btn" style="padding:6px 14px;font-size:12px;" onclick="openSupplierPriceComparisonModal()"> So sánh giá các NCC</button>
           <button type="button" class="primary-btn" style="padding:6px 14px;font-size:12px;" onclick="addPurchaseOrderItemRow()">+ Thêm mặt hàng</button>
         </div>
       </div>
@@ -7259,10 +7248,10 @@ async function renderStockMovementReport() {
         </div>
         <div style="display:flex;gap:8px;flex-wrap:wrap;">
           <button type="button" class="secondary-btn" onclick="exportStockMovementToExcel()">
-            📥 Xuất Excel (BOM)
+            Xuất Excel (BOM)
           </button>
           <button type="button" class="secondary-btn" onclick="window.print()">
-            🖨️ In báo cáo
+            In báo cáo báo cáo
           </button>
         </div>
       </div>
@@ -7323,7 +7312,7 @@ async function renderStockMovementReport() {
       <!-- DETAILED STOCK MOVEMENT TRANSACTIONS LOG -->
       <div class="form-section-card" style="margin:24px;background:#ffffff;">
         <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px;flex-wrap:wrap;gap:8px;">
-          <h3 style="margin:0;font-size:16px;">📜 Nhật ký Thẻ kho chi tiết từng lượt giao dịch</h3>
+          <h3 style="margin:0;font-size:16px;">Nhật ký Thẻ kho chi tiết từng lượt giao dịch</h3>
           <div style="display:flex;gap:8px;">
             <input id="txnSearchInput" class="input-control" placeholder="Tìm theo SKU, mã đơn..." oninput="filterTransactionsList()" style="width:200px;font-size:12.5px;">
             <select id="txnTypeFilter" class="input-control" onchange="filterTransactionsList()" style="font-size:12.5px;">
@@ -7400,7 +7389,7 @@ async function renderStockMovementReport() {
         tbody.innerHTML = currentReportData.map(item => {
           const isNeed = item.closingStock <= 5;
           const statusBadge = isNeed
-            ? '<span class="badge-low-stock">⚠️ Cần nhập thêm</span>'
+            ? '<span class="badge-low-stock">Cần nhập thêm</span>'
             : '<span class="badge-in-stock">✓ Đủ tồn kho</span>';
 
           return `
@@ -7515,7 +7504,7 @@ window.openInventoryAuditModal = function(variantId, sku, productName, currentQu
   modalEl.innerHTML = `
     <div style="background:#ffffff;border-radius:16px;width:95%;max-width:480px;padding:24px;box-shadow:var(--shadow-xl);position:relative;">
       <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;">
-        <h3 style="margin:0;display:flex;align-items:center;gap:8px;">⚖️ Kiểm kê &amp; Cân bằng kho</h3>
+        <h3 style="margin:0;display:flex;align-items:center;gap:8px;">Kiểm kê &amp; Cân bằng kho</h3>
         <button type="button" onclick="document.getElementById('inventoryAuditModal').style.display='none'" style="border:none;background:none;font-size:22px;cursor:pointer;color:var(--slate-400);">×</button>
       </div>
       <div style="background:var(--slate-50);border:1px solid var(--slate-200);border-radius:10px;padding:14px;margin-bottom:16px;">
@@ -7611,7 +7600,7 @@ window.openSupplierPriceComparisonModal = async function() {
   modalEl.innerHTML = `
     <div style="background:#ffffff;border-radius:16px;width:95%;max-width:760px;max-height:90vh;overflow-y:auto;padding:24px;box-shadow:var(--shadow-xl);position:relative;">
       <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;">
-        <h3 style="margin:0;display:flex;align-items:center;gap:8px;">📊 Bảng Đối Chiếu So Sánh Giá Nhà Cung Cấp</h3>
+        <h3 style="margin:0;display:flex;align-items:center;gap:8px;"> Bảng Đối Chiếu So Sánh Giá Nhà Cung Cấp</h3>
         <button type="button" onclick="document.getElementById('supplierPriceCompModal').style.display='none'" style="border:none;background:none;font-size:24px;cursor:pointer;color:var(--slate-400);">×</button>
       </div>
 
@@ -7754,7 +7743,7 @@ function updateBatchDeliveryBar() {
   bar.style.display = 'flex';
   bar.innerHTML = `
     <div style="display:flex;align-items:center;gap:12px;">
-      <span style="font-size:20px;">📦</span>
+      
       <div>
         <div style="font-weight:700;font-size:14px;">Đã chọn ${count} đơn hàng để gom chuyến</div>
         <div style="font-size:12px;color:#c7d2fe;">Gộp thành 1 Lô giao hàng (Batch) phân công Shipper</div>
@@ -7797,7 +7786,7 @@ window.openBatchDeliveryModal = function() {
   modal.innerHTML = `
     <div style="background:#ffffff;border-radius:16px;width:95%;max-width:540px;padding:24px;box-shadow:var(--shadow-xl);position:relative;">
       <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;">
-        <h3 style="margin:0;display:flex;align-items:center;gap:8px;">📦 Gom Lô Giao Hàng &amp; Phân Công Shipper</h3>
+        <h3 style="margin:0;display:flex;align-items:center;gap:8px;">Gom Lô Giao Hàng &amp; Phân Công Shipper</h3>
         <button type="button" onclick="document.getElementById('batchDeliveryAssignModal').style.display='none'" style="border:none;background:none;font-size:24px;cursor:pointer;color:var(--slate-400);">×</button>
       </div>
 
@@ -7884,7 +7873,7 @@ window.openCodReconciliationModal = function(paymentId, orderId, expectedAmount,
   modal.innerHTML = `
     <div style="background:#ffffff;border-radius:16px;width:95%;max-width:500px;padding:24px;box-shadow:var(--shadow-xl);position:relative;">
       <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;">
-        <h3 style="margin:0;display:flex;align-items:center;gap:8px;">💵 Đối Soát Quỹ COD Shipper Nộp</h3>
+        <h3 style="margin:0;display:flex;align-items:center;gap:8px;">Đối Soát Quỹ COD Shipper Nộp</h3>
         <button type="button" onclick="document.getElementById('codReconciliationModal').style.display='none'" style="border:none;background:none;font-size:24px;cursor:pointer;color:var(--slate-400);">×</button>
       </div>
 
@@ -7936,12 +7925,12 @@ window.openCodReconciliationModal = function(paymentId, orderId, expectedAmount,
       el.style.background = '#eff6ff';
       el.style.borderColor = '#bfdbfe';
       el.style.color = '#1d4ed8';
-      el.innerHTML = `⚠️ <b>Shipper nộp THỪA ${money(diff)}:</b> Hệ thống sẽ ghi nhận giảm công nợ cho Shipper (hoặc cộng tiền thừa) và lưu biên bản đối soát quỹ.`;
+      el.innerHTML = `<b>Shipper nộp THỪA ${money(diff)}:</b> Hệ thống sẽ ghi nhận giảm công nợ cho Shipper (hoặc cộng tiền thừa) và lưu biên bản đối soát quỹ.`;
     } else {
       el.style.background = '#fffbeb';
       el.style.borderColor = '#fde68a';
       el.style.color = '#b45309';
-      el.innerHTML = `⚠️ <b>Shipper nộp THIẾU ${money(Math.abs(diff))}:</b> Thay vì chặn lỗi, hệ thống sẽ tự động ghi nhận phần thiếu <b>${money(Math.abs(diff))}</b> vào <b>Công nợ cá nhân của Shipper</b> và lưu vết đối soát.`;
+      el.innerHTML = `<b>Shipper nộp THIẾU ${money(Math.abs(diff))}:</b> Thay vì chặn lỗi, hệ thống sẽ tự động ghi nhận phần thiếu <b>${money(Math.abs(diff))}</b> vào <b>Công nợ cá nhân của Shipper</b> và lưu vết đối soát.`;
     }
   };
 
@@ -8110,5 +8099,1665 @@ window.checkPromoEmptyState = function() {
   const container = document.getElementById('promoProductsContainer');
   if (container && !container.querySelectorAll('.promo-product-row').length) {
     container.innerHTML = `<div id="promoNoProductNotice" style="text-align:center;padding:30px;color:var(--slate-400);border:1px dashed var(--slate-300);border-radius:10px;">Chưa có sản phẩm nào được chọn. Vui lòng chọn sản phẩm ở ô trên và bấm "+ Thêm sản phẩm".</div>`;
+  }
+};
+
+
+
+// ══════════════════════════════════════════════════════════════════════════════
+// 2. MÀN HÌNH TỒN KHO KHẢ DỤNG & BÁO CÁO XUẤT - NHẬP - TỒN (SPLIT VIEW CHIA ĐÔI 2 BÊN)
+// ══════════════════════════════════════════════════════════════════════════════
+
+let currentSplitInventoryVariants = [];
+let currentSplitStockMovementData = [];
+let activeInventoryLayout = 'split'; // 'split', 'available', 'movement'
+
+async function renderInventorySplitView(initialMode = 'split') {
+  activeInventoryLayout = initialMode;
+  
+  // Highlight active sidebar items
+  document.querySelectorAll('.nav-item').forEach(el => {
+    const v = el.getAttribute('data-view');
+    if (initialMode === 'movement') {
+      el.classList.toggle('active', v === 'stock-movement');
+    } else {
+      el.classList.toggle('active', v === 'inventory' || (initialMode === 'split' && (v === 'inventory' || v === 'stock-movement')));
+    }
+  });
+
+  const today = new Date();
+  const defaultFrom = new Date(Date.now() - 30 * 86400000);
+
+  app.innerHTML = `
+    <!-- TOP TOOLBAR & VIEW CONTROLLER -->
+    <div style="background:#ffffff;border-bottom:1px solid var(--slate-200);padding:14px 24px;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:14px;position:sticky;top:0;z-index:10;box-shadow:0 1px 3px rgba(0,0,0,0.03);">
+      <div>
+        <div style="display:flex;align-items:center;gap:10px;">
+          <h2 style="margin:0;font-size:18px;font-weight:800;color:var(--slate-800);display:flex;align-items:center;gap:8px;">
+            Quản Lý Tồn Kho Khả Dụng &amp; Báo Cáo Xuất - Nhập - Tồn (X-N-T)
+          </h2>
+          <span class="badge" style="background:#e0e7ff;color:#3730a3;font-size:11.5px;font-weight:700;">Split View Màn Hình Kép</span>
+        </div>
+        <p style="margin:3px 0 0;font-size:12.5px;color:var(--slate-500);">
+          Bên trái: Giám sát tồn thực, tạm giữ và cảnh báo an toàn | Bên phải: Báo cáo biến động Xuất - Nhập - Tồn chuẩn kế toán
+        </p>
+      </div>
+
+      <!-- LAYOUT SWITCHER TABS -->
+      <div style="display:flex;background:var(--slate-100);padding:3px;border-radius:10px;border:1px solid var(--slate-200);gap:4px;">
+        <button type="button" class="tab-btn ${activeInventoryLayout === 'split' ? 'active' : ''}" id="btnLayoutSplit" onclick="switchInventoryLayout('split')" title="Xem song song 2 bên">
+          Xem song song 2 bên (Split)
+        </button>
+        <button type="button" class="tab-btn ${activeInventoryLayout === 'available' ? 'active' : ''}" id="btnLayoutAvail" onclick="switchInventoryLayout('available')" title="Phóng to cột Tồn kho khả dụng">
+          Tồn kho khả dụng
+        </button>
+        <button type="button" class="tab-btn ${activeInventoryLayout === 'movement' ? 'active' : ''}" id="btnLayoutMove" onclick="switchInventoryLayout('movement')" title="Phóng to cột Báo cáo X-N-T">
+          Báo cáo Xuất - Nhập - Tồn
+        </button>
+      </div>
+    </div>
+
+    <!-- MAIN TWO-COLUMN SPLIT CONTAINER -->
+    <div style="padding:18px 24px 40px;">
+      <div id="invMainSplitGrid" class="inv-split-grid ${activeInventoryLayout === 'available' ? 'full-available' : activeInventoryLayout === 'movement' ? 'full-movement' : ''}">
+        
+        <!-- ============================================== -->
+        <!-- BÊN TRÁI: TỒN KHO KHẢ DỤNG & CẢNH BÁO AN TOÀN -->
+        <!-- ============================================== -->
+        <div class="inv-panel-column" id="colInvAvailable">
+          <div style="padding:14px 18px;border-bottom:1px solid var(--slate-200);background:#fafafa;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px;">
+            <div>
+              <h3 style="margin:0;font-size:15px;font-weight:700;color:var(--slate-800);display:flex;align-items:center;gap:6px;">
+                Tồn Kho Khả Dụng &amp; Cảnh Báo An Toàn
+              </h3>
+              <span id="splitInvCountBadge" style="font-size:11.5px;color:var(--slate-500);">Đang tải dữ liệu biến thể...</span>
+            </div>
+            <div style="display:flex;gap:6px;">
+              <button type="button" class="primary-btn" style="padding:5px 10px;font-size:12px;" onclick="openCreateAuditTicketModal()" title="Lập phiếu kiểm kê đợt mới">
+                Lập phiếu kiểm kê
+              </button>
+              <a href="#inventory-audit" class="secondary-btn" style="padding:5px 10px;font-size:12px;text-decoration:none;" title="Xem các phiếu kiểm kê chờ duyệt">
+                DS Phiếu kiểm kê
+              </a>
+              <button type="button" class="secondary-btn" style="padding:5px 10px;font-size:12px;" onclick="loadSplitInventoryData()" title="Làm mới">
+                Làm mới
+              </button>
+              <a href="#liquidation" class="secondary-btn" style="padding:5px 10px;font-size:12px;text-decoration:none;">
+                Đề xuất thanh lý
+              </a>
+            </div>
+          </div>
+
+          <!-- FILTERS FOR LEFT COLUMN -->
+          <div style="padding:10px 18px;border-bottom:1px solid var(--slate-100);background:#ffffff;display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
+            <input type="text" id="splitInvSearchInput" class="input-control" placeholder="Tìm SKU, tên đồ chơi, màu..." style="font-size:12px;padding:6px 10px;flex:1;min-width:140px;" oninput="filterSplitInventoryRows()">
+            <select id="splitInvStatusFilter" class="input-control" style="font-size:12px;padding:6px 10px;width:130px;" onchange="filterSplitInventoryRows()">
+              <option value="">Tất cả cảnh báo</option>
+              <option value="low">Sắp hết hàng (<10)</option>
+              <option value="normal">An toàn (≥10)</option>
+              <option value="out">Hết hàng (=0)</option>
+            </select>
+          </div>
+
+          <!-- TABLE LEFT COLUMN -->
+          <div style="overflow-x:auto;max-height:calc(100vh - 250px);overflow-y:auto;">
+            <table class="data-table" style="margin:0;font-size:12.5px;">
+              <thead style="position:sticky;top:0;background:var(--slate-50);z-index:2;box-shadow:0 1px 2px rgba(0,0,0,0.05);">
+                <tr>
+                  <th style="padding:9px 12px;">Mặt hàng &amp; Biến thể</th>
+                  <th style="text-align:right;padding:9px 10px;">Tồn thực</th>
+                  <th style="text-align:right;padding:9px 10px;">Tạm giữ</th>
+                  <th style="text-align:right;padding:9px 10px;color:var(--primary);">Khả dụng</th>
+                  <th style="text-align:center;padding:9px 10px;">Cảnh báo</th>
+                  <th style="text-align:center;padding:9px 8px;width:70px;">Thao tác</th>
+                </tr>
+              </thead>
+              <tbody id="splitInvTableBody">
+                <tr><td colspan="6" style="text-align:center;padding:30px;color:var(--slate-400);">Đang tải dữ liệu tồn kho...</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        <!-- ============================================== -->
+        <!-- BÊN PHẢI: BÁO CÁO THẺ KHO & BIẾN ĐỘNG X-N-T -->
+        <!-- ============================================== -->
+        <div class="inv-panel-column" id="colInvMovement">
+          <div style="padding:14px 18px;border-bottom:1px solid var(--slate-200);background:#fafafa;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px;">
+            <div>
+              <h3 style="margin:0;font-size:15px;font-weight:700;color:var(--slate-800);display:flex;align-items:center;gap:6px;">
+                Báo Cáo Biến Động Xuất - Nhập - Tồn (X-N-T)
+              </h3>
+              <p style="margin:2px 0 0;font-size:11.5px;color:var(--slate-500);">Công thức chuẩn: Tồn đầu + Nhập - Xuất = Tồn cuối kỳ</p>
+            </div>
+            <div style="display:flex;gap:6px;">
+              <button type="button" class="secondary-btn" style="padding:5px 10px;font-size:12px;" onclick="exportStockMovementToExcel()">
+                Xuất Excel (BOM CSV)
+              </button>
+              <button type="button" class="secondary-btn" style="padding:5px 10px;font-size:12px;" onclick="window.print()">
+                In báo cáo
+              </button>
+            </div>
+          </div>
+
+          <!-- DATE & PRODUCT FILTERS RIGHT COLUMN -->
+          <div style="padding:10px 18px;border-bottom:1px solid var(--slate-100);background:#ffffff;display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
+            <div style="display:flex;align-items:center;gap:4px;">
+              <span style="font-size:11.5px;color:var(--slate-600);white-space:nowrap;">Từ:</span>
+              <input id="splitSmFromDate" type="date" class="input-control" style="font-size:12px;padding:5px 8px;width:125px;" value="${dateInputValue(defaultFrom)}">
+            </div>
+            <div style="display:flex;align-items:center;gap:4px;">
+              <span style="font-size:11.5px;color:var(--slate-600);white-space:nowrap;">Đến:</span>
+              <input id="splitSmToDate" type="date" class="input-control" style="font-size:12px;padding:5px 8px;width:125px;" value="${dateInputValue(today)}">
+            </div>
+            <select id="splitSmProductFilter" class="input-control" style="font-size:12px;padding:5px 8px;flex:1;min-width:130px;">
+              <option value="">-- Tất cả sản phẩm --</option>
+              ${(ref.products || []).map(p => `<option value="${p.id || p.productId}">${esc(p.name)}</option>`).join('')}
+            </select>
+            <button type="button" class="primary-btn" style="padding:5px 12px;font-size:12px;" onclick="loadSplitStockMovementData()">
+              Xem lọc
+            </button>
+          </div>
+
+          <!-- 5 MINI STATS CARDS -->
+          <div id="splitSmMiniStats" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(110px,1fr));gap:8px;padding:12px 18px;background:var(--slate-50);border-bottom:1px solid var(--slate-100);">
+            <div style="background:#ffffff;padding:8px 10px;border-radius:8px;border:1px solid var(--slate-200);text-align:center;">
+              <div style="font-size:11px;color:var(--slate-500);">Tồn đầu</div>
+              <div style="font-size:14px;font-weight:800;color:var(--slate-800);" id="splitSmSumOpening">—</div>
+            </div>
+            <div style="background:#ffffff;padding:8px 10px;border-radius:8px;border:1px solid var(--slate-200);text-align:center;">
+              <div style="font-size:11px;color:#059669;">Tổng nhập</div>
+              <div style="font-size:14px;font-weight:800;color:#059669;" id="splitSmSumIn">—</div>
+            </div>
+            <div style="background:#ffffff;padding:8px 10px;border-radius:8px;border:1px solid var(--slate-200);text-align:center;">
+              <div style="font-size:11px;color:#dc2626;">Tổng xuất</div>
+              <div style="font-size:14px;font-weight:800;color:#dc2626;" id="splitSmSumOut">—</div>
+            </div>
+            <div style="background:#ffffff;padding:8px 10px;border-radius:8px;border:1px solid var(--slate-200);text-align:center;">
+              <div style="font-size:11px;color:var(--primary);">Tồn cuối</div>
+              <div style="font-size:14px;font-weight:800;color:var(--primary);" id="splitSmSumClosing">—</div>
+            </div>
+            <div style="background:#ffffff;padding:8px 10px;border-radius:8px;border:1px solid var(--slate-200);text-align:center;">
+              <div style="font-size:11px;color:#4f46e5;">Giá trị vốn</div>
+              <div style="font-size:13px;font-weight:800;color:#4f46e5;" id="splitSmSumValue">—</div>
+            </div>
+          </div>
+
+          <!-- TABLE RIGHT COLUMN -->
+          <div style="overflow-x:auto;max-height:calc(100vh - 310px);overflow-y:auto;">
+            <table class="data-table" style="margin:0;font-size:12px;" id="splitStockMovementTable">
+              <thead style="position:sticky;top:0;background:var(--slate-50);z-index:2;box-shadow:0 1px 2px rgba(0,0,0,0.05);">
+                <tr>
+                  <th style="padding:9px 10px;">Mặt hàng (SKU)</th>
+                  <th style="text-align:right;padding:9px 8px;">Đầu kỳ</th>
+                  <th style="text-align:right;padding:9px 8px;color:#059669;">Nhập</th>
+                  <th style="text-align:right;padding:9px 8px;color:#dc2626;">Xuất</th>
+                  <th style="text-align:right;padding:9px 8px;font-weight:700;">Cuối kỳ</th>
+                  <th style="text-align:right;padding:9px 8px;">Đơn giá vốn</th>
+                  <th style="text-align:right;padding:9px 8px;">Giá trị tồn</th>
+                  <th style="text-align:center;padding:9px 8px;">Nhu cầu</th>
+                </tr>
+              </thead>
+              <tbody id="splitSmTableBody">
+                <tr><td colspan="8" style="text-align:center;padding:30px;color:var(--slate-400);">Đang tính toán biến động X-N-T...</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+      </div>
+    </div>
+  `;
+
+  // Tải song song cả 2 cột dữ liệu
+  await Promise.all([
+    loadSplitInventoryData(),
+    loadSplitStockMovementData()
+  ]);
+}
+
+window.renderInventorySplitView = renderInventorySplitView;
+
+window.switchInventoryLayout = function(mode) {
+  activeInventoryLayout = mode;
+  const grid = document.getElementById('invMainSplitGrid');
+  const btnSplit = document.getElementById('btnLayoutSplit');
+  const btnAvail = document.getElementById('btnLayoutAvail');
+  const btnMove = document.getElementById('btnLayoutMove');
+
+  if (grid) {
+    grid.className = `inv-split-grid ${mode === 'available' ? 'full-available' : mode === 'movement' ? 'full-movement' : ''}`;
+  }
+  if (btnSplit) btnSplit.classList.toggle('active', mode === 'split');
+  if (btnAvail) btnAvail.classList.toggle('active', mode === 'available');
+  if (btnMove) btnMove.classList.toggle('active', mode === 'movement');
+};
+
+async function loadSplitInventoryData() {
+  const tbody = document.getElementById('splitInvTableBody');
+  const badge = document.getElementById('splitInvCountBadge');
+  if (!tbody) return;
+
+  try {
+    const res = await api('Inventory');
+    const items = Array.isArray(res) ? res : (res?.items || []);
+    currentSplitInventoryVariants = items;
+
+    if (badge) {
+      badge.textContent = `Tổng cộng ${items.length} biến thể đồ chơi`;
+    }
+    filterSplitInventoryRows();
+  } catch (err) {
+    if (tbody) {
+      tbody.innerHTML = `<tr><td colspan="6" style="text-align:center;color:red;padding:20px;">Không thể tải dữ liệu tồn kho: ${esc(err.message)}</td></tr>`;
+    }
+  }
+}
+window.loadSplitInventoryData = loadSplitInventoryData;
+
+function filterSplitInventoryRows() {
+  const tbody = document.getElementById('splitInvTableBody');
+  if (!tbody) return;
+
+  const search = (document.getElementById('splitInvSearchInput')?.value || '').toLowerCase().trim();
+  const statusFilter = document.getElementById('splitInvStatusFilter')?.value || '';
+
+  const filtered = currentSplitInventoryVariants.filter(item => {
+    const sku = (item.sku || item.productVariant?.sku || '').toLowerCase();
+    const name = (item.productName || item.productVariant?.product?.name || item.name || '').toLowerCase();
+    const color = (item.color || item.productVariant?.color || '').toLowerCase();
+    
+    if (search && !sku.includes(search) && !name.includes(search) && !color.includes(search)) {
+      return false;
+    }
+
+    const avail = Number(item.availableQuantity ?? (item.quantity - (item.reservedQuantity || 0)));
+    if (statusFilter === 'out' && avail > 0) return false;
+    if (statusFilter === 'low' && (avail <= 0 || avail >= 10)) return false;
+    if (statusFilter === 'normal' && avail < 10) return false;
+
+    return true;
+  });
+
+  if (!filtered.length) {
+    tbody.innerHTML = `<tr><td colspan="6" style="text-align:center;padding:30px;color:var(--slate-400);">Không tìm thấy biến thể nào phù hợp.</td></tr>`;
+    return;
+  }
+
+  tbody.innerHTML = filtered.map(item => {
+    const vId = item.variantId || item.productVariant?.variantId;
+    const sku = item.sku || item.productVariant?.sku || `SKU-${vId}`;
+    const name = item.productName || item.productVariant?.product?.name || 'Đồ chơi';
+    const color = item.color || item.productVariant?.color || '';
+    const total = Number(item.quantity || 0);
+    const reserved = Number(item.reservedQuantity || 0);
+    const avail = Number(item.availableQuantity ?? (total - reserved));
+
+    let alertBadge = `<span class="status-pill status-pill-success"><span class="status-dot status-dot-success"></span>An toàn</span>`;
+    if (avail <= 0) {
+      alertBadge = `<span class="status-pill status-pill-neutral"><span class="status-dot status-dot-neutral"></span>Hết hàng</span>`;
+    } else if (avail < 10) {
+      alertBadge = `<span class="status-pill status-pill-danger"><span class="status-dot status-dot-danger"></span>Sắp hết (${avail})</span>`;
+    }
+
+    return `
+      <tr>
+        <td style="padding:8px 12px;">
+          <div style="font-weight:700;color:var(--slate-800);">${esc(sku)}</div>
+          <div style="font-size:12px;color:var(--slate-600);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:180px;" title="${esc(name)}">${esc(name)}</div>
+          ${color ? `<div style="font-size:11px;color:var(--slate-400);">Màu: ${esc(color)}</div>` : ''}
+        </td>
+        <td style="text-align:right;font-weight:600;padding:8px 10px;">${total}</td>
+        <td style="text-align:right;color:#d97706;padding:8px 10px;">${reserved}</td>
+        <td style="text-align:right;font-weight:800;color:var(--primary);padding:8px 10px;">${avail}</td>
+        <td style="text-align:center;padding:8px 10px;">${alertBadge}</td>
+        <td style="text-align:center;padding:8px 8px;">
+          <button type="button" class="icon-action-btn" title="Cân bằng kho / Kiểm kê nhanh" onclick="openQuickInventoryBalanceModal(${vId}, '${esc(sku)}', '${esc(name)}', ${total})">
+            ️
+          </button>
+        </td>
+      </tr>
+    `;
+  }).join('');
+}
+window.filterSplitInventoryRows = filterSplitInventoryRows;
+
+async function loadSplitStockMovementData() {
+  const tbody = document.getElementById('splitSmTableBody');
+  if (!tbody) return;
+
+  const fromDate = document.getElementById('splitSmFromDate')?.value || '';
+  const toDate = document.getElementById('splitSmToDate')?.value || '';
+  const pFilter = document.getElementById('splitSmProductFilter')?.value || '';
+
+  try {
+    const [txs, variants, prods] = await Promise.all([
+      api('InventoryTransaction'),
+      api('ProductVariant'),
+      api('Product')
+    ]);
+
+    const txList = Array.isArray(txs) ? txs : (txs?.items || []);
+    const variantList = Array.isArray(variants) ? variants : (variants?.items || []);
+    const productList = Array.isArray(prods) ? prods : (prods?.items || []);
+
+    const fromTime = fromDate ? new Date(`${fromDate}T00:00:00Z`).getTime() : 0;
+    const toTime = toDate ? new Date(`${toDate}T23:59:59.999Z`).getTime() : Infinity;
+
+    // Aggregation per variant
+    const statsMap = new Map();
+    for (const v of variantList) {
+      if (pFilter && Number(v.productId) !== Number(pFilter)) continue;
+      const prod = productList.find(p => (p.id || p.productId) === v.productId);
+      statsMap.set(v.variantId, {
+        variantId: v.variantId,
+        sku: v.sku || `SKU-${v.variantId}`,
+        name: prod?.name || `Sản phẩm #${v.productId}`,
+        costPrice: Number(v.costPrice || 0),
+        opening: 0,
+        inQty: 0,
+        outQty: 0,
+        closing: 0
+      });
+    }
+
+    // Process transactions
+    for (const tx of txList) {
+      const vStats = statsMap.get(tx.variantId);
+      if (!vStats) continue;
+
+      const txDate = tx.createdAt ? new Date(tx.createdAt).getTime() : 0;
+      const qty = Number(tx.quantity || 0);
+      const isImport = tx.transactionType === 1; // 1: Nhập
+
+      if (txDate < fromTime) {
+        if (isImport) vStats.opening += qty;
+        else vStats.opening -= qty;
+      } else if (txDate <= toTime) {
+        if (isImport) vStats.inQty += qty;
+        else vStats.outQty += qty;
+      }
+    }
+
+    // Calculate closing and totals
+    let sumOpening = 0, sumIn = 0, sumOut = 0, sumClosing = 0, sumValue = 0;
+    const rows = Array.from(statsMap.values()).map(item => {
+      item.closing = item.opening + item.inQty - item.outQty;
+      const val = Math.max(0, item.closing) * item.costPrice;
+      sumOpening += item.opening;
+      sumIn += item.inQty;
+      sumOut += item.outQty;
+      sumClosing += item.closing;
+      sumValue += val;
+      return { ...item, totalValue: val };
+    });
+
+    // Update Mini Stats
+    const elOpening = document.getElementById('splitSmSumOpening');
+    const elIn = document.getElementById('splitSmSumIn');
+    const elOut = document.getElementById('splitSmSumOut');
+    const elClosing = document.getElementById('splitSmSumClosing');
+    const elVal = document.getElementById('splitSmSumValue');
+
+    if (elOpening) elOpening.textContent = sumOpening.toLocaleString('vi-VN');
+    if (elIn) elIn.textContent = `+${sumIn.toLocaleString('vi-VN')}`;
+    if (elOut) elOut.textContent = `-${sumOut.toLocaleString('vi-VN')}`;
+    if (elClosing) elClosing.textContent = sumClosing.toLocaleString('vi-VN');
+    if (elVal) elVal.textContent = money(sumValue);
+
+    // Save for Excel BOM export
+    window.currentStockMovementRows = rows;
+
+    if (!rows.length) {
+      tbody.innerHTML = `<tr><td colspan="8" style="text-align:center;padding:30px;color:var(--slate-400);">Không có dữ liệu phát sinh trong kỳ này.</td></tr>`;
+      return;
+    }
+
+    tbody.innerHTML = rows.map(r => {
+      const needRestock = r.closing < 10;
+      const demandBadge = needRestock
+        ? `<span class="status-pill status-pill-danger"><span class="status-dot status-dot-danger"></span>Cần nhập thêm</span>`
+        : `<span class="status-pill status-pill-success"><span class="status-dot status-dot-success"></span>Ổn định</span>`;
+
+      return `
+        <tr>
+          <td style="padding:7px 10px;">
+            <div style="font-weight:700;color:var(--slate-800);">${esc(r.sku)}</div>
+            <div style="font-size:11.5px;color:var(--slate-600);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:160px;" title="${esc(r.name)}">${esc(r.name)}</div>
+          </td>
+          <td style="text-align:right;padding:7px 8px;">${r.opening}</td>
+          <td style="text-align:right;color:#059669;font-weight:600;padding:7px 8px;">+${r.inQty}</td>
+          <td style="text-align:right;color:#dc2626;font-weight:600;padding:7px 8px;">-${r.outQty}</td>
+          <td style="text-align:right;font-weight:800;color:var(--primary);padding:7px 8px;">${r.closing}</td>
+          <td style="text-align:right;padding:7px 8px;">${money(r.costPrice)}</td>
+          <td style="text-align:right;font-weight:700;color:#4f46e5;padding:7px 8px;">${money(r.totalValue)}</td>
+          <td style="text-align:center;padding:7px 8px;">${demandBadge}</td>
+        </tr>
+      `;
+    }).join('');
+
+  } catch (err) {
+    if (tbody) {
+      tbody.innerHTML = `<tr><td colspan="8" style="text-align:center;color:red;padding:20px;">Lỗi tính toán X-N-T: ${esc(err.message)}</td></tr>`;
+    }
+  }
+}
+window.loadSplitStockMovementData = loadSplitStockMovementData;
+
+// QUICK INVENTORY BALANCE MODAL
+window.openQuickInventoryBalanceModal = function(variantId, sku, name, currentQty) {
+  let modal = document.getElementById('quickInvBalanceModal');
+  if (!modal) {
+    modal = document.createElement('div');
+    modal.id = 'quickInvBalanceModal';
+    modal.className = 'modal-backdrop';
+    document.body.appendChild(modal);
+  }
+
+  modal.innerHTML = `
+    <div class="modal-box" style="max-width:440px;">
+      <div class="modal-header">
+        <h3>Cân Bằng Kho / Kiểm Kê Nhanh</h3>
+        <button type="button" class="modal-close" onclick="document.getElementById('quickInvBalanceModal').style.display='none'">✕</button>
+      </div>
+      <div style="padding:20px;">
+        <div style="margin-bottom:14px;background:var(--slate-50);padding:12px;border-radius:8px;border:1px solid var(--slate-200);">
+          <div style="font-size:12px;color:var(--slate-500);">Biến thể đồ chơi:</div>
+          <strong style="color:var(--slate-800);">${esc(sku)} - ${esc(name)}</strong>
+          <div style="margin-top:6px;font-size:13px;">Số lượng trên hệ thống hiện tại: <strong style="color:var(--primary);font-size:15px;">${currentQty}</strong></div>
+        </div>
+        <div class="form-group" style="margin-bottom:14px;">
+          <label>Số lượng thực tế đếm được tại kệ *</label>
+          <input type="number" id="quickInvActualQty" class="input-control" min="0" value="${currentQty}" required style="font-size:16px;font-weight:700;">
+        </div>
+        <div class="form-group" style="margin-bottom:14px;">
+          <label>Lý do điều chỉnh kiểm kê *</label>
+          <select id="quickInvReason" class="input-control">
+            <option value="Kiểm đếm định kỳ">Kiểm đếm định kỳ</option>
+            <option value="Hao hụt rách vỡ trưng bày">Hao hụt rách vỡ trưng bày</option>
+            <option value="Phát hiện tồn dôi dư chưa ghi nhận">Phát hiện tồn dôi dư chưa ghi nhận</option>
+            <option value="Khác">Lý do khác</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label>Ghi chú chi tiết biên bản kiểm kê</label>
+          <input type="text" id="quickInvNote" class="input-control" placeholder="Chi tiết số lượng thừa/thiếu...">
+        </div>
+        <div style="display:flex;justify-content:flex-end;gap:10px;margin-top:20px;">
+          <button type="button" class="secondary-btn" onclick="document.getElementById('quickInvBalanceModal').style.display='none'">Đóng</button>
+          <button type="button" class="primary-btn" onclick="submitQuickInventoryBalance(${variantId}, ${currentQty})">Cập nhật cân bằng kho</button>
+        </div>
+      </div>
+    </div>
+  `;
+  modal.style.display = 'flex';
+};
+
+window.submitQuickInventoryBalance = async function(variantId, currentQty) {
+  const actualQty = Number(document.getElementById('quickInvActualQty')?.value);
+  const reason = document.getElementById('quickInvReason')?.value || 'Kiểm kê kho';
+  const note = document.getElementById('quickInvNote')?.value || '';
+
+  if (isNaN(actualQty) || actualQty < 0) {
+    toast('Vui lòng nhập số lượng thực tế hợp lệ (≥ 0).', 'error');
+    return;
+  }
+
+  const diff = actualQty - currentQty;
+  if (diff === 0) {
+    toast('Số lượng thực tế khớp với số tồn hệ thống, không cần điều chỉnh.', 'info');
+    document.getElementById('quickInvBalanceModal').style.display = 'none';
+    return;
+  }
+
+  try {
+    await api(`Inventory/${variantId}`, 'PUT', {
+      quantity: actualQty,
+      adjustmentQuantity: diff,
+      reason: `${reason}. ${note}`.trim()
+    });
+
+    toast(`Đã cân bằng kho thành công! Chênh lệch: ${diff > 0 ? '+' : ''}${diff}`, 'success');
+    document.getElementById('quickInvBalanceModal').style.display = 'none';
+    await Promise.all([loadSplitInventoryData(), loadSplitStockMovementData()]);
+  } catch (err) {
+    toast(`Không thể cập nhật cân bằng kho: ${err.message}`, 'error');
+  }
+};
+
+
+// ══════════════════════════════════════════════════════════════════════════════
+// 3. MÀN HÌNH PHIẾU NHẬP HÀNG (KIỂM ĐẾM & DUYỆT GIÁ BÁN MỚI) (#goods-receipt)
+// ══════════════════════════════════════════════════════════════════════════════
+
+let currentGoodsReceiptList = [];
+let currentGoodsReceiptFilter = 'all';
+
+async function renderGoodsReceiptView() {
+  document.querySelectorAll('.nav-item').forEach(el => {
+    el.classList.toggle('active', el.getAttribute('data-view') === 'goods-receipt');
+  });
+
+  app.innerHTML = `
+    <div class="panel">
+      <div class="panel-header" style="flex-wrap:wrap;gap:14px;">
+        <div class="panel-title-area">
+          <div style="display:flex;align-items:center;gap:10px;">
+            <h2 style="margin:0;font-size:20px;font-weight:800;color:var(--slate-800);">Phiếu Nhập Hàng (Kiểm Đếm &amp; Duyệt Giá Mới)</h2>
+            <span class="badge" style="background:#fef3c7;color:#92400e;font-size:12px;font-weight:700;">Nghiệm Thu Kho Thực Tế</span>
+          </div>
+          <p style="margin:4px 0 0;color:var(--slate-500);font-size:13px;">
+            Tiếp nhận lô hàng thực tế từ Nhà cung cấp, kiểm đếm số lượng đạt chuẩn / lỗi rách vỡ bao bì, tự động tính giá vốn BQ gia quyền và <strong>duyệt giá bán lẻ mới</strong>.
+          </p>
+        </div>
+        <div style="display:flex;gap:8px;">
+          <a href="#imports" class="secondary-btn" style="text-decoration:none;">
+            + Lập phiếu đặt hàng NCC
+          </a>
+          <button type="button" class="secondary-btn" onclick="loadGoodsReceiptData()">
+            Làm mới
+          </button>
+        </div>
+      </div>
+
+      <!-- FILTER TABS & SEARCH -->
+      <div style="padding:14px 24px;border-bottom:1px solid var(--slate-200);background:var(--slate-50);display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:12px;">
+        <div style="display:flex;gap:6px;background:var(--slate-200);padding:3px;border-radius:8px;">
+          <button type="button" class="tab-btn active" id="grTabAll" onclick="filterGoodsReceiptList('all')">Tất cả</button>
+          <button type="button" class="tab-btn" id="grTabPending" onclick="filterGoodsReceiptList('pending')">Chờ kiểm đếm / Nhập kho</button>
+          <button type="button" class="tab-btn" id="grTabCompleted" onclick="filterGoodsReceiptList('completed')">Đã hoàn tất nhập</button>
+        </div>
+        <div style="display:flex;gap:8px;align-items:center;">
+          <input type="text" id="goodsReceiptSearch" class="input-control" placeholder="Tìm mã phiếu, NCC..." style="width:220px;" oninput="applyGoodsReceiptSearch()">
+        </div>
+      </div>
+
+      <!-- RECEIPT LIST TABLE -->
+      <div class="table-wrap">
+        <table class="data-table" id="goodsReceiptTable">
+          <thead>
+            <tr>
+              <th>Mã phiếu nhập</th>
+              <th>Nhà cung cấp</th>
+              <th>Người lập phiếu</th>
+              <th>Ngày đặt / Ngày nhận</th>
+              <th style="text-align:right;">Tổng giá trị nhập</th>
+              <th style="text-align:center;">Biên bản kiểm đếm</th>
+              <th style="text-align:center;">Tình trạng</th>
+              <th style="text-align:center;width:180px;">Thao tác nghiệp vụ</th>
+            </tr>
+          </thead>
+          <tbody id="goodsReceiptTableBody">
+            <tr><td colspan="8" style="text-align:center;padding:40px;color:var(--slate-400);">Đang tải danh sách phiếu nhập hàng...</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  `;
+
+  await loadGoodsReceiptData();
+}
+
+window.renderGoodsReceiptView = renderGoodsReceiptView;
+
+async function loadGoodsReceiptData() {
+  const tbody = document.getElementById('goodsReceiptTableBody');
+  if (!tbody) return;
+
+  try {
+    const res = await api('ImportReceipt');
+    currentGoodsReceiptList = Array.isArray(res) ? res : (res?.items || []);
+    filterGoodsReceiptList(currentGoodsReceiptFilter);
+  } catch (err) {
+    if (tbody) {
+      tbody.innerHTML = `<tr><td colspan="8" style="text-align:center;color:red;padding:24px;">Không thể tải danh sách phiếu nhập: ${esc(err.message)}</td></tr>`;
+    }
+  }
+}
+window.loadGoodsReceiptData = loadGoodsReceiptData;
+
+window.filterGoodsReceiptList = function(filter) {
+  currentGoodsReceiptFilter = filter;
+  ['all', 'pending', 'completed'].forEach(k => {
+    const btn = document.getElementById(`grTab${k.charAt(0).toUpperCase() + k.slice(1)}`);
+    if (btn) btn.classList.toggle('active', k === filter);
+  });
+  applyGoodsReceiptSearch();
+};
+
+window.applyGoodsReceiptSearch = function() {
+  const tbody = document.getElementById('goodsReceiptTableBody');
+  if (!tbody) return;
+
+  const search = (document.getElementById('goodsReceiptSearch')?.value || '').toLowerCase().trim();
+
+  let filtered = currentGoodsReceiptList.filter(r => {
+    if (currentGoodsReceiptFilter === 'pending' && r.status !== 1 && r.status !== 2) return false;
+    if (currentGoodsReceiptFilter === 'completed' && r.status !== 3) return false;
+    return true;
+  });
+
+  if (search) {
+    filtered = filtered.filter(r => {
+      const code = (r.receiptCode || '').toLowerCase();
+      const ncc = (r.supplierName || '').toLowerCase();
+      const user = (r.orderedByName || '').toLowerCase();
+      return code.includes(search) || ncc.includes(search) || user.includes(search);
+    });
+  }
+
+  if (!filtered.length) {
+    tbody.innerHTML = `<tr><td colspan="8" style="text-align:center;padding:40px;color:var(--slate-400);">Không có phiếu nhập hàng nào phù hợp với bộ lọc.</td></tr>`;
+    return;
+  }
+
+  tbody.innerHTML = filtered.map(r => {
+    const isCompleted = r.status === 3;
+    const isPending = r.status === 1 || r.status === 2;
+    const isCancelled = r.status === 4;
+
+    let statusPill = `<span class="status-pill status-pill-warning"><span class="status-dot status-dot-warning"></span>Chờ kiểm đếm</span>`;
+    if (isCompleted) {
+      statusPill = `<span class="status-pill status-pill-success"><span class="status-dot status-dot-success"></span>Đã nhập kho</span>`;
+    } else if (isCancelled) {
+      statusPill = `<span class="badge" style="background:#f1f5f9;color:#64748b;">Đã hủy</span>`;
+    }
+
+    const hasReport = r.inspectionReport && r.inspectionReport.trim().length > 0;
+    const reportBadge = hasReport
+      ? `<span class="badge" style="background:#ede9fe;color:#5b21b6;font-size:11px;" title="${esc(r.inspectionReport)}">Đã lập biên bản</span>`
+      : `<span style="color:var(--slate-400);font-size:12px;">Chưa lập</span>`;
+
+    return `
+      <tr>
+        <td style="padding:12px 14px;">
+          <strong style="color:var(--primary);font-size:13.5px;">${esc(r.receiptCode || `PN-#${r.importReceiptId}`)}</strong>
+        </td>
+        <td style="padding:12px 14px;">
+          <strong>${esc(r.supplierName || 'Nhà cung cấp')}</strong>
+        </td>
+        <td style="padding:12px 14px;color:var(--slate-600);">${esc(r.orderedByName || 'Nhân viên kho')}</td>
+        <td style="padding:12px 14px;font-size:12.5px;">${fmtDateTime(r.importDate || r.createdAt)}</td>
+        <td style="padding:12px 14px;text-align:right;font-weight:700;color:var(--slate-800);">${money(r.totalAmount)}</td>
+        <td style="padding:12px 14px;text-align:center;">${reportBadge}</td>
+        <td style="padding:12px 14px;text-align:center;">${statusPill}</td>
+        <td style="padding:12px 14px;text-align:center;">
+          ${isPending ? `
+            <button type="button" class="primary-btn" style="padding:6px 14px;font-size:12.5px;font-weight:700;box-shadow:0 1px 3px rgba(37,99,235,0.3);" onclick="openGoodsReceiptModal(${r.importReceiptId})">
+              Kiểm đếm &amp; Duyệt giá
+            </button>
+          ` : `
+            <button type="button" class="secondary-btn" style="padding:6px 12px;font-size:12px;" onclick="openGoodsReceiptModal(${r.importReceiptId})">
+              Xem biên bản &amp; In
+            </button>
+          `}
+        </td>
+      </tr>
+    `;
+  }).join('');
+};
+
+let currentInspectingReceipt = null;
+
+window.openGoodsReceiptModal = async function(receiptId) {
+  let modal = document.getElementById('goodsReceiptModal');
+  if (!modal) {
+    modal = document.createElement('div');
+    modal.id = 'goodsReceiptModal';
+    modal.className = 'modal-backdrop';
+    document.body.appendChild(modal);
+  }
+
+  modal.innerHTML = `
+    <div class="modal-box" style="max-width:980px;width:95vw;max-height:92vh;display:flex;flex-direction:column;">
+      <div class="modal-header" style="background:#fafafa;padding:16px 24px;border-bottom:1px solid var(--slate-200);">
+        <div>
+          <h3 style="margin:0;font-size:18px;font-weight:800;color:var(--slate-800);display:flex;align-items:center;gap:8px;">
+            Phiếu Nhập Hàng: Kiểm Đếm Nghiệm Thu &amp; Định Giá Bán Mới
+          </h3>
+          <p style="margin:3px 0 0;font-size:12.5px;color:var(--slate-500);" id="grModalSubtitle">Đang tải thông tin chi tiết phiếu nhập...</p>
+        </div>
+        <button type="button" class="modal-close" onclick="document.getElementById('goodsReceiptModal').style.display='none'">✕</button>
+      </div>
+
+      <div style="padding:20px 24px;overflow-y:auto;flex:1;" id="grModalBody">
+        <div style="text-align:center;padding:50px;color:var(--slate-400);">Đang tải dữ liệu chi tiết phiếu nhập...</div>
+      </div>
+
+      <div class="modal-footer" style="padding:14px 24px;background:#fafafa;border-top:1px solid var(--slate-200);display:flex;justify-content:space-between;align-items:center;" id="grModalFooter">
+        <button type="button" class="secondary-btn" onclick="document.getElementById('goodsReceiptModal').style.display='none'">Đóng</button>
+        <div style="display:flex;gap:10px;" id="grModalActionButtons"></div>
+      </div>
+    </div>
+  `;
+  modal.style.display = 'flex';
+
+  try {
+    const [receipt, inventories, variants, products] = await Promise.all([
+      api(`ImportReceipt/${receiptId}`),
+      api('Inventory'),
+      api('ProductVariant'),
+      api('Product')
+    ]);
+
+    currentInspectingReceipt = receipt;
+    const invList = Array.isArray(inventories) ? inventories : (inventories?.items || []);
+    const varList = Array.isArray(variants) ? variants : (variants?.items || []);
+    const prodList = Array.isArray(products) ? products : (products?.items || []);
+
+    const sub = document.getElementById('grModalSubtitle');
+    if (sub) {
+      sub.innerHTML = `Mã: <strong>${esc(receipt.receiptCode)}</strong> | Nhà cung cấp: <strong>${esc(receipt.supplierName)}</strong> | Ngày tạo: ${fmtDateTime(receipt.createdAt)}`;
+    }
+
+    const isPending = receipt.status === 1 || receipt.status === 2;
+    const details = receipt.importReceiptDetails || [];
+
+    const rowsHtml = details.map((d, idx) => {
+      const v = varList.find(item => item.variantId === d.variantId) || d.productVariant || {};
+      const prod = prodList.find(p => (p.id || p.productId) === v.productId) || {};
+      const inv = invList.find(i => i.variantId === d.variantId) || { quantity: 0 };
+
+      const oldStock = Number(inv.quantity || 0);
+      const oldCost = Number(v.costPrice || d.unitCost || 0);
+      const unitCost = Number(d.unitCost || 0);
+      const orderedQty = Number(d.quantity || 0);
+      const currentPrice = Number(v.price || 0);
+
+      const actualQty = d.actualQuantity ?? orderedQty;
+      const defectQty = d.defectQuantity ?? 0;
+      const reason = d.discrepancyReason || '';
+      const initialNewPrice = d.newPrice || currentPrice;
+
+      // Tính giá vốn bình quân gia quyền:
+      // (oldStock * oldCost + actualQty * unitCost) / (oldStock + actualQty)
+      const totalStock = oldStock + actualQty;
+      const weightedCost = totalStock > 0
+        ? Math.round(((oldStock * oldCost) + (actualQty * unitCost)) / totalStock)
+        : unitCost;
+
+      return `
+        <tr class="gr-item-row" data-detail-id="${d.importReceiptDetailId}" data-variant-id="${d.variantId}" data-old-stock="${oldStock}" data-old-cost="${oldCost}" data-unit-cost="${unitCost}" data-current-price="${currentPrice}">
+          <td style="padding:10px 12px;">
+            <strong style="color:var(--slate-800);font-size:13px;">${esc(v.sku || `SKU-${d.variantId}`)}</strong>
+            <div style="font-size:12px;color:var(--slate-600);">${esc(prod.name || 'Sản phẩm')} ${v.color ? `(${esc(v.color)})` : ''}</div>
+            <div style="font-size:11px;color:var(--slate-400);margin-top:2px;">Tồn cũ kho: <strong>${oldStock}</strong> | Giá vốn cũ: ${money(oldCost)}</div>
+          </td>
+          <td style="text-align:right;padding:10px 10px;font-weight:600;">${orderedQty}</td>
+          
+          <!-- SỐ LƯỢNG THỰC NHẬN -->
+          <td style="text-align:center;padding:10px 8px;width:110px;">
+            ${isPending ? `
+              <input type="number" min="0" class="input-control gr-actual-qty" value="${actualQty}" style="font-weight:700;font-size:14px;text-align:right;padding:5px 8px;" oninput="calcGoodsReceiptItemMetrics(${d.importReceiptDetailId})">
+            ` : `
+              <strong style="color:#059669;font-size:14px;">${actualQty}</strong>
+            `}
+          </td>
+
+          <!-- SỐ LƯỢNG LỖI / THIẾU -->
+          <td style="text-align:center;padding:10px 8px;width:100px;">
+            ${isPending ? `
+              <input type="number" min="0" class="input-control gr-defect-qty" value="${defectQty}" style="color:#dc2626;font-weight:700;text-align:right;padding:5px 8px;" oninput="calcGoodsReceiptItemMetrics(${d.importReceiptDetailId})">
+            ` : `
+              <strong style="color:#dc2626;">${defectQty}</strong>
+            `}
+          </td>
+
+          <!-- ĐƠN GIÁ NHẬP & GIÁ VỐN BQ MỚI -->
+          <td style="text-align:right;padding:10px 10px;">
+            <div style="font-weight:600;color:var(--slate-700);">${money(unitCost)}</div>
+            <div style="font-size:11.5px;color:#4f46e5;margin-top:2px;">
+              BQ: <strong class="gr-weighted-cost-label">${money(weightedCost)}</strong>
+            </div>
+          </td>
+
+          <!-- GIÁ BÁN HIỆN TẠI -->
+          <td style="text-align:right;padding:10px 10px;color:var(--slate-500);font-size:12.5px;">
+            ${money(currentPrice)}
+          </td>
+
+          <!-- GIÁ BÁN LẺ MỚI & BIÊN ĐỘ LỢI NHUẬN REALTIME -->
+          <td style="padding:10px 10px;width:180px;">
+            ${isPending ? `
+              <div>
+                <input type="number" min="0" step="1000" class="input-control gr-new-price" value="${initialNewPrice}" style="font-weight:700;font-size:13.5px;color:var(--primary);padding:5px 8px;width:100%;" placeholder="Nhập giá bán mới" oninput="calcGoodsReceiptItemMetrics(${d.importReceiptDetailId})">
+                <div class="gr-margin-container" style="margin-top:4px;text-align:right;">
+                  <!-- Dynamic Margin Badge injected by calcGoodsReceiptItemMetrics -->
+                </div>
+              </div>
+            ` : `
+              <strong style="color:var(--primary);font-size:13.5px;">${money(d.newPrice || currentPrice)}</strong>
+            `}
+          </td>
+        </tr>
+      `;
+    }).join('');
+
+    const body = document.getElementById('grModalBody');
+    if (body) {
+      body.innerHTML = `
+        <div style="margin-bottom:18px;">
+          <table class="data-table" style="font-size:12.5px;">
+            <thead>
+              <tr style="background:var(--slate-50);">
+                <th>Mặt hàng &amp; Biến thể</th>
+                <th style="text-align:right;width:70px;">SL Đặt</th>
+                <th style="text-align:center;width:110px;">SL Thực nhận *</th>
+                <th style="text-align:center;width:100px;">Lỗi / Thiếu</th>
+                <th style="text-align:right;width:130px;">Đơn giá &amp; Vốn BQ</th>
+                <th style="text-align:right;width:110px;">Giá bán cũ</th>
+                <th style="width:180px;">Giá bán mới &amp; Biên độ %</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${rowsHtml}
+            </tbody>
+          </table>
+        </div>
+
+        <!-- BIÊN BẢN KIỂM ĐẾM CHI TIẾT -->
+        <div class="form-section-card" style="margin:0;background:#f8fafc;border-color:#e2e8f0;">
+          <h4 style="margin:0 0 8px;font-size:14px;color:var(--slate-800);display:flex;align-items:center;gap:6px;">
+            Ghi Chú &amp; Biên Bản Kiểm Đếm Nghiệm Thu
+          </h4>
+          <textarea id="grInspectionReportText" class="input-control" rows="3" style="width:100%;font-size:13px;" placeholder="Ghi nhận tình trạng thùng hàng, niêm phong, lý do hàng rách bao bì hoặc thừa thiếu..." ${isPending ? '' : 'readonly'}>${esc(receipt.inspectionReport || '')}</textarea>
+        </div>
+      `;
+    }
+
+    // Trigger metrics calculation for all rows initially
+    details.forEach(d => {
+      calcGoodsReceiptItemMetrics(d.importReceiptDetailId);
+    });
+
+    const actionDiv = document.getElementById('grModalActionButtons');
+    if (actionDiv) {
+      if (isPending) {
+        actionDiv.innerHTML = `
+          <button type="button" class="secondary-btn" onclick="printGoodsReceiptInspection(${receiptId})">
+            In báo cáo biên bản kiểm đếm
+          </button>
+          <button type="button" class="primary-btn" style="background:#16a34a;border-color:#15803d;padding:8px 18px;font-weight:700;" onclick="submitGoodsReceiptApproval(${receiptId})">
+            Xác Nhận Kiểm Đếm &amp; Duyệt Nhập Kho
+          </button>
+        `;
+      } else {
+        actionDiv.innerHTML = `
+          <button type="button" class="primary-btn" onclick="printGoodsReceiptInspection(${receiptId})">
+            In báo cáo biên bản nghiệm thu
+          </button>
+        `;
+      }
+    }
+
+  } catch (err) {
+    const body = document.getElementById('grModalBody');
+    if (body) {
+      body.innerHTML = `<div style="text-align:center;color:red;padding:40px;">Lỗi tải chi tiết: ${esc(err.message)}</div>`;
+    }
+  }
+};
+
+window.calcGoodsReceiptItemMetrics = function(detailId) {
+  const row = document.querySelector(`.gr-item-row[data-detail-id="${detailId}"]`);
+  if (!row) return;
+
+  const oldStock = Number(row.dataset.oldStock || 0);
+  const oldCost = Number(row.dataset.oldCost || 0);
+  const unitCost = Number(row.dataset.unitCost || 0);
+
+  const actualQty = Number(row.querySelector('.gr-actual-qty')?.value || 0);
+  const newPrice = Number(row.querySelector('.gr-new-price')?.value || 0);
+
+  // Recalculate Weighted Cost
+  const totalStock = oldStock + actualQty;
+  const weightedCost = totalStock > 0
+    ? Math.round(((oldStock * oldCost) + (actualQty * unitCost)) / totalStock)
+    : unitCost;
+
+  const costLabel = row.querySelector('.gr-weighted-cost-label');
+  if (costLabel) costLabel.textContent = money(weightedCost);
+
+  // Calculate Margin % = ((NewPrice - WeightedCost) / NewPrice) * 100
+  const marginContainer = row.querySelector('.gr-margin-container');
+  if (!marginContainer) return;
+
+  if (newPrice > 0) {
+    const marginPct = ((newPrice - weightedCost) / newPrice) * 100;
+    const roundedMargin = Math.round(marginPct * 10) / 10;
+
+    let badgeClass = 'margin-badge-profit';
+    let badgeText = `+${roundedMargin}% Lãi tốt`;
+
+    if (marginPct < 10) {
+      badgeClass = 'margin-badge-loss';
+      badgeText = marginPct <= 0 ? `${roundedMargin}% Lỗ!` : `+${roundedMargin}% Lãi mỏng`;
+    } else if (marginPct < 20) {
+      badgeClass = 'badge';
+      badgeText = `+${roundedMargin}% Trung bình`;
+    }
+
+    marginContainer.innerHTML = `
+      <span class="${badgeClass}" style="font-size:11px;" title="Giá vốn BQ: ${money(weightedCost)}, Giá bán mới: ${money(newPrice)}">
+        ${badgeText}
+      </span>
+    `;
+  } else {
+    marginContainer.innerHTML = `<span style="font-size:11px;color:var(--slate-400);">Chưa định giá</span>`;
+  }
+};
+
+window.submitGoodsReceiptApproval = async function(receiptId) {
+  const rows = document.querySelectorAll('.gr-item-row');
+  if (!rows.length) return;
+
+  const report = document.getElementById('grInspectionReportText')?.value || '';
+
+  const detailsPayload = Array.from(rows).map(row => {
+    const detailId = Number(row.dataset.detailId);
+    const variantId = Number(row.dataset.variantId);
+    const actualQty = Number(row.querySelector('.gr-actual-qty')?.value || 0);
+    const defectQty = Number(row.querySelector('.gr-defect-qty')?.value || 0);
+    const newPriceVal = Number(row.querySelector('.gr-new-price')?.value || 0);
+
+    return {
+      importReceiptDetailId: detailId,
+      variantId: variantId,
+      quantity: actualQty,
+      actualQuantity: actualQty,
+      defectQuantity: defectQty,
+      discrepancyReason: defectQty > 0 ? `Lỗi/hỏng ${defectQty} món khi kiểm đếm` : null,
+      newPrice: newPriceVal > 0 ? newPriceVal : null
+    };
+  });
+
+  if (!confirm('Xác nhận nghiệm thu kiểm đếm lô hàng này và cập nhật giá vốn bình quân & giá bán mới vào kho?')) {
+    return;
+  }
+
+  try {
+    const payload = {
+      inspectionReport: report,
+      details: detailsPayload
+    };
+
+    const res = await api(`ImportReceipt/${receiptId}/approve`, 'POST', payload);
+    toast('Đã duyệt phiếu nhập kho và cập nhật giá bán mới thành công!', 'success');
+    document.getElementById('goodsReceiptModal').style.display = 'none';
+
+    await loadGoodsReceiptData();
+  } catch (err) {
+    toast(`Không thể duyệt nhập kho: ${err.message}`, 'error');
+  }
+};
+
+window.printGoodsReceiptInspection = function(receiptId) {
+  window.print();
+};
+
+
+
+// ══════════════════════════════════════════════════════════════════════════════
+// 4. QUY TRÌNH KIỂM KÊ KHO & ĐỐI SOÁT CHÊNH LỆCH THỪA/THIẾU 2 BƯỚC (#inventory-audit)
+// ══════════════════════════════════════════════════════════════════════════════
+
+let currentAuditTicketsList = [];
+let currentAuditTicketFilter = 'all';
+
+async function renderInventoryAuditView() {
+  document.querySelectorAll('.nav-item').forEach(el => {
+    el.classList.toggle('active', el.getAttribute('data-view') === 'inventory-audit');
+  });
+
+  app.innerHTML = `
+    <div class="panel">
+      <div class="panel-header" style="flex-wrap:wrap;gap:14px;">
+        <div class="panel-title-area">
+          <div style="display:flex;align-items:center;gap:10px;">
+            <h2 style="margin:0;font-size:20px;font-weight:800;color:var(--slate-800);">Phiếu Kiểm Kê Kho &amp; Đối Soát Cân Bằng Tồn</h2>
+            <span class="badge" style="background:#e0e7ff;color:#3730a3;font-size:12px;font-weight:700;">Quy Trình Phê Duyệt 2 Bước</span>
+          </div>
+          <p style="margin:4px 0 0;color:var(--slate-500);font-size:13px;">
+            Bước 1: Nhân viên kiểm đếm thực tế, bảng đối soát tự động tính chênh lệch thừa/thiếu → Bước 2: Quản lý xem xét và <strong>phê duyệt điều chỉnh cân bằng kho</strong>.
+          </p>
+        </div>
+        <div style="display:flex;gap:8px;">
+          <button type="button" class="primary-btn" style="background:var(--primary);padding:8px 16px;font-weight:700;" onclick="openCreateAuditTicketModal()">
+            + Lập phiếu kiểm kê mới
+          </button>
+          <button type="button" class="secondary-btn" onclick="loadAuditTicketsData()">
+            Làm mới
+          </button>
+        </div>
+      </div>
+
+      <!-- FILTER TABS & SEARCH -->
+      <div style="padding:14px 24px;border-bottom:1px solid var(--slate-200);background:var(--slate-50);display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:12px;">
+        <div style="display:flex;gap:6px;background:var(--slate-200);padding:3px;border-radius:8px;">
+          <button type="button" class="tab-btn active" id="auditTabAll" onclick="filterAuditTicketsList('all')">Tất cả phiếu</button>
+          <button type="button" class="tab-btn" id="auditTabPending" onclick="filterAuditTicketsList('pending')">Chờ duyệt cân bằng kho</button>
+          <button type="button" class="tab-btn" id="auditTabApproved" onclick="filterAuditTicketsList('approved')">Đã cân bằng kho</button>
+          <button type="button" class="tab-btn" id="auditTabRejected" onclick="filterAuditTicketsList('rejected')">Đã từ chối</button>
+        </div>
+        <div style="display:flex;gap:8px;align-items:center;">
+          <input type="text" id="auditTicketSearch" class="input-control" placeholder="Tìm mã phiếu, người lập..." style="width:220px;" oninput="applyAuditTicketSearch()">
+        </div>
+      </div>
+
+      <!-- AUDIT TICKETS LIST TABLE -->
+      <div class="table-wrap">
+        <table class="data-table" id="auditTicketsTable">
+          <thead>
+            <tr>
+              <th>Mã phiếu kiểm kê</th>
+              <th>Người lập phiếu</th>
+              <th>Thời điểm lập</th>
+              <th style="text-align:center;">Số mặt hàng</th>
+              <th style="text-align:center;">Tổng chênh lệch SL</th>
+              <th style="text-align:right;">Tổng giá trị lệch tiền</th>
+              <th style="text-align:center;">Trạng thái</th>
+              <th>Người &amp; Ngày duyệt</th>
+              <th style="text-align:center;width:170px;">Thao tác quản lý</th>
+            </tr>
+          </thead>
+          <tbody id="auditTicketsTableBody">
+            <tr><td colspan="9" style="text-align:center;padding:40px;color:var(--slate-400);">Đang tải danh sách phiếu kiểm kê kho...</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  `;
+
+  await loadAuditTicketsData();
+}
+
+window.renderInventoryAuditView = renderInventoryAuditView;
+
+async function loadAuditTicketsData() {
+  const tbody = document.getElementById('auditTicketsTableBody');
+  if (!tbody) return;
+
+  try {
+    const res = await api('Inventory/audit-tickets');
+    currentAuditTicketsList = Array.isArray(res) ? res : (res?.items || []);
+    filterAuditTicketsList(currentAuditTicketFilter);
+  } catch (err) {
+    if (tbody) {
+      tbody.innerHTML = `<tr><td colspan="9" style="text-align:center;color:red;padding:24px;">Không thể tải danh sách phiếu kiểm kê: ${esc(err.message)}</td></tr>`;
+    }
+  }
+}
+window.loadAuditTicketsData = loadAuditTicketsData;
+
+window.filterAuditTicketsList = function(filter) {
+  currentAuditTicketFilter = filter;
+  ['all', 'pending', 'approved', 'rejected'].forEach(k => {
+    const btn = document.getElementById(`auditTab${k.charAt(0).toUpperCase() + k.slice(1)}`);
+    if (btn) btn.classList.toggle('active', k === filter);
+  });
+  applyAuditTicketSearch();
+};
+
+window.applyAuditTicketSearch = function() {
+  const tbody = document.getElementById('auditTicketsTableBody');
+  if (!tbody) return;
+
+  const search = (document.getElementById('auditTicketSearch')?.value || '').toLowerCase().trim();
+
+  let filtered = currentAuditTicketsList.filter(t => {
+    if (currentAuditTicketFilter === 'pending' && t.status !== 1) return false;
+    if (currentAuditTicketFilter === 'approved' && t.status !== 2) return false;
+    if (currentAuditTicketFilter === 'rejected' && t.status !== 3) return false;
+    return true;
+  });
+
+  if (search) {
+    filtered = filtered.filter(t => {
+      const code = (t.ticketCode || '').toLowerCase();
+      const creator = (t.createdByName || '').toLowerCase();
+      const approver = (t.approvedByName || '').toLowerCase();
+      return code.includes(search) || creator.includes(search) || approver.includes(search);
+    });
+  }
+
+  if (!filtered.length) {
+    tbody.innerHTML = `<tr><td colspan="9" style="text-align:center;padding:40px;color:var(--slate-400);">Không có phiếu kiểm kê nào phù hợp với bộ lọc.</td></tr>`;
+    return;
+  }
+
+  tbody.innerHTML = filtered.map(t => {
+    const isPending = t.status === 1;
+    const isApproved = t.status === 2;
+    const isRejected = t.status === 3;
+
+    let statusPill = `<span class="status-pill status-pill-warning"><span class="status-dot status-dot-warning"></span>Chờ duyệt</span>`;
+    if (isApproved) {
+      statusPill = `<span class="badge" style="background:#dcfce7;color:#15803d;font-weight:700;font-size:12px;">Đã cân bằng kho</span>`;
+    } else if (isRejected) {
+      statusPill = `<span class="badge" style="background:#fee2e2;color:#991b1b;font-weight:700;font-size:12px;">Đã từ chối</span>`;
+    }
+
+    const diffQty = Number(t.totalDiscrepancyQty || 0);
+    const diffVal = Number(t.totalDiscrepancyValue || 0);
+
+    let diffQtyHtml = `<span style="color:var(--slate-500);font-weight:600;">0 (Khớp)</span>`;
+    if (diffQty > 0) {
+      diffQtyHtml = `<strong style="color:#059669;">+${diffQty} (Thừa)</strong>`;
+    } else if (diffQty < 0) {
+      diffQtyHtml = `<strong style="color:#dc2626;">${diffQty} (Thiếu)</strong>`;
+    }
+
+    let diffValHtml = `<span style="color:var(--slate-500);">0 đ</span>`;
+    if (diffVal > 0) {
+      diffValHtml = `<strong style="color:#059669;">+${money(diffVal)}</strong>`;
+    } else if (diffVal < 0) {
+      diffValHtml = `<strong style="color:#dc2626;">${money(diffVal)}</strong>`;
+    }
+
+    return `
+      <tr>
+        <td style="padding:12px 14px;">
+          <strong style="color:var(--primary);font-size:13.5px;">${esc(t.ticketCode)}</strong>
+          ${t.note ? `<div style="font-size:11.5px;color:var(--slate-500);margin-top:2px;">${esc(t.note)}</div>` : ''}
+        </td>
+        <td style="padding:12px 14px;color:var(--slate-700);font-weight:600;">${esc(t.createdByName || 'Nhân viên kho')}</td>
+        <td style="padding:12px 14px;font-size:12.5px;">${fmtDateTime(t.createdAt)}</td>
+        <td style="padding:12px 14px;text-align:center;font-weight:700;">${t.totalItems}</td>
+        <td style="padding:12px 14px;text-align:center;">${diffQtyHtml}</td>
+        <td style="padding:12px 14px;text-align:right;">${diffValHtml}</td>
+        <td style="padding:12px 14px;text-align:center;">${statusPill}</td>
+        <td style="padding:12px 14px;font-size:12px;color:var(--slate-600);">
+          ${t.approvedByName ? `<strong>${esc(t.approvedByName)}</strong><br><small style="color:var(--slate-400);">${fmtDateTime(t.approvedAt)}</small>` : '—'}
+        </td>
+        <td style="padding:12px 14px;text-align:center;">
+          ${isPending ? `
+            <button type="button" class="primary-btn" style="padding:6px 12px;font-size:12px;font-weight:700;" onclick="openAuditTicketDetailModal(${t.auditTicketId})">
+              Đối soát &amp; Phê duyệt
+            </button>
+          ` : `
+            <button type="button" class="secondary-btn" style="padding:6px 12px;font-size:12px;" onclick="openAuditTicketDetailModal(${t.auditTicketId})">
+              Xem bảng đối soát
+            </button>
+          `}
+        </td>
+      </tr>
+    `;
+  }).join('');
+};
+
+// ── MODAL 1: GIAO DIỆN NHÂN VIÊN NHẬP SỐ LƯỢNG THỰC TẾ & BẢNG ĐỐI SOÁT TỰ ĐỘNG ──
+window.openCreateAuditTicketModal = async function() {
+  let modal = document.getElementById('createAuditTicketModal');
+  if (!modal) {
+    modal = document.createElement('div');
+    modal.id = 'createAuditTicketModal';
+    modal.className = 'modal-backdrop';
+    document.body.appendChild(modal);
+  }
+
+  modal.innerHTML = `
+    <div class="modal-box" style="max-width:1100px;width:96vw;max-height:94vh;display:flex;flex-direction:column;">
+      <div class="modal-header" style="background:#fafafa;padding:16px 24px;border-bottom:1px solid var(--slate-200);">
+        <div>
+          <h3 style="margin:0;font-size:18px;font-weight:800;color:var(--slate-800);display:flex;align-items:center;gap:8px;">
+            Bảng Kiểm Kê Kho &amp; Đối Soát Chênh Lệch Thừa/Thiếu Tự Động
+          </h3>
+          <p style="margin:3px 0 0;font-size:12.5px;color:var(--slate-500);">
+            Nhân viên nhập số lượng thực tế đếm được tại kệ hàng. Hệ thống tự động đối soát chênh lệch số lượng và quy đổi giá trị tài sản thừa/thiếu theo giá vốn.
+          </p>
+        </div>
+        <button type="button" class="modal-close" onclick="document.getElementById('createAuditTicketModal').style.display='none'">✕</button>
+      </div>
+
+      <!-- TOP METRICS BAR REALTIME -->
+      <div style="padding:12px 24px;background:#f8fafc;border-bottom:1px solid var(--slate-200);display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:12px;">
+        <div style="display:flex;gap:18px;align-items:center;flex-wrap:wrap;">
+          <div><span style="font-size:12px;color:var(--slate-500);">Mặt hàng kiểm kê:</span> <strong id="createAuditItemCount">0</strong></div>
+          <div><span style="font-size:12px;color:var(--slate-500);">Chênh lệch SL:</span> <strong id="createAuditDiffQty" style="font-size:14px;">0 món</strong></div>
+          <div><span style="font-size:12px;color:var(--slate-500);">Giá trị tài sản thừa/thiếu:</span> <strong id="createAuditDiffVal" style="font-size:15px;color:#4f46e5;">0 đ</strong></div>
+        </div>
+        <div style="display:flex;gap:8px;align-items:center;">
+          <input type="text" id="createAuditFilterInput" class="input-control" placeholder="Lọc nhanh tên hoặc SKU..." style="font-size:12.5px;padding:6px 12px;width:200px;" oninput="filterCreateAuditRows()">
+        </div>
+      </div>
+
+      <!-- BODY TABLE OF ITEMS -->
+      <div style="padding:16px 24px;overflow-y:auto;flex:1;" id="createAuditModalBody">
+        <div style="text-align:center;padding:50px;color:var(--slate-400);">Đang tải dữ liệu tồn kho hiện tại...</div>
+      </div>
+
+      <!-- FOOTER & ACTION -->
+      <div class="modal-footer" style="padding:14px 24px;background:#fafafa;border-top:1px solid var(--slate-200);display:flex;justify-content:space-between;align-items:center;">
+        <input type="text" id="createAuditTicketNote" class="input-control" placeholder="Ghi chú đợt kiểm kê (Ví dụ: Kiểm kê định kỳ kệ A, đợt cuối tháng...)" style="max-width:400px;font-size:13px;">
+        <div style="display:flex;gap:10px;">
+          <button type="button" class="secondary-btn" onclick="document.getElementById('createAuditTicketModal').style.display='none'">Hủy bỏ</button>
+          <button type="button" class="primary-btn" style="background:#16a34a;border-color:#15803d;padding:8px 18px;font-weight:700;" onclick="submitCreateAuditTicket()">
+            Lưu Phiếu &amp; Gửi Quản Lý Phê Duyệt
+          </button>
+        </div>
+      </div>
+    </div>
+  `;
+  modal.style.display = 'flex';
+
+  try {
+    const [invs, prods, vars] = await Promise.all([
+      api('Inventory'),
+      api('Product'),
+      api('ProductVariant')
+    ]);
+
+    const invList = Array.isArray(invs) ? invs : (invs?.items || []);
+    const prodList = Array.isArray(prods) ? prods : (prods?.items || []);
+    const varList = Array.isArray(vars) ? vars : (vars?.items || []);
+
+    const rowsHtml = varList.map(v => {
+      const prod = prodList.find(p => (p.id || p.productId) === v.productId) || {};
+      const inv = invList.find(i => i.variantId === v.variantId) || { quantity: 0 };
+
+      const sysQty = Number(inv.quantity || 0);
+      const cost = Number(v.costPrice || 0);
+
+      return `
+        <tr class="audit-input-row" data-variant-id="${v.variantId}" data-sys-qty="${sysQty}" data-cost="${cost}">
+          <td style="padding:9px 12px;">
+            <strong style="color:var(--slate-800);">${esc(v.sku || `SKU-${v.variantId}`)}</strong>
+            <div style="font-size:12px;color:var(--slate-600);">${esc(prod.name || 'Sản phẩm')} ${v.color ? `(${esc(v.color)})` : ''}</div>
+          </td>
+          <td style="text-align:right;padding:9px 10px;font-weight:700;color:var(--slate-700);">${sysQty}</td>
+          
+          <!-- Ô NHẬP SỐ LƯỢNG THỰC TẾ -->
+          <td style="text-align:center;padding:9px 8px;width:120px;">
+            <input type="number" min="0" class="input-control audit-actual-input" value="${sysQty}" style="font-weight:700;font-size:14px;text-align:right;padding:5px 8px;width:100%;" oninput="calcAuditRowDiscrepancy(${v.variantId})">
+          </td>
+
+          <!-- BẢNG ĐỐI SOÁT CHÊNH LỆCH TỰ ĐỘNG -->
+          <td style="text-align:center;padding:9px 10px;width:120px;" class="audit-diff-cell">
+            <span class="badge" style="background:#f1f5f9;color:#64748b;font-size:11px;">0 (Khớp)</span>
+          </td>
+
+          <td style="text-align:right;padding:9px 10px;color:var(--slate-600);">${money(cost)}</td>
+
+          <!-- GIÁ TRỊ LỆCH TIỀN TỰ ĐỘNG -->
+          <td style="text-align:right;padding:9px 10px;font-weight:700;width:130px;" class="audit-diff-val-cell">
+            0 đ
+          </td>
+
+          <!-- LÝ DO CHÊNH LỆCH -->
+          <td style="padding:9px 10px;width:190px;">
+            <select class="input-control audit-reason-select" style="font-size:12px;padding:5px 6px;">
+              <option value="Khớp tồn">Khớp tồn hệ thống</option>
+              <option value="Hao hụt rách vỡ trưng bày">Hao hụt rách vỡ trưng bày</option>
+              <option value="Phát hiện dôi dư chưa ghi nhận">Dôi dư chưa ghi nhận</option>
+              <option value="Đếm sót / Nhầm lẫn biến thể">Đếm sót / Nhầm lẫn</option>
+              <option value="Khác">Lý do khác</option>
+            </select>
+          </td>
+        </tr>
+      `;
+    }).join('');
+
+    const body = document.getElementById('createAuditModalBody');
+    if (body) {
+      body.innerHTML = `
+        <table class="data-table" style="font-size:12.5px;" id="createAuditTable">
+          <thead style="position:sticky;top:0;background:var(--slate-50);z-index:2;box-shadow:0 1px 2px rgba(0,0,0,0.05);">
+            <tr>
+              <th>Mặt hàng đồ chơi &amp; SKU</th>
+              <th style="text-align:right;width:90px;">Tồn hệ thống</th>
+              <th style="text-align:center;width:120px;">SL Thực tế đếm *</th>
+              <th style="text-align:center;width:120px;">Chênh lệch đối soát</th>
+              <th style="text-align:right;width:110px;">Đơn giá vốn</th>
+              <th style="text-align:right;width:130px;">Giá trị lệch (VND)</th>
+              <th style="width:190px;">Lý do chênh lệch</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${rowsHtml}
+          </tbody>
+        </table>
+      `;
+    }
+
+    recalcAllAuditMetrics();
+
+  } catch (err) {
+    const body = document.getElementById('createAuditModalBody');
+    if (body) {
+      body.innerHTML = `<div style="text-align:center;color:red;padding:40px;">Lỗi tải dữ liệu kiểm kê: ${esc(err.message)}</div>`;
+    }
+  }
+};
+
+window.calcAuditRowDiscrepancy = function(variantId) {
+  const row = document.querySelector(`.audit-input-row[data-variant-id="${variantId}"]`);
+  if (!row) return;
+
+  const sysQty = Number(row.dataset.sysQty || 0);
+  const cost = Number(row.dataset.cost || 0);
+  const actualQty = Number(row.querySelector('.audit-actual-input')?.value || 0);
+
+  const diffQty = actualQty - sysQty;
+  const diffVal = diffQty * cost;
+
+  const diffCell = row.querySelector('.audit-diff-cell');
+  const valCell = row.querySelector('.audit-diff-val-cell');
+  const reasonSelect = row.querySelector('.audit-reason-select');
+
+  if (diffCell) {
+    if (diffQty === 0) {
+      diffCell.innerHTML = `<span class="badge" style="background:#f1f5f9;color:#64748b;font-size:11px;">0 (Khớp)</span>`;
+      if (reasonSelect && reasonSelect.value !== 'Khớp tồn') reasonSelect.value = 'Khớp tồn';
+    } else if (diffQty > 0) {
+      diffCell.innerHTML = `<span class="badge" style="background:#dcfce7;color:#15803d;font-size:11px;font-weight:700;">+${diffQty} (Thừa)</span>`;
+      if (reasonSelect && reasonSelect.value === 'Khớp tồn') reasonSelect.value = 'Phát hiện dôi dư chưa ghi nhận';
+    } else {
+      diffCell.innerHTML = `<span class="badge" style="background:#fee2e2;color:#991b1b;font-size:11px;font-weight:700;">${diffQty} (Thiếu)</span>`;
+      if (reasonSelect && reasonSelect.value === 'Khớp tồn') reasonSelect.value = 'Hao hụt rách vỡ trưng bày';
+    }
+  }
+
+  if (valCell) {
+    if (diffVal === 0) {
+      valCell.innerHTML = `<span style="color:var(--slate-400);">0 đ</span>`;
+    } else if (diffVal > 0) {
+      valCell.innerHTML = `<strong style="color:#059669;">+${money(diffVal)}</strong>`;
+    } else {
+      valCell.innerHTML = `<strong style="color:#dc2626;">${money(diffVal)}</strong>`;
+    }
+  }
+
+  recalcAllAuditMetrics();
+};
+
+function recalcAllAuditMetrics() {
+  const rows = document.querySelectorAll('.audit-input-row');
+  let count = rows.length;
+  let totalDiffQty = 0;
+  let totalDiffVal = 0;
+
+  rows.forEach(row => {
+    const sysQty = Number(row.dataset.sysQty || 0);
+    const cost = Number(row.dataset.cost || 0);
+    const actualQty = Number(row.querySelector('.audit-actual-input')?.value || 0);
+
+    const diffQty = actualQty - sysQty;
+    const diffVal = diffQty * cost;
+
+    totalDiffQty += diffQty;
+    totalDiffVal += diffVal;
+  });
+
+  const elCount = document.getElementById('createAuditItemCount');
+  const elQty = document.getElementById('createAuditDiffQty');
+  const elVal = document.getElementById('createAuditDiffVal');
+
+  if (elCount) elCount.textContent = `${count} mặt hàng`;
+  if (elQty) {
+    if (totalDiffQty > 0) {
+      elQty.innerHTML = `<span style="color:#059669;">+${totalDiffQty} món (Thừa)</span>`;
+    } else if (totalDiffQty < 0) {
+      elQty.innerHTML = `<span style="color:#dc2626;">${totalDiffQty} món (Thiếu)</span>`;
+    } else {
+      elQty.innerHTML = `<span style="color:var(--slate-600);">0 món (Khớp hoàn toàn)</span>`;
+    }
+  }
+
+  if (elVal) {
+    if (totalDiffVal > 0) {
+      elVal.innerHTML = `<span style="color:#059669;">+${money(totalDiffVal)}</span>`;
+    } else if (totalDiffVal < 0) {
+      elVal.innerHTML = `<span style="color:#dc2626;">${money(totalDiffVal)}</span>`;
+    } else {
+      elVal.innerHTML = `<span style="color:var(--slate-600);">0 đ</span>`;
+    }
+  }
+}
+
+window.filterCreateAuditRows = function() {
+  const q = (document.getElementById('createAuditFilterInput')?.value || '').toLowerCase().trim();
+  const rows = document.querySelectorAll('.audit-input-row');
+  rows.forEach(row => {
+    const text = row.textContent.toLowerCase();
+    row.style.display = (!q || text.includes(q)) ? '' : 'none';
+  });
+};
+
+window.submitCreateAuditTicket = async function() {
+  const rows = document.querySelectorAll('.audit-input-row');
+  if (!rows.length) return;
+
+  const note = document.getElementById('createAuditTicketNote')?.value || '';
+
+  const detailsPayload = Array.from(rows).map(row => {
+    const vId = Number(row.dataset.variantId);
+    const actualQty = Number(row.querySelector('.audit-actual-input')?.value || 0);
+    const reason = row.querySelector('.audit-reason-select')?.value || 'Khớp tồn';
+
+    return {
+      variantId: vId,
+      actualQuantity: actualQty,
+      discrepancyReason: reason
+    };
+  });
+
+  if (!confirm('Xác nhận lập phiếu kiểm kê kho và gửi lên Quản lý phê duyệt điều chỉnh cân bằng kho? (Lưu ý: Tồn kho thực tế sẽ không bị thay đổi cho đến khi Quản lý phê duyệt).')) {
+    return;
+  }
+
+  try {
+    const payload = {
+      note: note,
+      details: detailsPayload
+    };
+
+    const res = await api('Inventory/audit-ticket', 'POST', payload);
+    toast(`Đã lập phiếu kiểm kê [${res.ticketCode}] thành công! Phiếu đã chuyển sang trạng thái Chờ Quản lý phê duyệt.`, 'success');
+    document.getElementById('createAuditTicketModal').style.display = 'none';
+
+    if (currentView === 'inventory-audit') {
+      await loadAuditTicketsData();
+    } else {
+      location.hash = '#inventory-audit';
+    }
+  } catch (err) {
+    toast(`Không thể lưu phiếu kiểm kê: ${err.message}`, 'error');
+  }
+};
+
+// ── MODAL 2: GIAO DIỆN QUẢN LÝ XEM BẢNG ĐỐI SOÁT & PHÊ DUYỆT CÂN BẰNG KHO ──
+window.openAuditTicketDetailModal = async function(ticketId) {
+  let modal = document.getElementById('auditTicketDetailModal');
+  if (!modal) {
+    modal = document.createElement('div');
+    modal.id = 'auditTicketDetailModal';
+    modal.className = 'modal-backdrop';
+    document.body.appendChild(modal);
+  }
+
+  modal.innerHTML = `
+    <div class="modal-box" style="max-width:980px;width:95vw;max-height:92vh;display:flex;flex-direction:column;">
+      <div class="modal-header" style="background:#fafafa;padding:16px 24px;border-bottom:1px solid var(--slate-200);">
+        <div>
+          <h3 style="margin:0;font-size:18px;font-weight:800;color:var(--slate-800);display:flex;align-items:center;gap:8px;">
+            Đối Soát Phiếu Kiểm Kê &amp; Phê Duyệt Cân Bằng Kho
+          </h3>
+          <p style="margin:3px 0 0;font-size:12.5px;color:var(--slate-500);" id="auditDetailSubtitle">Đang tải chi tiết phiếu...</p>
+        </div>
+        <button type="button" class="modal-close" onclick="document.getElementById('auditTicketDetailModal').style.display='none'">✕</button>
+      </div>
+
+      <div style="padding:16px 24px;overflow-y:auto;flex:1;" id="auditDetailModalBody">
+        <div style="text-align:center;padding:50px;color:var(--slate-400);">Đang tải bảng đối soát chi tiết...</div>
+      </div>
+
+      <div class="modal-footer" style="padding:14px 24px;background:#fafafa;border-top:1px solid var(--slate-200);display:flex;justify-content:space-between;align-items:center;" id="auditDetailFooter">
+        <button type="button" class="secondary-btn" onclick="document.getElementById('auditTicketDetailModal').style.display='none'">Đóng</button>
+        <div style="display:flex;gap:10px;" id="auditDetailActionButtons"></div>
+      </div>
+    </div>
+  `;
+  modal.style.display = 'flex';
+
+  try {
+    const ticket = await api(`Inventory/audit-tickets/${ticketId}`);
+    
+    const sub = document.getElementById('auditDetailSubtitle');
+    if (sub) {
+      sub.innerHTML = `Mã: <strong>${esc(ticket.ticketCode)}</strong> | Người lập: <strong>${esc(ticket.createdByName)}</strong> | Thời điểm: ${fmtDateTime(ticket.createdAt)} | Tình trạng: <strong>${ticket.statusName}</strong>`;
+    }
+
+    const isPending = ticket.status === 1;
+    const details = ticket.details || [];
+
+    const rowsHtml = details.map(d => {
+      const isMatch = d.discrepancyQuantity === 0;
+      const isSurplus = d.discrepancyQuantity > 0;
+      const isDeficit = d.discrepancyQuantity < 0;
+
+      let badgeDiff = `<span class="badge" style="background:#f1f5f9;color:#64748b;">0 (Khớp)</span>`;
+      if (isSurplus) {
+        badgeDiff = `<span class="badge" style="background:#dcfce7;color:#15803d;font-weight:700;">+${d.discrepancyQuantity} (Thừa)</span>`;
+      } else if (isDeficit) {
+        badgeDiff = `<span class="badge" style="background:#fee2e2;color:#991b1b;font-weight:700;">${d.discrepancyQuantity} (Thiếu)</span>`;
+      }
+
+      let diffValText = `<span style="color:var(--slate-400);">0 đ</span>`;
+      if (d.discrepancyValue > 0) {
+        diffValText = `<strong style="color:#059669;">+${money(d.discrepancyValue)}</strong>`;
+      } else if (d.discrepancyValue < 0) {
+        diffValText = `<strong style="color:#dc2626;">${money(d.discrepancyValue)}</strong>`;
+      }
+
+      return `
+        <tr style="${!isMatch ? 'background:#fffbeb;' : ''}">
+          <td style="padding:10px 12px;">
+            <strong style="color:var(--slate-800);">${esc(d.sku)}</strong>
+            <div style="font-size:12px;color:var(--slate-600);">${esc(d.productName)} ${d.color ? `(${esc(d.color)})` : ''}</div>
+          </td>
+          <td style="text-align:right;padding:10px 10px;font-weight:600;">${d.systemQuantity}</td>
+          <td style="text-align:right;padding:10px 10px;font-weight:700;color:var(--primary);">${d.actualQuantity}</td>
+          <td style="text-align:center;padding:10px 10px;">${badgeDiff}</td>
+          <td style="text-align:right;padding:10px 10px;">${money(d.costPrice)}</td>
+          <td style="text-align:right;padding:10px 10px;">${diffValText}</td>
+          <td style="padding:10px 12px;font-size:12px;color:var(--slate-700);">
+            <strong>${esc(d.discrepancyReason || 'Kiểm kê kho')}</strong>
+            ${d.note ? `<div style="font-size:11px;color:var(--slate-500);">${esc(d.note)}</div>` : ''}
+          </td>
+        </tr>
+      `;
+    }).join('');
+
+    const body = document.getElementById('auditDetailModalBody');
+    if (body) {
+      body.innerHTML = `
+        <!-- SUMMARY KPI CARDS -->
+        <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:12px;margin-bottom:16px;">
+          <div style="background:#ffffff;border:1px solid var(--slate-200);border-radius:10px;padding:12px;text-align:center;">
+            <div style="font-size:11.5px;color:var(--slate-500);">Tổng số mặt hàng</div>
+            <div style="font-size:18px;font-weight:800;color:var(--slate-800);margin-top:2px;">${ticket.totalItems}</div>
+          </div>
+          <div style="background:#ffffff;border:1px solid var(--slate-200);border-radius:10px;padding:12px;text-align:center;">
+            <div style="font-size:11.5px;color:var(--slate-500);">Tổng chênh lệch SL</div>
+            <div style="font-size:18px;font-weight:800;margin-top:2px;color:${ticket.totalDiscrepancyQty >= 0 ? '#059669' : '#dc2626'};">
+              ${ticket.totalDiscrepancyQty > 0 ? `+${ticket.totalDiscrepancyQty}` : ticket.totalDiscrepancyQty}
+            </div>
+          </div>
+          <div style="background:#ffffff;border:1px solid var(--slate-200);border-radius:10px;padding:12px;text-align:center;">
+            <div style="font-size:11.5px;color:var(--slate-500);">Tổng giá trị tài sản thừa/thiếu</div>
+            <div style="font-size:18px;font-weight:800;margin-top:2px;color:${ticket.totalDiscrepancyValue >= 0 ? '#059669' : '#dc2626'};">
+              ${ticket.totalDiscrepancyValue > 0 ? `+${money(ticket.totalDiscrepancyValue)}` : money(ticket.totalDiscrepancyValue)}
+            </div>
+          </div>
+        </div>
+
+        <!-- DETAIL TABLE -->
+        <div class="table-wrap" style="max-height:50vh;overflow-y:auto;">
+          <table class="data-table" style="font-size:12.5px;">
+            <thead>
+              <tr style="position:sticky;top:0;background:var(--slate-50);z-index:2;">
+                <th>Mặt hàng đồ chơi &amp; SKU</th>
+                <th style="text-align:right;">Tồn hệ thống</th>
+                <th style="text-align:right;">Thực đếm</th>
+                <th style="text-align:center;">Chênh lệch</th>
+                <th style="text-align:right;">Đơn giá vốn</th>
+                <th style="text-align:right;">Giá trị lệch tiền</th>
+                <th>Lý do chênh lệch</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${rowsHtml}
+            </tbody>
+          </table>
+        </div>
+      `;
+    }
+
+    const actionDiv = document.getElementById('auditDetailActionButtons');
+    if (actionDiv) {
+      if (isPending) {
+        actionDiv.innerHTML = `
+          <button type="button" class="secondary-btn" onclick="window.print()">
+            In báo cáo bảng đối soát
+          </button>
+          <button type="button" class="secondary-btn" style="color:#dc2626;border-color:#fca5a5;" onclick="submitRejectAuditTicket(${ticketId})">
+            Từ chối / Đếm lại
+          </button>
+          <button type="button" class="primary-btn" style="background:#16a34a;border-color:#15803d;padding:8px 18px;font-weight:700;" onclick="submitApproveAuditTicket(${ticketId})">
+            Phê Duyệt Điều Chỉnh Cân Bằng Kho
+          </button>
+        `;
+      } else {
+        actionDiv.innerHTML = `
+          <button type="button" class="primary-btn" onclick="window.print()">
+            In báo cáo biên bản kiểm kê
+          </button>
+        `;
+      }
+    }
+
+  } catch (err) {
+    const body = document.getElementById('auditDetailModalBody');
+    if (body) {
+      body.innerHTML = `<div style="text-align:center;color:red;padding:40px;">Lỗi tải chi tiết phiếu kiểm kê: ${esc(err.message)}</div>`;
+    }
+  }
+};
+
+window.submitApproveAuditTicket = async function(ticketId) {
+  if (!confirm('Xác nhận PHÊ DUYỆT phiếu kiểm kê này? Hệ thống sẽ chính thức cập nhật tồn kho theo số lượng thực tế đếm được và ghi vết thẻ kho.')) {
+    return;
+  }
+
+  try {
+    const res = await api(`Inventory/audit-tickets/${ticketId}/approve`, 'POST');
+    toast(`Đã phê duyệt và cân bằng tồn kho thành công cho phiếu [${res.ticketCode}]!`, 'success');
+    document.getElementById('auditTicketDetailModal').style.display = 'none';
+
+    if (currentView === 'inventory-audit') {
+      await loadAuditTicketsData();
+    } else if (currentView === 'inventory') {
+      await loadSplitInventoryData();
+      await loadSplitStockMovementData();
+    }
+  } catch (err) {
+    toast(`Không thể phê duyệt phiếu kiểm kê: ${err.message}`, 'error');
+  }
+};
+
+window.submitRejectAuditTicket = async function(ticketId) {
+  const reason = prompt('Nhập lý do từ chối / yêu cầu kiểm đếm lại:', 'Số lượng chênh lệch bất thường, yêu cầu kiểm đếm lại');
+  if (reason === null) return;
+
+  try {
+    const res = await api(`Inventory/audit-tickets/${ticketId}/reject`, 'POST', { reason });
+    toast(`Đã từ chối phiếu kiểm kê [${res.ticketCode}]. Tồn kho không bị thay đổi.`, 'info');
+    document.getElementById('auditTicketDetailModal').style.display = 'none';
+
+    if (currentView === 'inventory-audit') {
+      await loadAuditTicketsData();
+    }
+  } catch (err) {
+    toast(`Không thể từ chối phiếu: ${err.message}`, 'error');
   }
 };

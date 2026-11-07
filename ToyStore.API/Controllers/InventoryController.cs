@@ -163,5 +163,99 @@ namespace ToyStoreManagement.API.Controllers
             var report = await _inventoryService.GetStockMovementReportAsync(filter);
             return Ok(report);
         }
+    
+        // ══════════════════════════════════════════════════════════════════════════
+        // PHIẾU KIỂM KÊ KHO & QUY TRÌNH PHÊ DUYỆT CÂN BẰNG KHO 2 BƯỚC
+        // ══════════════════════════════════════════════════════════════════════════
+
+        // POST: api/Inventory/audit-ticket
+        [HttpPost("audit-ticket")]
+        [Authorize(Policy = "AdminOrManager")]
+        public async Task<IActionResult> CreateAuditTicket([FromBody] CreateInventoryAuditTicketDto dto)
+        {
+            try
+            {
+                var userId = User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value
+                    ?? User.FindFirst("sub")?.Value ?? "system";
+                var userName = User.FindFirst("fullName")?.Value
+                    ?? User.FindFirst(System.Security.Claims.ClaimTypes.Name)?.Value ?? "Nhân viên kho";
+
+                var result = await _inventoryService.CreateAuditTicketAsync(dto, userId, userName);
+                return Ok(result);
+            }
+            catch (Exception ex)
+            {
+                return BadRequest(new { message = ex.Message });
+            }
+        }
+
+        // GET: api/Inventory/audit-tickets
+        [HttpGet("audit-tickets")]
+        [Authorize(Policy = "AdminOrManager")]
+        public async Task<IActionResult> GetAllAuditTickets([FromQuery] int? status)
+        {
+            var result = await _inventoryService.GetAllAuditTicketsAsync(status);
+            return Ok(result);
+        }
+
+        // GET: api/Inventory/audit-tickets/5
+        [HttpGet("audit-tickets/{id}")]
+        [Authorize(Policy = "AdminOrManager")]
+        public async Task<IActionResult> GetAuditTicketById(int id)
+        {
+            var result = await _inventoryService.GetAuditTicketByIdAsync(id);
+            if (result == null)
+                return NotFound(new { message = "Không tìm thấy phiếu kiểm kê kho." });
+
+            return Ok(result);
+        }
+
+        // POST: api/Inventory/audit-tickets/5/approve
+        [HttpPost("audit-tickets/{id}/approve")]
+        [Authorize(Policy = "AdminOrManager")]
+        public async Task<IActionResult> ApproveAuditTicket(int id)
+        {
+            try
+            {
+                var userId = User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value
+                    ?? User.FindFirst("sub")?.Value ?? "manager";
+                var userName = User.FindFirst("fullName")?.Value
+                    ?? User.FindFirst(System.Security.Claims.ClaimTypes.Name)?.Value ?? "Quản lý kho";
+
+                var result = await _inventoryService.ApproveAuditTicketAsync(id, userId, userName);
+                return Ok(result);
+            }
+            catch (Exception ex)
+            {
+                return BadRequest(new { message = ex.Message });
+            }
+        }
+
+        // POST: api/Inventory/audit-tickets/5/reject
+        [HttpPost("audit-tickets/{id}/reject")]
+        [Authorize(Policy = "AdminOrManager")]
+        public async Task<IActionResult> RejectAuditTicket(int id, [FromBody] RejectAuditDto? dto)
+        {
+            try
+            {
+                var userId = User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value
+                    ?? User.FindFirst("sub")?.Value ?? "manager";
+                var userName = User.FindFirst("fullName")?.Value
+                    ?? User.FindFirst(System.Security.Claims.ClaimTypes.Name)?.Value ?? "Quản lý kho";
+
+                var result = await _inventoryService.RejectAuditTicketAsync(id, userId, userName, dto?.Reason);
+                return Ok(result);
+            }
+            catch (Exception ex)
+            {
+                return BadRequest(new { message = ex.Message });
+            }
+        }
+
     }
+    public class RejectAuditDto
+    {
+        public string? Reason { get; set; }
+    }
+
 }

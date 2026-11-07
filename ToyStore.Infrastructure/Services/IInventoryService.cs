@@ -26,5 +26,12 @@ namespace ToyStoreManagement.Application.Interfaces.Services
         Task<InventoryDto> AuditStockAsync(InventoryAuditDto dto);
 
         Task<IEnumerable<StockMovementSummaryDto>> GetStockMovementReportAsync(StockMovementFilterDto filter);
+
+        // Quy trình kiểm kê kho & đối soát chênh lệch 2 bước:
+        Task<InventoryAuditTicketDto> CreateAuditTicketAsync(CreateInventoryAuditTicketDto dto, string userId, string userName);
+        Task<IEnumerable<InventoryAuditTicketDto>> GetAllAuditTicketsAsync(int? status = null);
+        Task<InventoryAuditTicketDto?> GetAuditTicketByIdAsync(int ticketId);
+        Task<InventoryAuditTicketDto> ApproveAuditTicketAsync(int ticketId, string approvedByUserId, string approvedByName);
+        Task<InventoryAuditTicketDto> RejectAuditTicketAsync(int ticketId, string rejectedByUserId, string rejectedByName, string? reason);
     }
 }
