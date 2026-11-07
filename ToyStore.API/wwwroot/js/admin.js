@@ -430,7 +430,8 @@ function navigate() {
   } else if (hash === 'inventory') {
     renderInventorySplitView('split');
   } else if (hash === 'stock-movement') {
-    renderStockMovementReport();
+    window.location.hash = '#inventory';
+    return;
   } else if (hash === 'goods-receipt') {
     renderGoodsReceiptView();
   } else if (hash === 'inventory-audit') {
@@ -8136,7 +8137,7 @@ async function renderInventorySplitView(initialMode = 'split') {
           <h2 style="margin:0;font-size:18px;font-weight:800;color:var(--slate-800);display:flex;align-items:center;gap:8px;">
             Quản Lý Tồn Kho Khả Dụng &amp; Báo Cáo Xuất - Nhập - Tồn (X-N-T)
           </h2>
-          <span class="badge" style="background:#e0e7ff;color:#3730a3;font-size:11.5px;font-weight:700;">Split View Màn Hình Kép</span>
+          
         </div>
         <p style="margin:3px 0 0;font-size:12.5px;color:var(--slate-500);">
           Bên trái: Giám sát tồn thực, tạm giữ và cảnh báo an toàn | Bên phải: Báo cáo biến động Xuất - Nhập - Tồn chuẩn kế toán
@@ -8412,8 +8413,8 @@ function filterSplitInventoryRows() {
         <td style="text-align:right;font-weight:800;color:var(--primary);padding:8px 10px;">${avail}</td>
         <td style="text-align:center;padding:8px 10px;">${alertBadge}</td>
         <td style="text-align:center;padding:8px 8px;">
-          <button type="button" class="icon-action-btn" title="Cân bằng kho / Kiểm kê nhanh" onclick="openQuickInventoryBalanceModal(${vId}, '${esc(sku)}', '${esc(name)}', ${total})">
-            ️
+          <button type="button" class="secondary-btn" style="padding:4px 10px;font-size:12px;font-weight:600;white-space:nowrap;display:inline-flex;align-items:center;gap:4px;" data-vid="${vId}" data-sku="${esc(sku)}" data-name="${esc(name)}" data-qty="${total}" onclick="handleQuickBalanceClick(this)" title="Cân bằng kho cho biến thể này">
+            Cân bằng
           </button>
         </td>
       </tr>
@@ -8431,29 +8432,59 @@ async function loadSplitStockMovementData() {
   const pFilter = document.getElementById('splitSmProductFilter')?.value || '';
 
   try {
-    const [txs, variants, prods] = await Promise.all([
+    const [txs, invs, prods] = await Promise.all([
       api('InventoryTransaction'),
-      api('ProductVariant'),
+      api('Inventory'),
       api('Product')
     ]);
 
     const txList = Array.isArray(txs) ? txs : (txs?.items || []);
-    const variantList = Array.isArray(variants) ? variants : (variants?.items || []);
+    const invList = Array.isArray(invs) ? invs : (invs?.items || []);
     const productList = Array.isArray(prods) ? prods : (prods?.items || []);
 
     const fromTime = fromDate ? new Date(`${fromDate}T00:00:00Z`).getTime() : 0;
     const toTime = toDate ? new Date(`${toDate}T23:59:59.999Z`).getTime() : Infinity;
 
-    // Aggregation per variant
+    // Aggregation per variant from invList & productList
     const statsMap = new Map();
-    for (const v of variantList) {
+    const varMap = new Map();
+
+    invList.forEach(i => {
+      varMap.set(i.variantId, {
+        variantId: i.variantId,
+        productId: i.productId,
+        sku: i.sku || `SKU-${i.variantId}`,
+        name: i.productName || 'Đồ chơi',
+        costPrice: Number(i.costPrice || 0)
+      });
+    });
+
+    productList.forEach(p => {
+      const pId = p.id || p.productId;
+      (p.productVariants || []).forEach(v => {
+        if (!varMap.has(v.variantId)) {
+          varMap.set(v.variantId, {
+            variantId: v.variantId,
+            productId: pId,
+            sku: v.sku || `SKU-${v.variantId}`,
+            name: p.name || 'Đồ chơi',
+            costPrice: Number(v.costPrice || 0)
+          });
+        } else {
+          const item = varMap.get(v.variantId);
+          item.productId = pId;
+          if (!item.costPrice && v.costPrice) item.costPrice = Number(v.costPrice);
+        }
+      });
+    });
+
+    for (const v of varMap.values()) {
       if (pFilter && Number(v.productId) !== Number(pFilter)) continue;
-      const prod = productList.find(p => (p.id || p.productId) === v.productId);
       statsMap.set(v.variantId, {
         variantId: v.variantId,
-        sku: v.sku || `SKU-${v.variantId}`,
-        name: prod?.name || `Sản phẩm #${v.productId}`,
-        costPrice: Number(v.costPrice || 0),
+        sku: v.sku,
+        name: v.name,
+        costPrice: v.costPrice,
         opening: 0,
         inQty: 0,
         outQty: 0,
@@ -8545,6 +8576,16 @@ async function loadSplitStockMovementData() {
 window.loadSplitStockMovementData = loadSplitStockMovementData;
 
 // QUICK INVENTORY BALANCE MODAL
+
+window.handleQuickBalanceClick = function(btn) {
+  if (!btn) return;
+  const vId = Number(btn.getAttribute('data-vid') || 0);
+  const sku = btn.getAttribute('data-sku') || '';
+  const name = btn.getAttribute('data-name') || '';
+  const total = Number(btn.getAttribute('data-qty') || 0);
+  openQuickInventoryBalanceModal(vId, sku, name, total);
+};
+
 window.openQuickInventoryBalanceModal = function(variantId, sku, name, currentQty) {
   let modal = document.getElementById('quickInvBalanceModal');
   if (!modal) {
@@ -8833,17 +8874,48 @@ window.openGoodsReceiptModal = async function(receiptId) {
   modal.style.display = 'flex';
 
   try {
-    const [receipt, inventories, variants, products] = await Promise.all([
+    const [receipt, inventories, products] = await Promise.all([
       api(`ImportReceipt/${receiptId}`),
       api('Inventory'),
-      api('ProductVariant'),
       api('Product')
     ]);
 
     currentInspectingReceipt = receipt;
     const invList = Array.isArray(inventories) ? inventories : (inventories?.items || []);
-    const varList = Array.isArray(variants) ? variants : (variants?.items || []);
     const prodList = Array.isArray(products) ? products : (products?.items || []);
+
+    const varMap = new Map();
+    invList.forEach(i => {
+      varMap.set(i.variantId, {
+        variantId: i.variantId,
+        productId: i.productId,
+        sku: i.sku || `SKU-${i.variantId}`,
+        name: i.productName || 'Đồ chơi',
+        costPrice: Number(i.costPrice || 0),
+        price: Number(i.price || 0)
+      });
+    });
+    prodList.forEach(p => {
+      const pId = p.id || p.productId;
+      (p.productVariants || []).forEach(v => {
+        if (!varMap.has(v.variantId)) {
+          varMap.set(v.variantId, {
+            variantId: v.variantId,
+            productId: pId,
+            sku: v.sku || `SKU-${v.variantId}`,
+            name: p.name || 'Đồ chơi',
+            costPrice: Number(v.costPrice || 0),
+            price: Number(v.price || 0)
+          });
+        } else {
+          const item = varMap.get(v.variantId);
+          item.productId = pId;
+          if (!item.costPrice && v.costPrice) item.costPrice = Number(v.costPrice);
+          if (!item.price && v.price) item.price = Number(v.price);
+        }
+      });
+    });
+    const varList = Array.from(varMap.values());
 
     const sub = document.getElementById('grModalSubtitle');
     if (sub) {
@@ -8880,7 +8952,7 @@ window.openGoodsReceiptModal = async function(receiptId) {
         <tr class="gr-item-row" data-detail-id="${d.importReceiptDetailId}" data-variant-id="${d.variantId}" data-old-stock="${oldStock}" data-old-cost="${oldCost}" data-unit-cost="${unitCost}" data-current-price="${currentPrice}">
           <td style="padding:10px 12px;">
             <strong style="color:var(--slate-800);font-size:13px;">${esc(v.sku || `SKU-${d.variantId}`)}</strong>
-            <div style="font-size:12px;color:var(--slate-600);">${esc(prod.name || 'Sản phẩm')} ${v.color ? `(${esc(v.color)})` : ''}</div>
+            <div style="font-size:12px;color:var(--slate-600);">${esc(prodName)} ${v.color ? `(${esc(v.color)})` : ''}</div>
             <div style="font-size:11px;color:var(--slate-400);margin-top:2px;">Tồn cũ kho: <strong>${oldStock}</strong> | Giá vốn cũ: ${money(oldCost)}</div>
           </td>
           <td style="text-align:right;padding:10px 10px;font-weight:600;">${orderedQty}</td>
@@ -9115,7 +9187,7 @@ async function renderInventoryAuditView() {
         <div class="panel-title-area">
           <div style="display:flex;align-items:center;gap:10px;">
             <h2 style="margin:0;font-size:20px;font-weight:800;color:var(--slate-800);">Phiếu Kiểm Kê Kho &amp; Đối Soát Cân Bằng Tồn</h2>
-            <span class="badge" style="background:#e0e7ff;color:#3730a3;font-size:12px;font-weight:700;">Quy Trình Phê Duyệt 2 Bước</span>
+            
           </div>
           <p style="margin:4px 0 0;color:var(--slate-500);font-size:13px;">
             Bước 1: Nhân viên kiểm đếm thực tế, bảng đối soát tự động tính chênh lệch thừa/thiếu → Bước 2: Quản lý xem xét và <strong>phê duyệt điều chỉnh cân bằng kho</strong>.
@@ -9341,22 +9413,53 @@ window.openCreateAuditTicketModal = async function() {
   modal.style.display = 'flex';
 
   try {
-    const [invs, prods, vars] = await Promise.all([
+    const [invs, prods] = await Promise.all([
       api('Inventory'),
-      api('Product'),
-      api('ProductVariant')
+      api('Product')
     ]);
 
     const invList = Array.isArray(invs) ? invs : (invs?.items || []);
     const prodList = Array.isArray(prods) ? prods : (prods?.items || []);
-    const varList = Array.isArray(vars) ? vars : (vars?.items || []);
+
+    const varMap = new Map();
+    invList.forEach(i => {
+      varMap.set(i.variantId, {
+        variantId: i.variantId,
+        productId: i.productId,
+        sku: i.sku || `SKU-${i.variantId}`,
+        name: i.productName || 'Sản phẩm',
+        color: i.color || '',
+        costPrice: Number(i.costPrice || 0),
+        sysQty: Number(i.quantity || 0)
+      });
+    });
+    prodList.forEach(p => {
+      const pId = p.id || p.productId;
+      (p.productVariants || []).forEach(v => {
+        if (!varMap.has(v.variantId)) {
+          varMap.set(v.variantId, {
+            variantId: v.variantId,
+            productId: pId,
+            sku: v.sku || `SKU-${v.variantId}`,
+            name: p.name || 'Sản phẩm',
+            color: v.color || '',
+            costPrice: Number(v.costPrice || 0),
+            sysQty: 0
+          });
+        } else {
+          const item = varMap.get(v.variantId);
+          item.productId = pId;
+          if (!item.color && v.color) item.color = v.color;
+          if (!item.costPrice && v.costPrice) item.costPrice = Number(v.costPrice);
+        }
+      });
+    });
+    const varList = Array.from(varMap.values());
 
     const rowsHtml = varList.map(v => {
-      const prod = prodList.find(p => (p.id || p.productId) === v.productId) || {};
-      const inv = invList.find(i => i.variantId === v.variantId) || { quantity: 0 };
-
-      const sysQty = Number(inv.quantity || 0);
+      const sysQty = Number(v.sysQty ?? (invList.find(i => i.variantId === v.variantId)?.quantity || 0));
       const cost = Number(v.costPrice || 0);
+      const prodName = v.name || prodList.find(p => (p.id || p.productId) === v.productId)?.name || 'Sản phẩm';
 
       return `
         <tr class="audit-input-row" data-variant-id="${v.variantId}" data-sys-qty="${sysQty}" data-cost="${cost}">

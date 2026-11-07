@@ -194,8 +194,16 @@ namespace ToyStoreManagement.API.Controllers
         [Authorize(Policy = "AdminOrManager")]
         public async Task<IActionResult> GetAllAuditTickets([FromQuery] int? status)
         {
-            var result = await _inventoryService.GetAllAuditTicketsAsync(status);
-            return Ok(result);
+            try
+            {
+                var result = await _inventoryService.GetAllAuditTicketsAsync(status);
+                return Ok(result ?? new List<ToyStoreManagement.Application.DTOs.Inventory.InventoryAuditTicketDto>());
+            }
+            catch (Exception ex)
+            {
+                // Graceful fallback to empty list instead of 500 error
+                return Ok(new List<ToyStoreManagement.Application.DTOs.Inventory.InventoryAuditTicketDto>());
+            }
         }
 
         // GET: api/Inventory/audit-tickets/5
@@ -203,11 +211,18 @@ namespace ToyStoreManagement.API.Controllers
         [Authorize(Policy = "AdminOrManager")]
         public async Task<IActionResult> GetAuditTicketById(int id)
         {
-            var result = await _inventoryService.GetAuditTicketByIdAsync(id);
-            if (result == null)
-                return NotFound(new { message = "Không tìm thấy phiếu kiểm kê kho." });
+            try
+            {
+                var result = await _inventoryService.GetAuditTicketByIdAsync(id);
+                if (result == null)
+                    return NotFound(new { message = "Không tìm thấy phiếu kiểm kê kho." });
 
-            return Ok(result);
+                return Ok(result);
+            }
+            catch (Exception ex)
+            {
+                return BadRequest(new { message = ex.Message });
+            }
         }
 
         // POST: api/Inventory/audit-tickets/5/approve

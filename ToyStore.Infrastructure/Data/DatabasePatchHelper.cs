@@ -445,6 +445,53 @@ namespace ToyStoreManagement.Infrastructure.Data
                 {
                     Console.WriteLine($"[Patch 15 Warning] {ex15.Message}");
                 }
+
+                // 16. Bổ sung bảng Phiếu kiểm kê kho & đối soát chênh lệch (InventoryAuditTickets & InventoryAuditTicketDetails)
+                try
+                {
+                    await context.Database.ExecuteSqlRawAsync(@"
+                        IF NOT EXISTS (SELECT 1 FROM sys.tables WHERE name = 'InventoryAuditTickets')
+                        BEGIN
+                            CREATE TABLE [dbo].[InventoryAuditTickets] (
+                                [AuditTicketId] int IDENTITY(1,1) NOT NULL PRIMARY KEY,
+                                [TicketCode] nvarchar(50) NOT NULL,
+                                [CreatedByUserId] nvarchar(450) NOT NULL,
+                                [CreatedByName] nvarchar(150) NOT NULL,
+                                [CreatedAt] datetime2 NOT NULL DEFAULT GETUTCDATE(),
+                                [Status] int NOT NULL DEFAULT 1,
+                                [ApprovedByUserId] nvarchar(450) NULL,
+                                [ApprovedByName] nvarchar(150) NULL,
+                                [ApprovedAt] datetime2 NULL,
+                                [Note] nvarchar(500) NULL,
+                                [TotalItems] int NOT NULL DEFAULT 0,
+                                [TotalDiscrepancyQty] int NOT NULL DEFAULT 0,
+                                [TotalDiscrepancyValue] decimal(18,2) NOT NULL DEFAULT 0
+                            );
+                        END
+
+                        IF NOT EXISTS (SELECT 1 FROM sys.tables WHERE name = 'InventoryAuditTicketDetails')
+                        BEGIN
+                            CREATE TABLE [dbo].[InventoryAuditTicketDetails] (
+                                [DetailId] int IDENTITY(1,1) NOT NULL PRIMARY KEY,
+                                [AuditTicketId] int NOT NULL,
+                                [VariantId] int NOT NULL,
+                                [SystemQuantity] int NOT NULL DEFAULT 0,
+                                [ActualQuantity] int NOT NULL DEFAULT 0,
+                                [DiscrepancyQuantity] int NOT NULL DEFAULT 0,
+                                [CostPrice] decimal(18,2) NOT NULL DEFAULT 0,
+                                [DiscrepancyValue] decimal(18,2) NOT NULL DEFAULT 0,
+                                [DiscrepancyReason] nvarchar(255) NULL,
+                                [Note] nvarchar(500) NULL,
+                                CONSTRAINT [FK_InventoryAuditTicketDetails_InventoryAuditTickets] FOREIGN KEY ([AuditTicketId]) REFERENCES [dbo].[InventoryAuditTickets] ([AuditTicketId]) ON DELETE CASCADE,
+                                CONSTRAINT [FK_InventoryAuditTicketDetails_ProductVariants] FOREIGN KEY ([VariantId]) REFERENCES [dbo].[ProductVariants] ([VariantId])
+                            );
+                        END
+                    ");
+                }
+                catch (Exception ex16)
+                {
+                    Console.WriteLine($"[Patch 16 Warning] {ex16.Message}");
+                }
             }
             catch (Exception ex)
             {
