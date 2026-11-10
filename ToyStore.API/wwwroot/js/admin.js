@@ -65,7 +65,19 @@ const MODULES = {
   orders: {
     title: 'Đơn hàng', kicker: 'VẬN HÀNH & GIAO NHẬN',
     endpoint: 'Order',
-    columns: ['<input type="checkbox" id="chkSelectAllOrders" onchange="toggleAllOrdersSelection(this)" title="Chọn tất cả"> Mã đơn', 'Khách hàng', 'SĐT', 'Ngày đặt', 'Lô giao', 'Shipper', 'Dự kiến giao', 'Giá trị', 'Thanh toán', 'Trạng thái đơn', 'Tình trạng giao', 'Lấy hàng tại kho', 'Bắt đầu giao', 'Ngày nhận', 'Thời gian giao'],
+    columns: [
+      '<input type="checkbox" id="chkSelectAllOrders" onchange="toggleAllOrdersSelection(this)" title="Chọn tất cả"> Mã đơn',
+      'Thao tác',
+      'Khách hàng',
+      'Ngày đặt',
+      'Giá trị',
+      'Thanh toán',
+      'Trạng thái đơn',
+      'Tình trạng giao',
+      'Shipper',
+      'Lô giao',
+      'Dự kiến giao'
+    ],
     canAdd: false, canEdit: true, canDelete: false
   },
   collections: {
@@ -1493,7 +1505,7 @@ async function renderLiquidation() {
             <td>${(receipt.details || []).map(detail => `${esc(detail.productName)} · ${esc(detail.sku)} × ${detail.quantity}`).join('<br>')}</td>
             <td>${fmtDateTime(receipt.createdAt)}</td>
             <td>${pill(Number(receipt.status) === 1 ? 'Đã hoàn tất' : (Number(receipt.status) === 2 ? 'Đã hủy' : 'Chờ xác nhận'), Number(receipt.status) === 1 ? 'success' : (Number(receipt.status) === 2 ? 'neutral' : 'warning'))}</td>
-            <td style="text-align:right;">${Number(receipt.status) === 0 ? `<button class="primary-btn" style="padding:8px 11px;" onclick="completeLiquidationReceipt(${receipt.liquidationReceiptId})">Xác nhận xuất kho</button> <button class="ghost-btn" onclick="cancelLiquidationReceipt(${receipt.liquidationReceiptId})">Hủy</button>` : ''}</td>
+            <td style="text-align:right;">${Number(receipt.status) === 0 ? (['admin', 'manager'].includes(userRole) ? `<button class="primary-btn" style="padding:8px 11px;" onclick="completeLiquidationReceipt(${receipt.liquidationReceiptId})">Xác nhận xuất kho</button> <button class="ghost-btn" onclick="cancelLiquidationReceipt(${receipt.liquidationReceiptId})">Hủy</button>` : '<span style="font-size:12px;color:var(--slate-500);font-weight:600;">Chờ quản lý duyệt</span>') : ''}</td>
           </tr>`).join('') : '<tr><td colspan="5" style="text-align:center;padding:30px;color:var(--slate-500);">Chưa có phiếu thanh lý.</td></tr>'}
         </tbody></table></div>
       </div>`;
@@ -2209,7 +2221,7 @@ async function renderList(key) {
           <thead>
             <tr>
               ${m.columns.map(c => `<th>${c}</th>`).join('')}
-              <th style="text-align:right;min-width:110px;">Thao tác</th>
+              ${key !== 'orders' ? '<th style="text-align:right;min-width:110px;">Thao tác</th>' : ''}
             </tr>
           </thead>
           <tbody id="listTableBody">
@@ -2540,9 +2552,11 @@ function renderTableRows(key, list) {
   tbody.innerHTML = list.map((record, index) => `
     <tr>
       ${getRowCells(key, record).map(cell => `<td>${cell}</td>`).join('')}
-      <td style="text-align:right;white-space:nowrap;">
-        ${getRowActions(key, record, index)}
-      </td>
+      ${key !== 'orders' ? `
+        <td style="text-align:right;white-space:nowrap;">
+          ${getRowActions(key, record, index)}
+        </td>
+      ` : ''}
     </tr>
   `).join('');
 }
@@ -2906,31 +2920,36 @@ function getRowCells(key, r) {
       ];
     }
 
-    case 'orders':
+    case 'orders': {
+      let actionBtns = `<button type="button" class="primary-btn" style="padding:4px 10px;font-size:12px;font-weight:700;display:inline-flex;align-items:center;gap:4px;white-space:nowrap;" onclick="showOrderDetail(${r.orderId})">${iconSvg('view', 13)} Xử lý đơn</button>`;
+      if (r.shipping?.deliveryBatchCode && Number(r.status) < 3) {
+        actionBtns += ` <button type="button" class="icon-action-btn del" title="Gỡ đơn này khỏi mã lô" onclick="unbatchOrderAction(${r.orderId})">${iconSvg('close', 13)}</button>`;
+      }
+      if (Number(r.status) < 4) {
+        actionBtns += ` <button type="button" class="icon-action-btn" title="Gán / Đổi shipper" onclick="showAssignShipperModal(${r.orderId}, '${esc(r.shipping?.deliveryBatchCode || '')}')">${iconSvg('truck', 13)}</button>`;
+      }
+
       return [
-        `<div style="display:flex;align-items:center;gap:8px;">
+        `<div style="display:flex;align-items:center;gap:8px;white-space:nowrap;">
           <input type="checkbox" class="order-batch-chk" data-order-id="${r.orderId}" onchange="toggleOrderSelection(${r.orderId}, this)" ${selectedOrderIdsForBatch.has(r.orderId) ? 'checked' : ''}>
           <strong>#${esc(r.orderCode || r.orderId)}</strong>
         </div>`,
-        esc(r.customerName || r.shipping?.receiverName || 'Khách vãng lai'),
-        esc(r.phoneNumber || r.shipping?.receiverPhone || '—'),
-        fmtDate(r.orderDate || r.createdAt),
-        r.shipping?.deliveryBatchCode 
-          ? `<span class="badge" style="background:#e0e7ff;color:#3730a3;font-weight:700;">${esc(r.shipping.deliveryBatchCode)}</span>` 
-          : `<span style="color:var(--slate-400);font-size:12px;">Chưa gộp</span>`,
-        r.shipping?.shipperName
-          ? `<div><strong>${esc(r.shipping.shipperName)}</strong><br><small style="color:var(--slate-500);">${esc(r.shipping.shipperPhone || '')}</small></div>`
-          : `<button class="secondary-btn" style="padding:2px 8px;font-size:11px;" onclick="showAssignShipperModal(${r.orderId}, '${esc(r.shipping?.deliveryBatchCode || '')}')">+ Gán</button>`,
-        fmtDeliveryWindow(r.shipping?.estimatedDeliveryFromDate || r.shipping?.estimatedDeliveryAt, r.shipping?.estimatedDeliveryToDate),
-        `<strong style="color:var(--primary);">${money(r.finalAmount || r.totalAmount)}</strong>`,
+        `<div style="white-space:nowrap;">${actionBtns}</div>`,
+        `<div><strong>${esc(r.customerName || r.shipping?.receiverName || 'Khách vãng lai')}</strong><br><small style="color:var(--slate-500);">${esc(r.phoneNumber || r.shipping?.receiverPhone || '—')}</small></div>`,
+        `<span style="white-space:nowrap;">${fmtDate(r.orderDate || r.createdAt)}</span>`,
+        `<strong style="color:var(--primary);white-space:nowrap;">${money(r.finalAmount || r.totalAmount)}</strong>`,
         pill(r.paymentStatus === 1 ? 'Đã thanh toán' : 'Chưa thanh toán', r.paymentStatus === 1 ? 'success' : 'neutral'),
         pill(ORDER_STATUS_LABELS[r.status] || 'Đang xử lý', r.status === 4 ? 'success' : (r.status === 5 ? 'danger' : 'warning')),
         `${getDeliveryStatusBadge(r)}${isOrderOverdueUndelivered(r) ? `<br><span class="pill danger" style="display:inline-block;margin-top:4px;">Quá hạn ${daysPastDeliveryDeadline(r)} ngày</span>` : ''}`,
-        fmtDateTime(r.shipping?.shippedAt),
-        fmtDateTime(r.shipping?.deliveryStartedAt),
-        fmtDateTime(r.shipping?.deliveredAt),
-        formatOrderDeliveryDuration(r)
+        r.shipping?.shipperName
+          ? `<div><strong>${esc(r.shipping.shipperName)}</strong><br><small style="color:var(--slate-500);">${esc(r.shipping.shipperPhone || '')}</small></div>`
+          : `<button class="secondary-btn" style="padding:2px 8px;font-size:11px;" onclick="showAssignShipperModal(${r.orderId}, '${esc(r.shipping?.deliveryBatchCode || '')}')">+ Gán</button>`,
+        r.shipping?.deliveryBatchCode 
+          ? `<span class="badge" style="background:#e0e7ff;color:#3730a3;font-weight:700;">${esc(r.shipping.deliveryBatchCode)}</span>` 
+          : `<span style="color:var(--slate-400);font-size:12px;">Chưa gộp</span>`,
+        `<span style="white-space:nowrap;">${fmtDeliveryWindow(r.shipping?.estimatedDeliveryFromDate || r.shipping?.estimatedDeliveryAt, r.shipping?.estimatedDeliveryToDate)}</span>`
       ];
+    }
 
     case 'shippers':
       return [
@@ -8159,9 +8178,7 @@ async function renderInventorySplitView(initialMode = 'split') {
           </h2>
           
         </div>
-        <p style="margin:3px 0 0;font-size:12.5px;color:var(--slate-500);">
-          Bên trái: Giám sát tồn thực, tạm giữ và cảnh báo an toàn | Bên phải: Báo cáo biến động Xuất - Nhập - Tồn chuẩn kế toán
-        </p>
+
       </div>
 
       <!-- LAYOUT SWITCHER TABS -->
@@ -8191,7 +8208,7 @@ async function renderInventorySplitView(initialMode = 'split') {
               <h3 style="margin:0;font-size:15px;font-weight:700;color:var(--slate-800);display:flex;align-items:center;gap:6px;">
                 Tồn Kho Khả Dụng &amp; Cảnh Báo An Toàn
               </h3>
-              <span id="splitInvCountBadge" style="font-size:11.5px;color:var(--slate-500);">Đang tải dữ liệu biến thể...</span>
+
             </div>
             <div style="display:flex;gap:6px;">
               <button type="button" class="primary-btn" style="padding:5px 10px;font-size:12px;" onclick="openCreateAuditTicketModal()" title="Lập phiếu kiểm kê đợt mới">
@@ -8249,7 +8266,7 @@ async function renderInventorySplitView(initialMode = 'split') {
               <h3 style="margin:0;font-size:15px;font-weight:700;color:var(--slate-800);display:flex;align-items:center;gap:6px;">
                 Báo Cáo Biến Động Xuất - Nhập - Tồn (X-N-T)
               </h3>
-              <p style="margin:2px 0 0;font-size:11.5px;color:var(--slate-500);">Công thức chuẩn: Tồn đầu + Nhập - Xuất = Tồn cuối kỳ</p>
+
             </div>
             <div style="display:flex;gap:6px;">
               <button type="button" class="secondary-btn" style="padding:5px 10px;font-size:12px;" onclick="exportStockMovementToExcel()">
@@ -8365,7 +8382,7 @@ async function loadSplitInventoryData() {
     currentSplitInventoryVariants = items;
 
     if (badge) {
-      badge.textContent = `Tổng cộng ${items.length} biến thể đồ chơi`;
+      // badge removed as requested
     }
     filterSplitInventoryRows();
   } catch (err) {
@@ -8704,7 +8721,7 @@ async function renderGoodsReceiptView() {
 
   app.innerHTML = `
     <div class="panel">
-      <div class="panel-header" style="flex-wrap:wrap;gap:14px;">
+      <div class="panel-header">
         <div class="panel-title-area">
           <div style="display:flex;align-items:center;gap:10px;">
             <h2 style="margin:0;font-size:20px;font-weight:800;color:var(--slate-800);">Phiếu Nhập Hàng (Kiểm Đếm &amp; Duyệt Giá Mới)</h2>
@@ -8714,13 +8731,13 @@ async function renderGoodsReceiptView() {
             Tiếp nhận lô hàng thực tế từ Nhà cung cấp, kiểm đếm số lượng đạt chuẩn / lỗi rách vỡ bao bì, tự động tính giá vốn BQ gia quyền và <strong>duyệt giá bán lẻ mới</strong>.
           </p>
         </div>
-        <div style="display:flex;gap:8px;">
-          <a href="#imports" class="secondary-btn" style="text-decoration:none;">
-            + Lập phiếu đặt hàng NCC
-          </a>
+        <div class="panel-actions">
           <button type="button" class="secondary-btn" onclick="loadGoodsReceiptData()">
             Làm mới
           </button>
+          <a href="#imports" class="primary-btn" style="display:inline-flex;align-items:center;gap:6px;text-decoration:none;">
+            <span>+</span> Lập phiếu đặt hàng NCC
+          </a>
         </div>
       </div>
 
@@ -9207,24 +9224,61 @@ async function renderInventoryAuditView() {
     el.classList.toggle('active', el.getAttribute('data-view') === 'inventory-audit');
   });
 
+  const isStaffOnly = userRole === 'staff';
+
+  if (isStaffOnly) {
+    app.innerHTML = `
+      <div class="panel">
+        <div class="panel-header" style="justify-content:space-between;align-items:center;">
+          <div class="panel-title-area">
+            <h2 style="margin:0;font-size:20px;font-weight:800;color:var(--slate-800);">Phiếu Kiểm Kê Kho &amp; Đối Soát Cân Bằng Tồn</h2>
+            <p style="margin:4px 0 0;color:var(--slate-500);font-size:13px;">
+              Bước 1: Nhân viên kiểm đếm thực tế, bảng đối soát tự động tính chênh lệch thừa/thiếu → Bước 2: Quản lý xem xét và phê duyệt điều chỉnh cân bằng kho.
+            </p>
+          </div>
+          <div class="panel-actions">
+            <button type="button" class="primary-btn" style="background:var(--primary);padding:8px 18px;font-weight:700;" onclick="openCreateAuditTicketModal()">
+              <span>+</span> Lập phiếu kiểm kê mới
+            </button>
+          </div>
+        </div>
+
+        <div style="padding:48px 24px;text-align:center;max-width:620px;margin:0 auto;">
+          <div style="width:68px;height:68px;border-radius:50%;background:#e0e7ff;color:#4338ca;display:inline-flex;align-items:center;justify-content:center;margin-bottom:18px;">
+            <svg width="34" height="34" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><circle cx="12" cy="12" r="10"/><path d="m9 12 2 2 4-4"/></svg>
+          </div>
+          <h3 style="font-size:18px;font-weight:800;color:var(--slate-800);margin:0 0 10px;">Quy trình Kiểm đếm Thực tế tại Kho</h3>
+          <p style="font-size:14px;color:var(--slate-600);line-height:1.6;margin:0 0 24px;">
+            Nhân viên thực hiện kiểm đếm thực tế số lượng đồ chơi trên kệ kho, hệ thống tự động đối soát với tồn phần mềm và tính toán chênh lệch thừa/thiếu.<br>
+            Phiếu sau khi lập sẽ được gửi trực tiếp đến <strong>Quản lý kho</strong> để phê duyệt và tự động cân bằng tồn kho.
+          </p>
+          <button type="button" class="primary-btn" style="background:var(--primary);padding:10px 24px;font-size:14px;font-weight:700;" onclick="openCreateAuditTicketModal()">
+            + Bắt đầu lập phiếu kiểm kê
+          </button>
+        </div>
+      </div>
+    `;
+    return;
+  }
+
+  // Manager & Admin full view
   app.innerHTML = `
     <div class="panel">
-      <div class="panel-header" style="flex-wrap:wrap;gap:14px;">
+      <div class="panel-header">
         <div class="panel-title-area">
           <div style="display:flex;align-items:center;gap:10px;">
             <h2 style="margin:0;font-size:20px;font-weight:800;color:var(--slate-800);">Phiếu Kiểm Kê Kho &amp; Đối Soát Cân Bằng Tồn</h2>
-            
           </div>
           <p style="margin:4px 0 0;color:var(--slate-500);font-size:13px;">
             Bước 1: Nhân viên kiểm đếm thực tế, bảng đối soát tự động tính chênh lệch thừa/thiếu → Bước 2: Quản lý xem xét và <strong>phê duyệt điều chỉnh cân bằng kho</strong>.
           </p>
         </div>
-        <div style="display:flex;gap:8px;">
-          <button type="button" class="primary-btn" style="background:var(--primary);padding:8px 16px;font-weight:700;" onclick="openCreateAuditTicketModal()">
-            + Lập phiếu kiểm kê mới
-          </button>
+        <div class="panel-actions">
           <button type="button" class="secondary-btn" onclick="loadAuditTicketsData()">
             Làm mới
+          </button>
+          <button type="button" class="primary-btn" style="background:var(--primary);padding:8px 16px;font-weight:700;" onclick="openCreateAuditTicketModal()">
+            <span>+</span> Lập phiếu kiểm kê mới
           </button>
         </div>
       </div>
@@ -9272,6 +9326,7 @@ async function renderInventoryAuditView() {
 window.renderInventoryAuditView = renderInventoryAuditView;
 
 async function loadAuditTicketsData() {
+  if (userRole === 'staff') return;
   const tbody = document.getElementById('auditTicketsTableBody');
   if (!tbody) return;
 

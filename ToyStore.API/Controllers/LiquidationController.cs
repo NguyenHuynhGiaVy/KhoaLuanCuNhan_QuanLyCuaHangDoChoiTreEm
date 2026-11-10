@@ -8,7 +8,7 @@ namespace ToyStoreManagement.API.Controllers
 {
     [Route("api/[controller]")]
     [ApiController]
-    [Authorize(Policy = "AdminOrManager")]
+    [Authorize(Policy = "StaffAccess")]
     public class LiquidationController : ControllerBase
     {
         private readonly ILiquidationService _service;
@@ -49,6 +49,7 @@ namespace ToyStoreManagement.API.Controllers
         }
 
         [HttpPost("{id:int}/complete")]
+        [Authorize(Policy = "AdminOrManager")]
         public async Task<IActionResult> Complete(int id)
         {
             try
@@ -63,6 +64,7 @@ namespace ToyStoreManagement.API.Controllers
         }
 
         [HttpPost("{id:int}/cancel")]
+        [Authorize(Policy = "AdminOrManager")]
         public async Task<IActionResult> Cancel(int id)
         {
             try

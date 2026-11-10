@@ -644,6 +644,13 @@ function renderOrdersGroupedByBatch(orders, renderOrderCard) {
 
 // Danh sách đơn hàng đang giao
 function renderActiveOrders(orders, container) {
+  const readOnlyBanner = userRole !== 'shipper' ? `
+    <div style="background:#fffbeb;border:1px solid #fde68a;color:#92400e;padding:12px 16px;border-radius:10px;margin-bottom:16px;font-size:13px;display:flex;align-items:center;gap:10px;">
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#d97706" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+      <div><strong>Chế độ giám sát đơn hàng:</strong> Bạn đang truy cập với vai trò <strong>${esc(authUser?.role || userRole)}</strong>. Bạn chỉ có quyền <strong>xem tiến trình đơn hàng</strong>, không thể thay đổi trạng thái giao vận.</div>
+    </div>
+  ` : '';
+
   if (!orders.length) {
     const isFiltered = dateFilter !== 'all' || searchQuery.trim().length > 0;
     container.innerHTML = `
@@ -668,7 +675,7 @@ function renderActiveOrders(orders, container) {
     return;
   }
 
-  container.innerHTML = renderOrdersGroupedByBatch(orders, renderActiveOrderCard);
+  container.innerHTML = readOnlyBanner + renderOrdersGroupedByBatch(orders, renderActiveOrderCard);
 }
 
 // Card đơn hàng đang giao (Shopee / Grab / Ahamove style)
@@ -782,7 +789,11 @@ function renderActiveOrderCard(order) {
 
       <!-- Nút hành động chuẩn từng bước -->
       <div class="actions-grid">
-        ${st === 0 ? `
+        ${userRole !== 'shipper' ? `
+          <div style="font-size:12px;color:var(--slate-500);font-weight:600;padding:8px 12px;background:#f8fafc;border:1px solid var(--slate-200);border-radius:8px;text-align:center;width:100%;">
+            Chỉ xem tiến trình (Không thể thay đổi trạng thái đơn)
+          </div>
+        ` : st === 0 ? `
           <button class="btn-action btn-primary-action" onclick="acceptOrder(${order.orderId})">
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>
             <span>Tiếp nhận đơn hàng</span>
@@ -900,7 +911,7 @@ function renderHistoryOrderCard(order) {
               ${codStatus === 3 ? 'Đã xác nhận tiền vào quỹ' : codStatus === 2 ? 'Đã báo nộp — Chờ admin kiểm tra' : 'Đang giữ tiền mặt COD'}
             </span>
           </div>
-          ${codStatus === 1 ? `
+          ${codStatus === 1 && userRole === 'shipper' ? `
             <button type="button" class="date-apply-btn" style="padding:5px 10px;font-size:11px;" onclick="submitCod(${order.orderId})">
               Báo nộp tiền shop
             </button>

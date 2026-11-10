@@ -170,7 +170,7 @@ namespace ToyStoreManagement.API.Controllers
 
         // POST: api/Inventory/audit-ticket
         [HttpPost("audit-ticket")]
-        [Authorize(Policy = "AdminOrManager")]
+        [Authorize(Policy = "StaffAccess")]
         public async Task<IActionResult> CreateAuditTicket([FromBody] CreateInventoryAuditTicketDto dto)
         {
             try
