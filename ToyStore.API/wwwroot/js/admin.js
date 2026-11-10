@@ -7739,10 +7739,11 @@ window.openSupplierPriceComparisonModal = async function() {
 window.selectedOrderIdsForBatch = new Set();
 
 window.toggleOrderSelection = function(orderId, checkbox) {
+  const oId = Number(orderId);
   if (checkbox.checked) {
-    selectedOrderIdsForBatch.add(orderId);
+    selectedOrderIdsForBatch.add(oId);
   } else {
-    selectedOrderIdsForBatch.delete(orderId);
+    selectedOrderIdsForBatch.delete(oId);
   }
   updateBatchDeliveryBar();
 };
@@ -7783,15 +7784,14 @@ function updateBatchDeliveryBar() {
   bar.style.display = 'flex';
   bar.innerHTML = `
     <div style="display:flex;align-items:center;gap:12px;">
-      
       <div>
-        <div style="font-weight:700;font-size:14px;">Đã chọn ${count} đơn hàng để gom chuyến</div>
+        <div style="font-weight:700;font-size:14px;color:#ffffff;">Đã chọn ${count} đơn hàng để gom chuyến</div>
         <div style="font-size:12px;color:#c7d2fe;">Gộp thành 1 Lô giao hàng (Batch) phân công Shipper</div>
       </div>
     </div>
     <div style="display:flex;gap:8px;">
-      <button type="button" class="secondary-btn" onclick="clearBatchSelection()" style="padding:6px 12px;font-size:12px;background:rgba(255,255,255,0.15);border:none;color:#fff;">Bỏ chọn</button>
-      <button type="button" class="primary-btn" onclick="openBatchDeliveryModal()" style="padding:6px 16px;font-size:13px;background:#fbbf24;color:#1e1b4b;font-weight:700;">Gom lô &amp; Gán Shipper</button>
+      <button type="button" class="secondary-btn" onclick="clearBatchSelection()" style="padding:6px 12px;font-size:12px;background:rgba(255,255,255,0.15);border:none;color:#fff;cursor:pointer;">Bỏ chọn</button>
+      <button type="button" class="primary-btn" onclick="openBatchDeliveryModal()" style="padding:6px 16px;font-size:13px;background:#fbbf24;color:#1e1b4b;font-weight:700;cursor:pointer;border:none;">Gom lô &amp; Gán Shipper</button>
     </div>
   `;
 }
@@ -7804,94 +7804,151 @@ window.clearBatchSelection = function() {
   updateBatchDeliveryBar();
 };
 
-window.openBatchDeliveryModal = function() {
-  const oIds = Array.from(selectedOrderIdsForBatch);
-  if (!oIds.length) return;
-
-  let modal = document.getElementById('batchDeliveryAssignModal');
-  if (!modal) {
-    modal = document.createElement('div');
-    modal.id = 'batchDeliveryAssignModal';
-    modal.className = 'cart-drawer-overlay';
-    document.body.appendChild(modal);
+window.openBatchDeliveryModal = async function() {
+  const oIds = Array.from(selectedOrderIdsForBatch).map(Number);
+  if (!oIds.length) {
+    toast('Vui lòng chọn ít nhất 1 đơn hàng để gom lô.', 'warning');
+    return;
   }
 
-  const randomBatch = 'BATCH-' + new Date().toISOString().slice(0,10).replace(/-/g,'') + '-' + Math.floor(1000 + Math.random()*9000);
-  const shippers = ref.shippers || [];
+  const modalId = 'batchDeliveryAssignModal';
+  let modal = document.getElementById(modalId);
+  if (modal) modal.remove();
 
-  modal.style.display = 'flex';
-  modal.style.alignItems = 'center';
-  modal.style.justifyContent = 'center';
+  modal = document.createElement('div');
+  modal.id = modalId;
+  modal.style.cssText = 'position:fixed;inset:0;background:rgba(15,23,42,0.65);backdrop-filter:blur(4px);z-index:99999;display:flex;align-items:center;justify-content:center;padding:20px;';
 
   modal.innerHTML = `
-    <div style="background:#ffffff;border-radius:16px;width:95%;max-width:540px;padding:24px;box-shadow:var(--shadow-xl);position:relative;">
+    <div style="background:#ffffff;border-radius:16px;width:100%;max-width:560px;box-shadow:0 25px 50px -12px rgba(0,0,0,0.25);position:relative;max-height:90vh;overflow-y:auto;padding:24px;">
       <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;">
-        <h3 style="margin:0;display:flex;align-items:center;gap:8px;">Gom Lô Giao Hàng &amp; Phân Công Shipper</h3>
-        <button type="button" onclick="document.getElementById('batchDeliveryAssignModal').style.display='none'" style="border:none;background:none;font-size:24px;cursor:pointer;color:var(--slate-400);">×</button>
+        <h3 style="margin:0;font-size:18px;font-weight:700;display:flex;align-items:center;gap:8px;color:var(--slate-800);">
+          ${iconSvg('truck', 20)} Gom Lô Giao Hàng &amp; Phân Công Shipper
+        </h3>
+        <button type="button" onclick="document.getElementById('${modalId}').remove()" style="border:none;background:none;font-size:24px;cursor:pointer;color:var(--slate-400);line-height:1;">×</button>
+      </div>
+      <div style="text-align:center;padding:36px 20px;color:var(--slate-500);font-size:14px;">
+        Đang tải thông tin nhân viên giao hàng...
+      </div>
+    </div>
+  `;
+  document.body.appendChild(modal);
+
+  try {
+    const shippers = await api('Shipper');
+    const activeShippers = (shippers || []).filter(s => s.isActive !== false);
+
+    // Lấy thông tin mã đơn từ cache.orders
+    const ordersMap = new Map((cache.orders || []).map(o => [Number(o.orderId), o]));
+    const now = new Date();
+    const randomBatch = 'BATCH-' + now.toISOString().slice(0,10).replace(/-/g,'') + '-' + Math.floor(1000 + Math.random()*9000);
+
+    const contentDiv = modal.querySelector('div');
+    contentDiv.innerHTML = `
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;border-bottom:1px solid var(--slate-100);padding-bottom:12px;">
+        <h3 style="margin:0;font-size:18px;font-weight:700;display:flex;align-items:center;gap:8px;color:var(--slate-800);">
+          ${iconSvg('truck', 20)} Gom Lô Giao Hàng &amp; Phân Công Shipper
+        </h3>
+        <button type="button" onclick="document.getElementById('${modalId}').remove()" style="border:none;background:none;font-size:24px;cursor:pointer;color:var(--slate-400);line-height:1;">×</button>
       </div>
 
       <div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:10px;padding:12px 16px;margin-bottom:16px;font-size:13px;">
-        <strong>Danh sách ${oIds.length} đơn hàng được gom lô:</strong>
-        <div style="margin-top:6px;display:flex;gap:6px;flex-wrap:wrap;">
-          ${oIds.map(id => `<span class="badge" style="background:#e0e7ff;color:#3730a3;font-weight:700;">#${id}</span>`).join('')}
+        <strong style="color:var(--slate-700);">Đã chọn ${oIds.length} đơn hàng để gom lô:</strong>
+        <div style="margin-top:8px;display:flex;gap:6px;flex-wrap:wrap;max-height:110px;overflow-y:auto;padding:2px;">
+          ${oIds.map(id => {
+            const ord = ordersMap.get(id);
+            const label = ord ? `#${ord.orderCode || id}` : `#ORD-${id}`;
+            const cust = ord?.customerName || ord?.shipping?.receiverName;
+            return `<span class="badge" style="background:#e0e7ff;color:#3730a3;font-weight:700;padding:4px 8px;font-size:12px;">${esc(label)}${cust ? ` <small style="color:#6366f1;">(${esc(cust)})</small>` : ''}</span>`;
+          }).join('')}
         </div>
       </div>
 
-      <div class="form-group" style="margin-bottom:14px;">
-        <label style="display:block;font-size:12px;font-weight:700;margin-bottom:4px;">Mã Lô Giao Hàng (Batch Code) *</label>
-        <input id="batchCodeInput" class="input-control" value="${randomBatch}" required style="font-weight:700;color:var(--primary);">
+      <div class="form-group" style="margin-bottom:16px;">
+        <label style="display:block;font-size:12px;font-weight:700;margin-bottom:6px;color:var(--slate-700);">Mã Lô Giao Hàng (Batch Code) *</label>
+        <input id="batchCodeInput" class="input-control" value="${randomBatch}" required style="font-weight:700;color:var(--primary);font-size:14px;letter-spacing:0.5px;">
+        <small style="display:block;margin-top:4px;color:var(--slate-500);font-size:11.5px;">Hệ thống tự sinh mã lô hoặc bạn có thể tự đặt tên lô theo tuyến đường (VD: BATCH-Q1-SANG)</small>
       </div>
 
-      <div class="form-group" style="margin-bottom:14px;">
-        <label style="display:block;font-size:12px;font-weight:700;margin-bottom:4px;">Shipper phụ trách chuyến đi *</label>
-        <select id="batchShipperSelect" class="input-control" required>
-          <option value="">-- Chọn Shipper phụ trách lô --</option>
-          ${shippers.filter(s => s.isActive !== false).map(s => `<option value="${s.id || s.shipperId}">${esc(s.fullName)} (${esc(s.phoneNumber || '')}) - Tuyến: ${esc(s.assignedArea || 'Tất cả')}</option>`).join('')}
+      <div class="form-group" style="margin-bottom:16px;">
+        <label style="display:block;font-size:12px;font-weight:700;margin-bottom:6px;color:var(--slate-700);">Shipper phụ trách nhận toàn bộ lô *</label>
+        <select id="batchShipperSelect" class="input-control" required style="padding:9px 12px;font-size:13px;font-weight:500;">
+          <option value="">-- Chọn Shipper phụ trách lô (${activeShippers.length} shipper sẵn sàng) --</option>
+          ${activeShippers.map(s => `
+            <option value="${s.id || s.shipperId}">
+              ${esc(s.fullName)} (${esc(s.phoneNumber || '—')}) · Xe: ${esc(s.vehicleNumber || '—')} · Tuyến: ${esc(s.assignedArea || 'Linh hoạt')} [Đang giao: ${s.activeOrdersCount || 0}]
+            </option>
+          `).join('')}
         </select>
       </div>
 
       <div class="form-group" style="margin-bottom:20px;">
-        <label style="display:block;font-size:12px;font-weight:700;margin-bottom:4px;">Ghi chú điều phối tuyến đường</label>
-        <textarea id="batchNoteInput" class="input-control" rows="2" placeholder="Ví dụ: Giao tuyến Quận 1 trước 11h trưa..."></textarea>
+        <label style="display:block;font-size:12px;font-weight:700;margin-bottom:6px;color:var(--slate-700);">Ghi chú điều phối tuyến (Tùy chọn)</label>
+        <textarea id="batchNoteInput" class="input-control" rows="2" placeholder="Ghi chú tuyến đường, hẹn giờ lấy kho hoặc lưu ý giao hàng..."></textarea>
       </div>
 
-      <div style="display:flex;justify-content:flex-end;gap:10px;">
-        <button type="button" class="secondary-btn" onclick="document.getElementById('batchDeliveryAssignModal').style.display='none'">Hủy</button>
-        <button type="button" class="primary-btn" onclick="executeAssignBatchDelivery()">Xác nhận Gom Lô &amp; Phân Công</button>
+      <div style="display:flex;justify-content:flex-end;gap:10px;border-top:1px solid var(--slate-100);padding-top:16px;">
+        <button type="button" class="secondary-btn" onclick="document.getElementById('${modalId}').remove()" style="padding:8px 16px;">Hủy bỏ</button>
+        <button type="button" class="primary-btn" id="btnConfirmBatchAssign" onclick="executeAssignBatchDelivery()" style="padding:8px 20px;font-weight:700;">
+          Xác nhận Gom Lô &amp; Phân Công
+        </button>
       </div>
-    </div>
-  `;
+    `;
 
-  window.executeAssignBatchDelivery = async function() {
-    const sId = Number(document.getElementById('batchShipperSelect')?.value);
-    const bCode = document.getElementById('batchCodeInput')?.value.trim();
-    if (!sId) {
-      toast('Vui lòng chọn Shipper phụ trách lô.', 'error');
-      return;
-    }
-    if (!bCode) {
-      toast('Vui lòng nhập mã lô giao hàng.', 'error');
-      return;
-    }
+    window.executeAssignBatchDelivery = async function() {
+      const sId = Number(document.getElementById('batchShipperSelect')?.value);
+      const bCode = document.getElementById('batchCodeInput')?.value.trim();
+      const btn = document.getElementById('btnConfirmBatchAssign');
 
-    try {
-      await api('Shipper/assign-order', {
-        method: 'POST',
-        body: JSON.stringify({
-          shipperId: sId,
-          deliveryBatchCode: bCode,
-          orderIds: oIds
-        })
-      });
+      if (!sId) {
+        toast('Vui lòng chọn Shipper phụ trách lô hàng.', 'warning');
+        return;
+      }
+      if (!bCode) {
+        toast('Vui lòng nhập mã lô giao hàng.', 'warning');
+        return;
+      }
 
-      toast(`Gom lô ${bCode} và phân công ${oIds.length} đơn cho Shipper thành công!`, 'success');
-      document.getElementById('batchDeliveryAssignModal').style.display = 'none';
-      clearBatchSelection();
-      renderList('orders');
-    } catch (err) {
-      toast(`Lỗi gom lô: ${err.message}`, 'error');
+      if (btn) {
+        btn.disabled = true;
+        btn.textContent = 'Đang gom lô...';
+      }
+
+      try {
+        await api('Shipper/assign-order', {
+          method: 'POST',
+          body: JSON.stringify({
+            shipperId: sId,
+            deliveryBatchCode: bCode,
+            orderIds: oIds
+          })
+        });
+
+        toast(`Đã gom ${oIds.length} đơn thành lô "${bCode}" và phân công cho Shipper thành công!`, 'success');
+        const m = document.getElementById(modalId);
+        if (m) m.remove();
+        clearBatchSelection();
+        await renderList('orders');
+      } catch (err) {
+        toast(`Lỗi gom lô: ${err.message}`, 'error');
+        if (btn) {
+          btn.disabled = false;
+          btn.textContent = 'Xác nhận Gom Lô & Phân Công';
+        }
+      }
+    };
+  } catch (err) {
+    const contentDiv = modal.querySelector('div');
+    if (contentDiv) {
+      contentDiv.innerHTML = `
+        <div style="padding:20px;text-align:center;">
+          <div style="color:var(--danger);font-size:15px;font-weight:700;margin-bottom:12px;">Không thể tải dữ liệu Shipper</div>
+          <div style="color:var(--slate-600);font-size:13px;margin-bottom:18px;">${esc(err.message)}</div>
+          <button type="button" class="secondary-btn" onclick="document.getElementById('${modalId}').remove()">Đóng</button>
+        </div>
+      `;
     }
-  };
+  }
 };
 
 // ── COD RECONCILIATION MODAL WITH DISCREPANCY AUDIT ──────────
